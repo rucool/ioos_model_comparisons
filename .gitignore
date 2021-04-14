@@ -1,0 +1,8 @@
+
+*.pyc
+.idea/vcs.xml
+.idea/modules.xml
+.idea/misc.xml
+.idea/inspectionProfiles/profiles_settings.xml
+.idea/Daily_glider_models_comparisons.iml
+.DS_Store
