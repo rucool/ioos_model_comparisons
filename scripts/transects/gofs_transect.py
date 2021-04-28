@@ -7,9 +7,10 @@ from src.calc import calculate_transect, convert_ll_to_model_ll
 from src.plotting import plot_transect, plot_transects
 from src.common import transects
 
-url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
-save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/'
-days = 4
+# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/gofs/'
+
+save_dir = '/www/home/michaesm/public_html/hurricanes/plots/transects/gofs/'
+days = 1
 
 # Get today and yesterdays date
 today = dt.date.today()
@@ -19,7 +20,7 @@ extent = [-100+360, -80+360, 18, 32]
 
 transects = transects()
 
-with xr.open_dataset(url, drop_variables='tau') as ds:
+with xr.open_dataset('https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0', drop_variables='tau') as ds:
     dst = ds.sel(time=slice(yesterday, today))
 
     for t in dst.time:

@@ -14,10 +14,15 @@ import numpy as np
 # Glider (active gliders - Whole Track), Argo (Last month), Drifters
 # surface... 100-1000m range cross-section at 26N eddy
 
-url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
-save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/surface_maps/rtofs/'
-bathymetry = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
-days = 6
+# url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
+# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/surface_maps/rtofs/'
+# bathymetry = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
+
+url = '/home/hurricaneadm/data/rtofs/'
+save_dir = '/www/home/michaesm/public_html/hurricanes/plots/surface_maps/rtofs/'
+bathymetry = '/home/hurricaneadm/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
+
+days = 1
 map_projection = ccrs.PlateCarree()
 argo = True
 gliders = True

@@ -6,10 +6,13 @@ import xarray as xr
 import datetime as dt
 from src.common import list_files, list_to_dataframe
 
+url = '/home/hurricaneadm/data/rtofs/'
+save_dir = '/www/home/michaesm/public_html/hurricanes/plots/profiles/'
 
-url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
-save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/profiles/'
-days = 5
+# url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
+# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/profiles/'
+
+days = 1
 
 # adjust variable limits
 temp_limits = [5, 30]

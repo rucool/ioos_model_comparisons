@@ -22,10 +22,10 @@ def transects():
                                limits=dict(temperature=dict(deep=np.arange(4, 26), shallow=np.arange(11, 26)),
                                            salinity=dict(deep=np.arange(34.8, 36.5, 0.1), shallow=np.arange(34.8, 36.5, 0.1) ))
                                ),
-        trifecta=dict(extent=[-96.25, 26.25, -91.25, 26.25],
-                        limits=dict(temperature=dict(deep=np.arange(4, 26), shallow=np.arange(10, 26)),
-                                    salinity=dict(deep=np.arange(34.7, 37, 0.1), shallow=np.arange(35.4, 37, 0.1)))
-                        ),
+        two_eddies_in_western_gulf=dict(extent=[-96.25, 26.25, -91.25, 26.25],
+                                        limits=dict(temperature=dict(deep=np.arange(4, 26), shallow=np.arange(10, 26)),
+                                                    salinity=dict(deep=np.arange(34.7, 37, 0.1), shallow=np.arange(35.4, 37, 0.1)))
+                                        ),
     )
     return transects
 
@@ -41,31 +41,39 @@ def limits(model=None):
 
     # Specify common variable and region limits for both gofs and rtofs
     # To add different depths for each variable, append to the specific variable list the following format:
-    # dict(depth=n, limits=[min, max])
+    # dict(depth=n, limits=[min, max, stride])
 
     # Gulf of Mexico Limits
     gom_extent = [-100, -80, 18, 32]
-    gom_sea_water_temperature = [dict(depth=0, limits=[20, 28]), dict(depth=200, limits=[12, 24])]
-    gom_salinity = [dict(depth=0, limits=[34, 37])]
-    gom_sea_surface_height = [dict(depth=0, limits=[-.6, .7])]
+    gom_sea_water_temperature = [dict(depth=0, limits=[20, 28, .5]), dict(depth=200, limits=[12, 24, .5])]
+    gom_salinity = [dict(depth=0, limits=[34, 37, .1])]
+    gom_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
 
     # South Atlantic Bight Limits
     sab_extent = [-82, -64, 25, 36]
-    sab_sea_water_temperature = [dict(depth=0, limits=[19, 26])]
-    sab_salinity = [dict(depth=0, limits=[32, 38])]
-    sab_sea_surface_height = [dict(depth=0, limits=[-.6, .7])]
+    sab_sea_water_temperature = [dict(depth=0, limits=[19, 26, .5])]
+    sab_salinity = [dict(depth=0, limits=[32, 38, .1])]
+    sab_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
 
     # Mid Atlantic Bight Limits
     mab_extent = [-77, -68, 35, 43]
-    mab_sea_water_temperature = [dict(depth=0, limits=[5, 26])]
-    mab_salinity = [dict(depth=0, limits=[30, 38])]
-    mab_sea_surface_height = [dict(depth=0, limits=[-.6, .7])]
+    mab_sea_water_temperature = [dict(depth=0, limits=[5, 26, .5])]
+    mab_salinity = [dict(depth=0, limits=[30, 38, .1])]
+    mab_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
 
     # Caribbean Bight Limits
     carib_extent = [-90, -55, 6, 24]
-    carib_sea_water_temperature = [dict(depth=0, limits=[22, 29])]
-    carib_salinity = [dict(depth=0, limits=[34, 37])]
-    carib_sea_surface_height = [dict(depth=0, limits=[-.6, .7])]
+    carib_sea_water_temperature = [dict(depth=0, limits=[22, 29, .5])]
+    carib_salinity = [dict(depth=0, limits=[34, 37, .1])]
+    carib_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+
+    # Windward Islands
+    wind_extent = [-68.2, -56.4, 9.25, 19.75]
+    # 19.651243, -68.143543
+    # 9.221479, -56.515488
+    wind_sea_water_temperature = [dict(depth=0, limits=[25, 28, .25])]
+    wind_salinity = [dict(depth=0, limits=[34.75, 37, .1])]
+    wind_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
 
     # Create new dictionary for selected model. Needs to be done because the variable names are different in each model
     # initialize empty dictionary for limits
@@ -87,6 +95,11 @@ def limits(model=None):
     carib = limits['Caribbean']
     carib.update(lonlat=carib_extent)
 
+    limits['Windward Islands'] = dict()
+    wind = limits['Windward Islands']
+    wind.update(lonlat=wind_extent)
+
+
     gom.update(salinity=gom_salinity)
     gom.update(temperature=gom_sea_water_temperature)
     sab.update(salinity=sab_salinity)
@@ -95,6 +108,8 @@ def limits(model=None):
     mab.update(temperature=mab_sea_water_temperature)
     carib.update(salinity=carib_salinity)
     carib.update(temperature=carib_sea_water_temperature)
+    wind.update(salinity=wind_salinity)
+    wind.update(temperature=wind_sea_water_temperature)
 
     # GOFS has sea surface height
     if model == 'gofs':
@@ -102,7 +117,7 @@ def limits(model=None):
         sab.update(sea_surface_height=sab_sea_surface_height)
         mab.update(sea_surface_height=mab_sea_surface_height)
         carib.update(sea_surface_height=carib_sea_surface_height)
-
+        wind.update(sea_surface_height=wind_sea_surface_height)
     return limits
 
 

@@ -8,9 +8,12 @@ from src.calc import calculate_transect, convert_ll_to_model_ll
 from src.plotting import plot_transect, plot_transects
 from src.common import transects
 
-url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
-save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/'
-days = 5
+# url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
+# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/rtofs/'
+
+url = '/home/hurricaneadm/data/rtofs/'
+save_dir = '/www/home/michaesm/public_html/hurricanes/plots/transects/rtofs/'
+days = 1
 
 # transect coordinates and variable limits
 transects = transects()

@@ -14,10 +14,13 @@ import pandas as pd
 # Glider (active gliders - Whole Track), Argo (Last month), Drifters
 # surface... 100-1000m range cross-section at 26N eddy
 
-url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
-save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/surface_maps/gofs/'
-bathymetry = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
-days = 5
+# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/surface_maps/gofs/'
+# bathymetry = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
+
+save_dir = '/www/home/michaesm/public_html/hurricanes/plots/surface_maps/gofs/'
+bathymetry = '/home/hurricaneadm/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
+
+days = 1
 map_projection = ccrs.PlateCarree()
 argo = True
 gliders = True
@@ -43,7 +46,8 @@ yesterday = today - dt.timedelta(days=days)
 tomorrow = today + dt.timedelta(days=1)
 ranges = pd.date_range(yesterday, tomorrow, freq='6H')
 
-with xr.open_dataset(url, drop_variables='tau') as gofs:
+
+with xr.open_dataset('https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0', drop_variables='tau') as gofs:
     gofs = gofs.rename({'surf_el': 'sea_surface_height', 'water_temp': 'temperature', 'water_u': 'u', 'water_v': 'v'})
 
     # Get all the datetimes (match with rtofs dates of every 6 hours)
@@ -61,4 +65,5 @@ with xr.open_dataset(url, drop_variables='tau') as gofs:
             # subset dataset to the proper extents for each region
             sub = tds.sel(lon=slice(extent[0] + 359, extent[1] + 361), lat=slice(extent[2] - 1, extent[3] + 1))
             sub['lon'] = sub['lon'] - 360  # Convert model lon to glider lon
+            # sub.load()
             plot_model_region(sub, region, **kwargs)

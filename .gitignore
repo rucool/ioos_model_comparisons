@@ -6,3 +6,11 @@
 .idea/inspectionProfiles/profiles_settings.xml
 .idea/Daily_glider_models_comparisons.iml
 .DS_Store
+*.nc
+data/rtofs/rtofs.20210312/.nfs00000000000103210000e845
+data/rtofs/rtofs.20210313/.nfs000000000001080a0000edc6
+data/rtofs/rtofs.20210319/.nfs000000000000b1f200010ce5
+.idea/workspace.xml
+.idea/inspectionProfiles/Project_Default.xml
+.idea/hurricanes.iml
+*.png

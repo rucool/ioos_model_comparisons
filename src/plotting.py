@@ -277,7 +277,7 @@ def plot_model_region(ds, region,
     extent = limits['lonlat']
 
     region_file_str = ('_').join(region_name.lower().split(' '))
-    save_dir_region = os.path.join(save_dir, region_file_str)
+    save_dir_region = os.path.join(save_dir, 'regions', region_file_str)
 
     if model == 'gofs':
         t0 = pd.to_datetime(ds.time.data - np.timedelta64(search_time, 'h'))
@@ -311,27 +311,30 @@ def plot_model_region(ds, region,
         for item in v:
             depth = item['depth']
             dsd = ds.sel(depth=depth)
+            dsd.load()
             save_dir_depth = os.path.join(save_dir_var, f'{depth}m')
 
             title = f'Model: {model}, Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n' \
                     f'Time: {str(t1)} UTC'
             sname = f'{k}-{t1.strftime("%Y-%m-%dT%H%M%SZ")}'
-            os.makedirs(save_dir_depth, exist_ok=True)
-            save_file = os.path.join(save_dir_depth, sname)
+
+            save_dir_final = os.path.join(save_dir_depth, t1.strftime('%Y/%m/%d'))
+            os.makedirs(save_dir_final, exist_ok=True)
+            save_file = os.path.join(save_dir_final, sname)
 
             vargs = {}
-            vargs['vmin'] = min(item['limits'])
-            vargs['vmax'] = max(item['limits'])
+            vargs['vmin'] = item['limits'][0]
+            vargs['vmax'] = item['limits'][1]
             vargs['transform'] = transform
             vargs['cmap'] = cmaps(ds[k].name)
             vargs['extend'] = 'both'
 
             if k == 'sea_surface_height':
-                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], 0.1)
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
             elif k == 'salinity':
-                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], 0.1)
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
             elif k == 'temperature':
-                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], 0.5)
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
 
             try:
                 vargs.pop('vmin'), vargs.pop('vmax')
