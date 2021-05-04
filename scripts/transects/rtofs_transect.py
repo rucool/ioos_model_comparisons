@@ -13,7 +13,8 @@ from src.common import transects
 
 url = '/home/hurricaneadm/data/rtofs/'
 save_dir = '/www/home/michaesm/public_html/hurricanes/plots/transects/rtofs/'
-days = 1
+
+days = 2
 
 # transect coordinates and variable limits
 transects = transects()

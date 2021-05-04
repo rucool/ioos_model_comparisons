@@ -1,5 +1,4 @@
 import cmocean
-import numpy as np
 import xarray as xr
 import datetime as dt
 import os
@@ -8,9 +7,9 @@ from src.plotting import plot_transect, plot_transects
 from src.common import transects
 
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/gofs/'
-
 save_dir = '/www/home/michaesm/public_html/hurricanes/plots/transects/gofs/'
-days = 1
+
+days = 2
 
 # Get today and yesterdays date
 today = dt.date.today()

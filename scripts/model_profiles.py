@@ -12,22 +12,19 @@ save_dir = '/www/home/michaesm/public_html/hurricanes/plots/profiles/'
 # url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/profiles/'
 
-days = 1
+days = 2
 
 # adjust variable limits
 temp_limits = [5, 30]
 salinity_limits = [33, 37.1]
 
-# [5, 30]
 
 # set lon, lat for profile
-
 profiles = dict(
     loop_current_eddy=dict(x=-87.25, y=26),
     cold_water_arm_in_western_gulf=dict(x=-93.5, y=27),
     green_blob=dict(x=-92.4, y=26.4)
 )
-
 
 # subset model to this area
 extent = [-100, -80, 18, 32]

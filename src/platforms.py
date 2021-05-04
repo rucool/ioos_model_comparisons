@@ -2,6 +2,10 @@ from erddapy import ERDDAP
 import datetime as dt
 import pandas as pd
 from requests.exceptions import HTTPError
+from collections import namedtuple
+
+Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
+Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
 
 
 def active_argo_floats(bbox= None, time_start=None, time_end=None):
@@ -56,6 +60,7 @@ def active_argo_floats(bbox= None, time_start=None, time_end=None):
         ).dropna()
     except HTTPError:
         df = pd.DataFrame()
+
     return df
 
 
@@ -126,7 +131,7 @@ def active_gliders(bbox=None, time_start=None, time_end=None):
     glider_dfs = []
 
     for id in gliders:
-        print('Reading ' + id)
+        # print('Reading ' + id)
         e.dataset_id = id
         e.constraints = constraints
         e.variables = variables
