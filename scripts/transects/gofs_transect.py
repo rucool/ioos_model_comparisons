@@ -7,7 +7,7 @@ from src.plotting import plot_transect, plot_transects
 from src.common import transects
 
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/gofs/'
-save_dir = '/www/home/michaesm/public_html/hurricanes/plots/transects/gofs/'
+save_dir = '/www/web/rucool/hurricane/model_comparisons/transects/gofs/'
 
 days = 2
 

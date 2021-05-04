@@ -19,7 +19,7 @@ url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/surface_maps/'
 # bathymetry = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
 
-save_dir = '/www/home/michaesm/public_html/hurricanes/plots/surface_maps/'
+save_dir = '/www/web/rucool/hurricane/model_comparisons/surface_maps/'
 bathymetry = '/home/hurricaneadm/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
 
 days = 0

@@ -12,7 +12,7 @@ from src.common import transects
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/rtofs/'
 
 url = '/home/hurricaneadm/data/rtofs/'
-save_dir = '/www/home/michaesm/public_html/hurricanes/plots/transects/rtofs/'
+save_dir = '/www/web/rucool/hurricane/model_comparisons/transects/rtofs/'
 
 days = 2
 

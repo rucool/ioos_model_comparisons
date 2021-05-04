@@ -7,7 +7,7 @@ import datetime as dt
 from src.common import list_files, list_to_dataframe
 
 url = '/home/hurricaneadm/data/rtofs/'
-save_dir = '/www/home/michaesm/public_html/hurricanes/plots/profiles/'
+save_dir = '/www/web/rucool/hurricane/model_comparisons/profiles/'
 
 # url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/profiles/'
