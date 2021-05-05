@@ -250,7 +250,6 @@ def plot_model_region(ds, region, t1,
                       bathy=None,
                       argo=None,
                       gliders=None,
-                      currents=None,
                       transform=None,
                       model=None,
                       save_dir=None,
@@ -267,7 +266,6 @@ def plot_model_region(ds, region, t1,
     transform = transform or ccrs.PlateCarree()
     # argo = argo or pd.DataFrame()
     # gliders = gliders or pd.DataFrame()
-    currents = currents or False
     save_dir = save_dir or os.getcwd()
     model = model or 'rtofs'
     dpi = dpi or 150
@@ -315,7 +313,6 @@ def plot_model_region(ds, region, t1,
 
             if k == 'sea_surface_height':
                 vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
-                limits['currents'] = True
             elif k == 'salinity':
                 vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
             elif k == 'temperature':
@@ -346,10 +343,6 @@ def plot_model_region(ds, region, t1,
                 ax.clabel(CS, [-100], inline=True, fontsize=6, fmt=fmt)
                 # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
 
-            if limits['currents']:
-                sub = 6
-                q = add_currents(sub, dsd)
-
             # Axes properties and features
             ax.set_extent(extent)
             ax.add_feature(LAND, edgecolor='black')
@@ -358,6 +351,9 @@ def plot_model_region(ds, region, t1,
             ax.add_feature(cfeature.BORDERS)
             ax.add_feature(state_lines, zorder=11, edgecolor='black')
             # ax.plot(-93.5, 27, transform=ccrs.Mercator())
+
+            if limits['currents']['bool']:
+                q = add_currents(limits['currents']['coarsen'], dsd)
 
             if not argo.empty:
                 most_recent = argo.loc[argo.groupby('platform_number')['time (UTC)'].idxmax()]
@@ -372,6 +368,7 @@ def plot_model_region(ds, region, t1,
                     ax.plot(new_df['longitude (degrees_east)'], new_df['latitude (degrees_north)'], color='white', linewidth=1.5, transform=ccrs.PlateCarree())
                     ax.plot(q['longitude (degrees_east)'], q['latitude (degrees_north)'], marker='^', markeredgecolor='black', markersize=8.5, label=g, transform=ccrs.PlateCarree())
                     ax.legend(loc='upper right', fontsize=6)
+
 
             # Gridlines and grid labels
             gl = ax.gridlines(
@@ -397,190 +394,9 @@ def plot_model_region(ds, region, t1,
             cbar = plt.colorbar(h, cax=cax)
             cbar.set_label(ds[k].units)
 
+
             plt.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
-
-
-# def plot_model_region(ds, region,
-#                       bathy=None,
-#                       argo=None,
-#                       gliders=None,
-#                       currents=None,
-#                       search_time=None,
-#                       transform=None,
-#                       model=None,
-#                       save_dir=None,
-#                       dpi=None):
-#     """
-#
-#     :param lon: longitude
-#     :param lat: latitude
-#     :param variable: data variable you want to plot
-#     :param kwargs:
-#     :return:
-#     """
-#     bathy = bathy or None
-#     transform = transform or ccrs.PlateCarree()
-#     argo = argo or False
-#     gliders = gliders or False
-#     currents = currents or False
-#     save_dir = save_dir or os.getcwd()
-#     model = model or 'rtofs'
-#     dpi = dpi or 150
-#     search_time = search_time or 24
-#
-#     region_name = region[0]
-#     limits = region[1]
-#     extent = limits['lonlat']
-#
-#     region_file_str = ('_').join(region_name.lower().split(' '))
-#     save_dir_region = os.path.join(save_dir, 'regions', region_file_str)
-#
-#     if model == 'gofs':
-#         t0 = pd.to_datetime(ds.time.data - np.timedelta64(search_time, 'h'))
-#         t1 = pd.to_datetime(ds.time.data)
-#     elif model == 'rtofs':
-#         t0 = pd.to_datetime(ds.time.data[0] - np.timedelta64(search_time, 'h'))
-#         t1 = pd.to_datetime(ds.time.data[0])
-#     else:
-#         return 'Incorrect model type. Please enter "gofs" or "rtofs"'
-#
-#     if argo:
-#         argo_floats = []
-#         data = active_argo_floats(extent, t0, t1)
-#
-#         if not data.empty:
-#             most_recent = data.loc[data.groupby('platform_number')['time (UTC)'].idxmax()]
-#
-#             for float in most_recent.itertuples():
-#                 A = Argo(float.platform_number, float._4, float._5)
-#                 argo_floats.append(A)
-#
-#     if gliders:
-#         current_gliders = active_gliders(extent, t0, t1)
-#
-#     for k, v in limits.items():
-#         if k == 'lonlat':
-#             continue
-#         elif k == 'currents':
-#             continue
-#
-#         var_str = ' '.join(ds[k].standard_name.split('_')).title()
-#         save_dir_var = os.path.join(save_dir_region, k)
-#
-#         for item in v:
-#             depth = item['depth']
-#             dsd = ds.sel(depth=depth)
-#
-#             save_dir_depth = os.path.join(save_dir_var, f'{depth}m')
-#
-#             title = f'Model: {model}, Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n' \
-#                     f'Time: {str(t1)} UTC'
-#             sname = f'{k}-{t1.strftime("%Y-%m-%dT%H%M%SZ")}'
-#
-#             save_dir_final = os.path.join(save_dir_depth, t1.strftime('%Y/%m'))
-#             os.makedirs(save_dir_final, exist_ok=True)
-#             save_file = os.path.join(save_dir_final, sname)
-#             save_file = save_file + '.png'
-#
-#             if os.path.isfile(save_file):
-#                 continue
-#
-#             vargs = {}
-#             vargs['vmin'] = item['limits'][0]
-#             vargs['vmax'] = item['limits'][1]
-#             vargs['transform'] = transform
-#             vargs['cmap'] = cmaps(ds[k].name)
-#             vargs['extend'] = 'both'
-#
-#             if k == 'sea_surface_height':
-#                 vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
-#                 limits['currents'] = True
-#             elif k == 'salinity':
-#                 vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
-#             elif k == 'temperature':
-#                 vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
-#
-#             try:
-#                 vargs.pop('vmin'), vargs.pop('vmax')
-#             except KeyError:
-#                 pass
-#
-#             fig, ax = plt.subplots(
-#                 figsize=(11, 8),
-#                 subplot_kw=dict(projection=ccrs.Mercator())
-#             )
-#
-#
-#
-#             # Plot title
-#             plt.title(title)
-#
-#             h = plt.contourf(dsd['lon'], dsd['lat'], dsd[k].squeeze(), **vargs)
-#
-#             if bathy:
-#                 levels = np.arange(-100, 0, 50)
-#                 bath_lat = bathy.variables['lat'][:]
-#                 bath_lon = bathy.variables['lon'][:]
-#                 bath_elev = bathy.variables['elevation'][:]
-#
-#                 CS = plt.contour(bath_lon, bath_lat, bath_elev,  levels, linewidths=.75, alpha=.5, colors='k', transform=ccrs.PlateCarree())
-#                 ax.clabel(CS, [-100], inline=True, fontsize=6, fmt=fmt)
-#                 # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
-#
-#             if limits['currents']:
-#                 sub = 6
-#                 q = add_currents(sub, dsd)
-#
-#             # Axes properties and features
-#             ax.set_extent(extent)
-#             ax.add_feature(LAND, edgecolor='black')
-#             ax.add_feature(cfeature.RIVERS)
-#             ax.add_feature(cfeature.LAKES)
-#             ax.add_feature(cfeature.BORDERS)
-#             ax.add_feature(state_lines, zorder=11, edgecolor='black')
-#             # ax.plot(-93.5, 27, transform=ccrs.Mercator())
-#
-#             if argo:
-#                 if argo_floats:
-#                     for i in argo_floats:
-#                         ax.plot(i.lon, i.lat, marker='o', markersize=7, markeredgecolor='black', label=i.name, transform=ccrs.PlateCarree())
-#                         ax.legend(loc='upper right', fontsize=6)
-#
-#             if gliders:
-#                 if not current_gliders.empty:
-#                     for g, new_df in current_gliders.groupby(level=0):
-#                         q = new_df.iloc[-1]
-#                         ax.plot(new_df['longitude (degrees_east)'], new_df['latitude (degrees_north)'], color='white', linewidth=1.5, transform=ccrs.PlateCarree())
-#                         ax.plot(q['longitude (degrees_east)'], q['latitude (degrees_north)'], marker='^', markeredgecolor='black', markersize=8.5, label=g, transform=ccrs.PlateCarree())
-#                         ax.legend(loc='upper right', fontsize=6)
-#
-#             # Gridlines and grid labels
-#             gl = ax.gridlines(
-#                 draw_labels=True,
-#                 linewidth=.5,
-#                 color='black',
-#                 alpha=0.25,
-#                 linestyle='--'
-#             )
-#
-#             gl.top_labels = gl.right_labels = False
-#             gl.xlabel_style = {'size': 10, 'color': 'black'}
-#             gl.ylabel_style = {'size': 10, 'color': 'black'}
-#             gl.xformatter = LONGITUDE_FORMATTER
-#             gl.yformatter = LATITUDE_FORMATTER
-#
-#             # Set colorbar height equal to plot height
-#             divider = make_axes_locatable(ax)
-#             cax = divider.new_horizontal(size='5%', pad=0.05, axes_class=plt.Axes)
-#             fig.add_axes(cax)
-#
-#             # generate colorbar
-#             cbar = plt.colorbar(h, cax=cax)
-#             cbar.set_label(ds[k].units)
-#
-#             plt.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
-#             plt.close()
 
 
 def fmt(x):
@@ -603,7 +419,6 @@ def add_currents(sub, dsd):
     except ValueError:
         qds = dsd.coarsen(X=sub, boundary='pad').mean().coarsen(Y=sub, boundary='pad').mean()
         mesh = False
-
 
     angle, speed = uv2spdir(qds['u'], qds['v'])  # convert u/v to angle and speed
     u, v = spdir2uv(  # convert angle and speed back to u/v, normalizing the arrow sizes
