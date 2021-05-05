@@ -3,6 +3,8 @@
 """
 Author: Mike Smith
 Last modified: Lori Garzio on 4/22/2021
+Create a transect of GOFS temperature and salinity by latitude and longitude for each model forecast for today under
+current storm forecast tracks.
 """
 import cmocean
 import numpy as np
