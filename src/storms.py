@@ -71,7 +71,7 @@ def custom_transect(ds, varname, target_lons, target_lats, model):
 
 
 def forecast_storm_region(forecast_track):
-    regions = limits()
+    regions = limits(regions=['mab', 'gom', 'carib', 'sab'])
 
     # add shortened codes for the regions
     regions['Gulf of Mexico'].update(code='gom')
