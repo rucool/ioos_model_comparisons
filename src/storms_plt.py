@@ -109,7 +109,7 @@ def surface_map_storm_forecast(ds, region,
         return 'Incorrect model type. Please enter "gofs", "rtofs" or "cmems"'
 
     for k, v in limits.items():
-        if k in ['lonlat', 'code']:
+        if k in ['lonlat', 'code', 'currents']:
             continue
         if k == 'salinity':
             var_str = 'Sea Surface Salinity'
@@ -133,19 +133,17 @@ def surface_map_storm_forecast(ds, region,
             save_file = os.path.join(save_dir_maps, sname)
 
             vargs = {}
-            vargs['vmin'] = min(item['limits'])
-            vargs['vmax'] = max(item['limits'])
+            vargs['vmin'] = item['limits'][0]
+            vargs['vmax'] = item['limits'][1]
             vargs['transform'] = transform
             vargs['cmap'] = sp.cmaps(ds[k].name)
             vargs['extend'] = 'both'
 
             if k == 'sea_surface_height':
-                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], 0.1)
-            elif k == 'salinity':
-                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], 0.1)
-            elif k == 'temperature':
-                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], 0.5)
-            # vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], 0.1)
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
+                limits['currents'] = True
+            else:
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
 
             try:
                 vargs.pop('vmin'), vargs.pop('vmax')
