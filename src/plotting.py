@@ -301,8 +301,8 @@ def plot_model_region(ds, region, t1,
             save_file = os.path.join(save_dir_final, sname)
             save_file = save_file + '.png'
 
-            if os.path.isfile(save_file):
-                continue
+#             if os.path.isfile(save_file):
+#                 continue
 
             vargs = {}
             vargs['vmin'] = item['limits'][0]
