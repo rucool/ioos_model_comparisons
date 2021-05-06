@@ -292,8 +292,8 @@ def plot_model_region(ds, region, t1,
 
             save_dir_depth = os.path.join(save_dir_var, f'{depth}m')
 
-            title = f'Model: {model}, Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n' \
-                    f'Time: {str(t1)} UTC'
+            title = f'Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n' \
+                    f'Time: {str(t1)} UTC, Model: {model.upper()}'
             sname = f'{k}-{t1.strftime("%Y-%m-%dT%H%M%SZ")}'
 
             save_dir_final = os.path.join(save_dir_depth, model, t1.strftime('%Y/%m'))
