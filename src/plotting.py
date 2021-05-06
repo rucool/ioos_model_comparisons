@@ -294,9 +294,9 @@ def plot_model_region(ds, region, t1,
 
             title = f'Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n' \
                     f'Time: {str(t1)} UTC, Model: {model.upper()}'
-            sname = f'{k}-{t1.strftime("%Y-%m-%dT%H%M%SZ")}'
+            sname = f'{model}-{k}-{t1.strftime("%Y-%m-%dT%H%M%SZ")}'
 
-            save_dir_final = os.path.join(save_dir_depth, model, t1.strftime('%Y/%m'))
+            save_dir_final = os.path.join(save_dir_depth, t1.strftime('%Y/%m'))
             os.makedirs(save_dir_final, exist_ok=True)
             save_file = os.path.join(save_dir_final, sname)
             save_file = save_file + '.png'

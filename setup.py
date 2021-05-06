@@ -2,9 +2,9 @@ from setuptools import setup
 
 setup(
     name='hurricanes',
-    version='',
+    version='0.0.1',
     packages=['src', 'scripts', 'scripts.transects', 'scripts.surface_maps', 'current_storms'],
-    url='',
+    url='github.com/rucool/hurricanes/',
     license='',
     author='mikesmith',
     author_email='michaesm@marine.rutgers.edu',
