@@ -31,12 +31,13 @@ Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
 
 
-def add_map_features(axis, extent, edgecolor=None):
+def add_map_features(axis, extent, edgecolor=None, landcolor=None):
     edgecolor = edgecolor or 'black'
+    landcolor = landcolor or 'tan'
 
     # Axes properties and features
     axis.set_extent(extent)
-    axis.add_feature(LAND, edgecolor=edgecolor)
+    axis.add_feature(LAND, edgecolor=edgecolor, facecolor=landcolor)
     axis.add_feature(cfeature.RIVERS)
     axis.add_feature(cfeature.LAKES)
     axis.add_feature(cfeature.BORDERS)
