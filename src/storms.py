@@ -46,26 +46,39 @@ def custom_transect(ds, varname, target_lons, target_lats, model):
     if model in ['gofs', 'cmems']:
         lon_idx = np.round(np.interp(target_lons, lon, np.arange(0, len(lon)))).astype(int)
         lat_idx = np.round(np.interp(target_lats, lat, np.arange(0, len(lat)))).astype(int)
-        lon_subset = lon[lon_idx]
-        lat_subset = lat[lat_idx]
-        if model == 'gofs':
-            lon_subset = convert_gofs_target_lon(lon_subset)
     elif model == 'rtofs':
         lon_idx = np.round(np.interp(target_lons, lon[0, :], np.arange(0, len(lon[0, :])))).astype(int)
         lat_idx = np.round(np.interp(target_lats, lat[:, 0], np.arange(0, len(lat[:, 0])))).astype(int)
-        lon_subset = lon[0, lon_idx]
-        lat_subset = lat[lat_idx, 0]
+
+    lonlat_check = []
+    lon_idx_final = np.array([], dtype='int32')
+    lat_idx_final = np.array([], dtype='int32')
+    for i, value in enumerate(lon_idx):
+        lonlat = [value, lat_idx[i]]
+        if lonlat not in lonlat_check:
+            lonlat_check.append(lonlat)
+            lon_idx_final = np.append(lon_idx_final, value)
+            lat_idx_final = np.append(lat_idx_final, lat_idx[i])
+
+    if model in ['gofs', 'cmems']:
+        lon_subset = lon[lon_idx_final]
+        lat_subset = lat[lat_idx_final]
+        if model == 'gofs':
+            lon_subset = convert_gofs_target_lon(lon_subset)
+    elif model == 'rtofs':
+        lon_subset = lon[0, lon_idx_final]
+        lat_subset = lat[lat_idx_final, 0]
 
     depth = ds.depth.values
-    target_var = np.empty((len(depth), len(lon_idx)))
+    target_var = np.empty((len(depth), len(lon_idx_final)))
     target_var[:] = np.nan
 
-    for pos in range(len(lon_idx)):
-        print(len(lon_idx), pos)
+    for pos in range(len(lon_idx_final)):
+        print(len(lon_idx_final), pos)
         if model in ['gofs', 'cmems']:
-            target_var[:, pos] = ds.variables[varname][:, lat_idx[pos], lon_idx[pos]]
+            target_var[:, pos] = ds.variables[varname][:, lat_idx_final[pos], lon_idx_final[pos]]
         elif model == 'rtofs':
-            target_var[:, pos] = ds.variables[varname][0, :, lat_idx[pos], lon_idx[pos]]
+            target_var[:, pos] = ds.variables[varname][0, :, lat_idx_final[pos], lon_idx_final[pos]]
 
     return target_var, depth, lon_subset, lat_subset
 
