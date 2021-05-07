@@ -12,8 +12,6 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.lines import Line2D
 import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import src.plotting as sp
 from oceans.ocfis import uv2spdir, spdir2uv
@@ -196,14 +194,7 @@ def surface_map_storm_forecast(ds, region,
                 ax.clabel(CS, [-100], inline=True, fontsize=6, fmt=sp.fmt)
                 # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
 
-            # Axes properties and features
-            ax.set_extent(extent)
-            ax.add_feature(sp.LAND, edgecolor='black')
-            ax.add_feature(cfeature.RIVERS)
-            ax.add_feature(cfeature.LAKES)
-            ax.add_feature(cfeature.BORDERS)
-            ax.add_feature(sp.state_lines, zorder=11, edgecolor='black')
-            # ax.plot(-93.5, 27, transform=ccrs.Mercator())
+            sp.add_map_features(ax, extent)
 
             if forecast:
                 for fc_type, fc in forecast[1].items():
@@ -230,28 +221,6 @@ def surface_map_storm_forecast(ds, region,
                     gltimes.append(np.min(values['time']))
                 title = '{}\n Gliders (triangles): {} to {} '.format(title, pd.to_datetime(np.min(gltimes)).strftime('%Y-%m-%dT%H:%M'),
                                                                  pd.to_datetime(np.max(atimes)).strftime('%Y-%m-%dT%H:%M'))
-
-                # if not gliders.empty:
-                #     for g, new_df in gliders.groupby(level=0):
-                #         q = new_df.iloc[-1]
-                #         ax.plot(new_df['longitude (degrees_east)'], new_df['latitude (degrees_north)'], color='white', linewidth=1.5, transform=ccrs.PlateCarree())
-                #         ax.plot(q['longitude (degrees_east)'], q['latitude (degrees_north)'], marker='^', markeredgecolor='black', markersize=8.5, label=g, transform=ccrs.PlateCarree())
-                #         #ax.legend(loc='upper right', fontsize=6)
-
-            # Gridlines and grid labels
-            gl = ax.gridlines(
-                draw_labels=True,
-                linewidth=.5,
-                color='black',
-                alpha=0.25,
-                linestyle='--'
-            )
-
-            gl.top_labels = gl.right_labels = False
-            gl.xlabel_style = {'size': 10, 'color': 'black'}
-            gl.ylabel_style = {'size': 10, 'color': 'black'}
-            gl.xformatter = LONGITUDE_FORMATTER
-            gl.yformatter = LATITUDE_FORMATTER
 
             # Plot title
             plt.title(title)

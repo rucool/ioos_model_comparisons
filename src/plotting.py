@@ -31,6 +31,33 @@ Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
 
 
+def add_map_features(axis, extent, edgecolor=None):
+    edgecolor = edgecolor or 'black'
+
+    # Axes properties and features
+    axis.set_extent(extent)
+    axis.add_feature(LAND, edgecolor=edgecolor)
+    axis.add_feature(cfeature.RIVERS)
+    axis.add_feature(cfeature.LAKES)
+    axis.add_feature(cfeature.BORDERS)
+    axis.add_feature(state_lines, zorder=11, edgecolor=edgecolor)
+
+    # Gridlines and grid labels
+    gl = axis.gridlines(
+        draw_labels=True,
+        linewidth=.5,
+        color='black',
+        alpha=0.25,
+        linestyle='--'
+    )
+
+    gl.top_labels = gl.right_labels = False
+    gl.xlabel_style = {'size': 10, 'color': 'black'}
+    gl.ylabel_style = {'size': 10, 'color': 'black'}
+    gl.xformatter = LONGITUDE_FORMATTER
+    gl.yformatter = LATITUDE_FORMATTER
+
+
 def cmaps(variable):
     if variable == 'salinity':
         cmap = cmocean.cm.haline
