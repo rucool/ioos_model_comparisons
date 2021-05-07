@@ -1,0 +1,138 @@
+#! /usr/bin/env python3
+
+"""
+Author: Lori Garzio on 5/5/2021
+Last modified: Lori Garzio on 5/7/2021
+Create a transects of RTOFS and user-specified glider(s) temperature and salinity.
+"""
+import cmocean
+import numpy as np
+import pandas as pd
+import xarray as xr
+import datetime as dt
+import os
+import glob
+from src.calc import calculate_transect
+import src.storms as storms
+import src.gliders as gld
+from src.gliders_plt import plot_transect, plot_transects
+pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
+
+
+gliders = ['maracoos_02-20210503T1937']
+url = '/Users/garzio/Documents/rucool/hurricane_glider_project/RTOFS/RTOFS_6hourly_North_Atlantic/'
+# url = '/home/hurricaneadm/data/rtofs'  # on server
+save_dir = '/Users/garzio/Documents/rucool/hurricane_glider_project/gliders'
+model_t0 = dt.datetime(2021, 5, 7, 0, 0)  # False
+model_t1 = False
+glider_t0 = False  # dt.datetime(2021, 5, 4, 0, 0)
+glider_t1 = False  # dt.datetime(2021, 5, 5, 12, 0)
+line_transect = True  # True or False  # get a straight line transect, rather than a transect along the glider track
+ylims = [-100, 0]  # None
+color_lims = dict(temp=dict(shallow=np.arange(9, 16, .5)),
+                  salt=dict(shallow=np.arange(31.6, 36.8, .2)))
+
+# initialize keyword arguments for glider functions
+gargs = dict()
+gargs['time_start'] = glider_t0
+gargs['time_end'] = glider_t1
+gargs['filetype'] = 'dataframe'
+
+for glider in gliders:
+    sdir_glider = os.path.join(save_dir, glider, 'transects', 'rtofs')
+    os.makedirs(sdir_glider, exist_ok=True)
+    glider_df = gld.glider_dataset(glider, **gargs)
+    gl_t0 = pd.to_datetime(np.nanmin(glider_df['time']))
+    gl_t1 = pd.to_datetime(np.nanmax(glider_df['time']))
+
+    if line_transect:  # get the straight line transect
+        line_transect = gld.custom_gliderline_transects()
+        x1 = line_transect[glider]['extent'][0]
+        y1 = line_transect[glider]['extent'][1]
+        x2 = line_transect[glider]['extent'][2]
+        y2 = line_transect[glider]['extent'][3]
+
+        # calculate longitude and latitude of transect lines
+        targetlon, targetlat, _ = calculate_transect(x1, y1, x2, y2)
+
+    else:  # get the temperature transect along the glider track
+        print('Getting RTOFS custom temperature transect')
+        targetlon = np.array(glider_df['longitude'])
+        targetlat = np.array(glider_df['latitude'])
+
+    # Subset time range
+    if model_t0:
+        mt0 = model_t0
+    else:
+        mt0 = gl_t0 - dt.timedelta(hours=6)
+    if model_t1:
+        mt1 = model_t1
+    else:
+        mt1 = gl_t1 + dt.timedelta(days=1)
+
+    model_dates = [x.strftime('rtofs.%Y%m%d') for x in pd.date_range(mt0, mt1)]
+    rtofs_files = [glob.glob(os.path.join(url, x, '*.nc')) for x in model_dates]
+    rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
+
+    for f in rtofs_files:
+        print(f)
+        try:
+            with xr.open_dataset(f) as ds:
+                ds = ds.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth'})
+                ds = ds.sel(depth=slice(0, 500))
+                lat = ds.lat.data
+                lon = ds.lon.data
+
+                date_str = pd.to_datetime(ds.time.values[0]).strftime('%Y-%m-%d %H:%M:%S')
+                date_save = pd.to_datetime(ds.time.values[0]).strftime('%Y-%m-%dT%H%M%SZ')
+
+                mtemp, mdepth, lon_sub, lat_sub = storms.custom_transect(ds, 'temperature', targetlon, targetlat, 'rtofs')
+                gl_tm, gl_lon, gl_lat, gl_depth, gl_temp = gld.grid_glider_data(glider_df, 'temperature', 0.5)
+
+                # plot temperature by longitude - model only
+                targs = {}
+                targs['cmap'] = cmocean.cm.thermal
+                targs['clab'] = 'Temperature ($^oC$)'
+                targs['title'] = f'RTOFS Temperature at {date_str} UTC\n{glider} glider track'
+                targs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_rtofs_transect_temp-{date_save}.png')
+                targs['levels'] = color_lims['temp']
+                targs['ylims'] = ylims
+                print('plotting temperature by longitude')
+                plot_transect(lon_sub, -mdepth, mtemp, **targs)
+
+                # plot temperature by longitude - model and glider
+                del targs['title']
+                targs['title0'] = f'{glider.split("-")[0]} transect {gl_t0.strftime("%Y-%m-%dT%H:%M")} to ' \
+                                  f'{gl_t1.strftime("%Y-%m-%dT%H:%M")}'
+                targs['title1'] = f'RTOFS Temperature at {date_str} UTC'
+                targs['save_file'] = os.path.join(sdir_glider,
+                                                  f'{glider.split("-")[0]}_rtofs_glider_transect_temp-{date_save}.png')
+                plot_transects(gl_lon, -gl_depth, gl_temp, lon_sub, -mdepth, mtemp, **targs)
+
+                # get the salinity transect
+                print('Getting GOFS custom salinity transect')
+                msalt, mdepth, lon_sub, lat_sub = storms.custom_transect(ds, 'salinity', targetlon, targetlat, 'rtofs')
+                gl_tm, gl_lon, gl_lat, gl_depth, gl_salt = gld.grid_glider_data(glider_df, 'salinity', 0.5)
+
+                # plot salinity by longitude
+                sargs = {}
+                sargs['cmap'] = cmocean.cm.haline
+                sargs['clab'] = 'Salinity'
+                sargs['title'] = f'RTOFS Salinity at {date_str} UTC\n{glider} glider track'
+                sargs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_rtofs_transect_salt-{date_save}.png')
+                sargs['levels'] = color_lims['salt']
+                sargs['ylims'] = ylims
+                print('plotting salinity by longitude')
+                plot_transect(lon_sub, -mdepth, msalt, **sargs)
+
+                # plot salinity by longitude - model and glider
+                del sargs['title']
+                sargs['title0'] = f'{glider.split("-")[0]} transect {gl_t0.strftime("%Y-%m-%dT%H:%M")} to ' \
+                                  f'{gl_t1.strftime("%Y-%m-%dT%H:%M")}'
+                sargs['title1'] = f'RTOFS Salinity at {date_str} UTC'
+                sargs['save_file'] = os.path.join(sdir_glider,
+                                                  f'{glider.split("-")[0]}_rtofs_glider_transect_salt-{date_save}.png')
+                plot_transects(gl_lon, -gl_depth, gl_salt, lon_sub, -mdepth, msalt, **sargs)
+
+        except OSError:
+            continue
