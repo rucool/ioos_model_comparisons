@@ -27,6 +27,7 @@ model_t0 = dt.datetime(2021, 5, 10, 0, 0)  # False
 model_t1 = False
 glider_t0 = False  # dt.datetime(2021, 5, 4, 0, 0)
 glider_t1 = False  # dt.datetime(2021, 5, 5, 12, 0)
+line_transect = True  # True or False  # get a straight line transect, rather than a transect along the glider track
 
 
 # initialize keyword arguments for glider functions
