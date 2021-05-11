@@ -2,7 +2,7 @@
 
 """
 Author: Lori Garzio on 5/5/2021
-Last modified: 5/7/2021
+Last modified: 5/11/2021
 Tools for plotting specific gliders
 """
 import os
