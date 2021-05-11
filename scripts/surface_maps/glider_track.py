@@ -14,7 +14,7 @@ from src.gliders_plt import glider_track
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 
-def main(gliders, save_dir, bathymetry, landcolor, glider_t0, glider_t1, lt, current_glider_location):
+def main(gliders, save_dir, bathymetry, landcolor, glider_t0, glider_t1, current_glider_location):
     # initialize keyword arguments for glider functions
     gargs = dict()
     gargs['time_start'] = glider_t0
@@ -38,11 +38,6 @@ def main(gliders, save_dir, bathymetry, landcolor, glider_t0, glider_t1, lt, cur
         glider_ds = gld.glider_dataset(glider, **gargs)
         glider_region = gld.glider_region(glider_ds)  # define the glider region
 
-        if lt:
-            lt = gld.custom_gliderline_transects()
-            kwargs['custom_transect'] = dict(lon=[lt[glider]['extent'][0], lt[glider]['extent'][2]],
-                                             lat=[lt[glider]['extent'][1], lt[glider]['extent'][3]])
-
         # Loop through regions
         for region in glider_region.items():
             if region[0] == 'zoomed':
@@ -62,6 +57,5 @@ if __name__ == '__main__':
     land_color = 'none'
     glider_t0 = False  # dt.datetime(2021, 5, 4, 0, 0)
     glider_t1 = dt.datetime(2021, 5, 10, 0, 0)
-    line_transect = False  # True or False  # get a straight line transect, rather than a transect along the glider track
     curr_location = False  # indicate the current glider location with a triangle marker
-    main(glider_deployments, sdir, bathy, land_color, glider_t0, glider_t1, line_transect, curr_location)
+    main(glider_deployments, sdir, bathy, land_color, glider_t0, glider_t1, curr_location)

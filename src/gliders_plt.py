@@ -329,14 +329,18 @@ def surface_map_glider_track(ds, region,
                     #ax.legend(loc='upper right', fontsize=6)
 
             # plot full glider track
-            ax.plot(gliders.longitude.values, gliders.latitude.values, color='white', linewidth=1.5, transform=ccrs.PlateCarree())
+            ax.plot(gliders.longitude.values, gliders.latitude.values, color='white', linewidth=1.5,
+                    label='Glider Track', transform=ccrs.PlateCarree())
+            ax.legend(loc='upper left')
+
             if current_glider_loc:
                 ax.plot(gliders.longitude.values[-1], gliders.latitude.values[-1], color='white', marker='^',
                         markeredgecolor='black', markersize=8.5, transform=ccrs.PlateCarree())
 
             if custom_transect:
                 ax.plot(custom_transect['lon'], custom_transect['lat'], color='magenta', linewidth=1.5,
-                        transform=ccrs.PlateCarree())
+                        label='Model Comparison', transform=ccrs.PlateCarree())
+                ax.legend(loc='upper left')
 
             # Plot title
             plt.title(title)

@@ -19,7 +19,7 @@ model_t0 = dt.datetime(2021, 5, 10, 0, 0)  # False
 model_t1 = False
 glider_t0 = False  # dt.datetime(2021, 5, 4, 0, 0)
 glider_t1 = dt.datetime(2021, 5, 10, 0, 0)
-line_transect = False  # True or False  # get a straight line transect, rather than a transect along the glider track
+line_transect = True  # True or False  # get a straight line transect, rather than a transect along the glider track
 curr_location = False  # indicate the current glider location with a triangle marker
 y_limits = [-200, 0]  # None
 c_limits = dict(temp=dict(shallow=np.arange(9, 16, .5)),
@@ -27,8 +27,7 @@ c_limits = dict(temp=dict(shallow=np.arange(9, 16, .5)),
 # c_limits = None
 
 # make a map of the glider track
-surface_maps.glider_track.main(glider_deployments, sdir, bathy, land_color, glider_t0, glider_t1, line_transect,
-                               curr_location)
+surface_maps.glider_track.main(glider_deployments, sdir, bathy, land_color, glider_t0, glider_t1, curr_location)
 
 # create surface maps of GOFS and RTOFS temperature and salinity overlaid with the glider track and optional transect
 surface_maps.gofs_glider_surface_maps.main(glider_deployments, sdir, bathy, model_t0, model_t1, glider_t0, glider_t1,
