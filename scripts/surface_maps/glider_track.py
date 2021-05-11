@@ -25,6 +25,7 @@ dpi = 150
 glider_t0 = False  # dt.datetime(2021, 5, 4, 0, 0)
 glider_t1 = False  # dt.datetime(2021, 5, 5, 12, 0)
 line_transect = False  # True or False  # get a straight line transect, rather than a transect along the glider track
+current_glider_location = False  # indicate the current glider location with a triangle marker
 
 # initialize keyword arguments for glider functions
 gargs = dict()
@@ -35,6 +36,7 @@ gargs['time_end'] = glider_t1
 kwargs = dict()
 kwargs['dpi'] = dpi
 kwargs['landcolor'] = landcolor
+kwargs['current_glider_loc'] = current_glider_location
 
 if bathymetry:
     bathy = xr.open_dataset(bathymetry)

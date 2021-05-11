@@ -18,12 +18,12 @@ import cmocean
 
 
 def format_time_axis(axis):
-    print('test')
     xfmt = mdates.DateFormatter('%d-%b\n%Y')
     axis.xaxis.set_major_formatter(xfmt)
 
 
-def glider_track(ds, region, bathy=None, save_dir=None, dpi=None, custom_transect=None, landcolor=None):
+def glider_track(ds, region, bathy=None, save_dir=None, dpi=None, custom_transect=None, landcolor=None,
+                 current_glider_loc=None):
     """
     Written by Mike Smith
     Modified by Lori Garzio
@@ -32,21 +32,22 @@ def glider_track(ds, region, bathy=None, save_dir=None, dpi=None, custom_transec
     save_dir = save_dir or os.getcwd()
     dpi = dpi or 150
     landcolor = landcolor or 'tan'
+    current_glider_loc = current_glider_loc or None
 
     limits = region[1]
     extent = limits['lonlat']
 
-    save_dir_maps = os.path.join(save_dir, 'surface_maps')
-    os.makedirs(save_dir_maps, exist_ok=True)
     glider_name = ds.deployment_name.split('-')[0]
     glidert0 = np.nanmin(ds.time.values)
     glidert1 = np.nanmax(ds.time.values)
     glidert0_str = pd.to_datetime(glidert0).strftime('%Y-%m-%dT%H:%M')
     glidert1_str = pd.to_datetime(glidert1).strftime('%Y-%m-%dT%H:%M')
+    t0_save = pd.to_datetime(glidert0).strftime('%Y%m%dT%H%M')
+    t1_save = pd.to_datetime(glidert1).strftime('%Y%m%dT%H%M')
 
-    title = f'{glider_name} track: {glidert0_str} to {glidert1_str}'
-    sname = f'{ds.deployment_name}_track'
-    save_file = os.path.join(save_dir_maps, sname)
+    title = f'{ds.deployment_name}\nTrack: {glidert0_str} to {glidert1_str}'
+    sname = f'{glider_name}_track_{t0_save}-{t1_save}'
+    save_file = os.path.join(save_dir, sname)
 
     fig, ax = plt.subplots(
         figsize=(11, 8),
@@ -68,8 +69,9 @@ def glider_track(ds, region, bathy=None, save_dir=None, dpi=None, custom_transec
     # plot full glider track
     sct = ax.scatter(ds.longitude.values, ds.latitude.values, c=ds.time.values, marker='.', s=10, cmap='rainbow',
                      transform=ccrs.PlateCarree())
-    ax.plot(ds.longitude.values[-1], ds.latitude.values[-1], color='white', marker='^',markeredgecolor='black',
-            markersize=8.5, transform=ccrs.PlateCarree())
+    if current_glider_loc:
+        ax.plot(ds.longitude.values[-1], ds.latitude.values[-1], color='white', marker='^', markeredgecolor='black',
+                markersize=8.5, transform=ccrs.PlateCarree())
 
     if custom_transect:
         ax.plot(custom_transect['lon'], custom_transect['lat'], color='magenta', linewidth=1.5,
@@ -193,7 +195,8 @@ def surface_map_glider_track(ds, region,
                              model=None,
                              save_dir=None,
                              dpi=None,
-                             custom_transect=None):
+                             custom_transect=None,
+                             current_glider_loc=None):
     """
     Written by Mike Smith
     Modified by Lori Garzio
@@ -206,6 +209,7 @@ def surface_map_glider_track(ds, region,
     model = model or 'rtofs'
     dpi = dpi or 150
     custom_transect = custom_transect or None
+    current_glider_loc = current_glider_loc or None
 
     limits = region[1]
     extent = limits['lonlat']
@@ -326,8 +330,9 @@ def surface_map_glider_track(ds, region,
 
             # plot full glider track
             ax.plot(gliders.longitude.values, gliders.latitude.values, color='white', linewidth=1.5, transform=ccrs.PlateCarree())
-            ax.plot(gliders.longitude.values[-1], gliders.latitude.values[-1], color='white', marker='^',
-                    markeredgecolor='black', markersize=8.5, transform=ccrs.PlateCarree())
+            if current_glider_loc:
+                ax.plot(gliders.longitude.values[-1], gliders.latitude.values[-1], color='white', marker='^',
+                        markeredgecolor='black', markersize=8.5, transform=ccrs.PlateCarree())
 
             if custom_transect:
                 ax.plot(custom_transect['lon'], custom_transect['lat'], color='magenta', linewidth=1.5,
