@@ -29,6 +29,10 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         glider_df = gld.glider_dataset(glider, **gargs)
         gl_t0 = pd.to_datetime(np.nanmin(glider_df['time']))
         gl_t1 = pd.to_datetime(np.nanmax(glider_df['time']))
+        gl_t0str = gl_t0.strftime('%Y-%m-%dT%H:%M')
+        gl_t1str = gl_t1.strftime('%Y-%m-%dT%H:%M')
+        gl_t0save = gl_t0.strftime('%Y%m%dT%H%M')
+        glider_name = glider.split('-')[0]
 
         gl_tm, gl_lon, gl_lat, gl_depth, gl_temp = gld.grid_glider_data(glider_df, 'temperature', 0.5)
 
@@ -36,9 +40,8 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         targs = {}
         targs['cmap'] = cmocean.cm.thermal
         targs['clab'] = 'Temperature ($^oC$)'
-        targs['title'] = f'{glider.split("-")[0]} transect {gl_t0.strftime("%Y-%m-%dT%H:%M")} to '\
-                         f'{gl_t1.strftime("%Y-%m-%dT%H:%M")}'
-        targs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_transect_temp.png')
+        targs['title'] = f'{glider_name} transect {gl_t0str} to {gl_t0str}'
+        targs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_transect_temp-{gl_t0save}.png')
         targs['xlab'] = 'Time'
         if ylims:
             targs['ylims'] = ylims
@@ -48,7 +51,7 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         plot_transect(gl_tm, -gl_depth, gl_temp, **targs)
 
         # plot temperature by longitude
-        targs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_transect_temp-lon.png')
+        targs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_transect_temp-lon-{gl_t0save}.png')
         targs['xlab'] = 'Longitude'
         print('plotting temperature by longitude')
         plot_transect(gl_lon, -gl_depth, gl_temp, **targs)
@@ -60,9 +63,8 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         sargs = {}
         sargs['cmap'] = cmocean.cm.haline
         sargs['clab'] = 'Salinity'
-        sargs['title'] = f'{glider.split("-")[0]} transect {gl_t0.strftime("%Y-%m-%dT%H:%M")} to ' \
-                         f'{gl_t1.strftime("%Y-%m-%dT%H:%M")}'
-        sargs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_transect_salt.png')
+        sargs['title'] = f'{glider_name} transect {gl_t0str} to {gl_t1str}'
+        sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_transect_salt-{gl_t0save}.png')
         sargs['xlab'] = 'Time'
         if ylims:
             sargs['ylims'] = ylims
@@ -72,7 +74,7 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         plot_transect(gl_tm, -gl_depth, gl_salt, **sargs)
 
         # plot salinity by longitude
-        sargs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_transect_salt-lon.png')
+        sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_transect_salt-lon-{gl_t0save}.png')
         sargs['xlab'] = 'Longitude'
         print('plotting salinity by longitude')
         plot_transect(gl_lon, -gl_depth, gl_salt, **sargs)
@@ -81,10 +83,10 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
 if __name__ == '__main__':
     glider_deployments = ['ru30-20210503T1929']
     sdir = '/Users/garzio/Documents/rucool/hurricane_glider_project/gliders'
-    glider_t0 = False  # dt.datetime(2021, 5, 4, 0, 0)
+    glider_t0 = dt.datetime(2021, 5, 4, 3, 0)  # False
     glider_t1 = dt.datetime(2021, 5, 10, 0, 0)
-    y_limits = None  # [-100, 0]
-    c_limits = dict(temp=dict(shallow=np.arange(9, 16, .5)),
-                    salt=dict(shallow=np.arange(31.6, 36.8, .2)))
-    c_limits = None
+    y_limits = [-100, 0]  # None
+    c_limits = dict(temp=dict(shallow=np.arange(9, 15, .5)),
+                    salt=dict(shallow=np.arange(31.6, 36.4, .2)))
+    # c_limits = None
     main(glider_deployments, sdir, glider_t0, glider_t1, y_limits, c_limits)

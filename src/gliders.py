@@ -83,7 +83,7 @@ def custom_gliderline_transects():
     custom_transects['maracoos_02-20210503T1937']['extent'] = [-74.24, 39.43, -72.5, 38.8]
 
     custom_transects['ru30-20210503T1929'] = dict()
-    custom_transects['ru30-20210503T1929']['extent'] = [-74.24, 39.43, -72.92, 38.83]
+    custom_transects['ru30-20210503T1929']['extent'] = [-74.22, 39.37, -72.92, 38.83]
 
     return custom_transects
 

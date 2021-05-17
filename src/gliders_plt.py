@@ -93,10 +93,11 @@ def glider_track(ds, region, bathy=None, save_dir=None, dpi=None, custom_transec
     plt.close()
 
 
-def plot_transect(x, y, c, cmap, title=None, save_file=None, ylims=None, levels=None, extend=None, xlab=None, clab=None):
+def plot_transect(x, y, c, cmap=None, title=None, save_file=None, ylims=None, levels=None, extend=None, xlab=None, clab=None):
     """
     Plot one transect
     """
+    cmap = cmap or 'jet'
     levels = levels or None
     ylims = ylims or None
     extend = extend or 'both'

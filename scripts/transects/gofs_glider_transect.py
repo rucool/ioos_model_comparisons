@@ -3,7 +3,8 @@
 """
 Author: Lori Garzio on 5/5/2021
 Last modified: Lori Garzio on 5/11/2021
-Create a transects of GOFS and user-specified glider(s) temperature and salinity.
+Create transects of GOFS and user-specified glider(s) temperature and salinity. Creates one plot for each model time
+and variable for a specified time range.
 """
 import cmocean
 import numpy as np
