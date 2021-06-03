@@ -130,7 +130,7 @@ def limits(model=None, regions=None):
         carib_extent = [-90, -55, 6, 24]
         # carib_sea_water_temperature = [dict(depth=0, limits=[22, 29, .5])]
         # carib_salinity = [dict(depth=0, limits=[34, 37, .1])]
-        carib_sea_water_temperature = [dict(depth=0, limits=[27, 30, .1])]
+        carib_sea_water_temperature = [dict(depth=0, limits=[25, 30, .5])]
         carib_salinity = [dict(depth=0, limits=[34.6, 37, .1])]
         carib_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         carib_currents = dict(bool=True, coarsen=12)
