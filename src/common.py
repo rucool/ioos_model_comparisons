@@ -58,8 +58,8 @@ def limits(model=None, regions=None):
         gom_extent = [-100, -80, 18, 32]
         # gom_sea_water_temperature = [dict(depth=0, limits=[20, 28, .5]), dict(depth=200, limits=[12, 24, .5])]
         # gom_salinity = [dict(depth=0, limits=[34, 37, .1])]
-        gom_sea_water_temperature = [dict(depth=0, limits=[25, 32, .5]), dict(depth=200, limits=[12, 24, .5])]
-        gom_salinity = [dict(depth=0, limits=[34, 36.4, .1])]
+        gom_sea_water_temperature = [dict(depth=0, limits=[25, 30, .5]), dict(depth=200, limits=[12, 24, .5])]
+        gom_salinity = [dict(depth=0, limits=[34, 37, .25])]
         gom_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         gom_currents = dict(bool=True, coarsen=8)
 
@@ -82,8 +82,8 @@ def limits(model=None, regions=None):
         sab_extent = [-82, -64, 25, 36]
         # sab_sea_water_temperature = [dict(depth=0, limits=[19, 26, .5])]
         # sab_salinity = [dict(depth=0, limits=[32, 38, .1])]
-        sab_sea_water_temperature = [dict(depth=0, limits=[21, 30, .5])]
-        sab_salinity = [dict(depth=0, limits=[34.5, 37.5, .1])]
+        sab_sea_water_temperature = [dict(depth=0, limits=[21, 29, .5])]
+        sab_salinity = [dict(depth=0, limits=[36, 37, .1])]
         sab_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         sab_currents = dict(bool=True, coarsen=7)
 
@@ -106,8 +106,8 @@ def limits(model=None, regions=None):
         mab_extent = [-77, -68, 35, 43]
         # mab_sea_water_temperature = [dict(depth=0, limits=[5, 26, .5])]
         # mab_salinity = [dict(depth=0, limits=[30, 38, .1])]
-        mab_sea_water_temperature = [dict(depth=0, limits=[10, 28, .5])]
-        mab_salinity = [dict(depth=0, limits=[31, 37, .1])]
+        mab_sea_water_temperature = [dict(depth=0, limits=[11, 28, .5])]
+        mab_salinity = [dict(depth=0, limits=[32, 37, .25])]
         mab_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         mab_currents = dict(bool=True, coarsen=6)
 
@@ -130,8 +130,8 @@ def limits(model=None, regions=None):
         carib_extent = [-90, -55, 6, 24]
         # carib_sea_water_temperature = [dict(depth=0, limits=[22, 29, .5])]
         # carib_salinity = [dict(depth=0, limits=[34, 37, .1])]
-        carib_sea_water_temperature = [dict(depth=0, limits=[25, 32, .5])]
-        carib_salinity = [dict(depth=0, limits=[34.6, 36.6, .1])]
+        carib_sea_water_temperature = [dict(depth=0, limits=[26, 30, .25])]
+        carib_salinity = [dict(depth=0, limits=[34.6, 37, .1])]
         carib_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         carib_currents = dict(bool=True, coarsen=12)
 
@@ -154,8 +154,8 @@ def limits(model=None, regions=None):
         wind_extent = [-68.2, -56.4, 9.25, 19.75]
         # wind_sea_water_temperature = [dict(depth=0, limits=[25, 28, .25])]
         # wind_salinity = [dict(depth=0, limits=[34.75, 37, .1])]
-        wind_sea_water_temperature = [dict(depth=0, limits=[25, 28, .25])]
-        wind_salinity = [dict(depth=0, limits=[32, 36.5, .1])]
+        wind_sea_water_temperature = [dict(depth=0, limits=[25, 30, .25])]
+        wind_salinity = [dict(depth=0, limits=[33, 38, .1])]
         wind_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         wind_currents = dict(bool=True, coarsen=6)
 
