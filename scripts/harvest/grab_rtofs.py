@@ -3,9 +3,9 @@ from ftplib import FTP, error_perm
 import datetime as dt
 from tqdm import tqdm
 
-ldir = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
+# ldir = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
 
-# ldir = '/home/hurricaneadm/data/rtofs'
+ldir = '/home/hurricaneadm/data/rtofs'
 url = 'ftp.ncep.noaa.gov'
 
 nc_files_RTOFS = ['rtofs_glo_3dz_f006_6hrly_hvr_US_east.nc',
