@@ -7,7 +7,7 @@ Last modified: Lori Garzio on 2/22/2021
 import datetime as dt
 import os
 import numpy as np
-from scripts import grab_cmems
+from scripts.harvest import grab_cmems
 from src.common import limits
 
 # COPERNICUS MARINE ENVIRONMENT MONITORING SERVICE (CMEMS)

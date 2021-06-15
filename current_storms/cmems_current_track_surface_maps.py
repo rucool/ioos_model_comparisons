@@ -16,7 +16,7 @@ from src.storms import get_argo_data, forecast_storm_region
 from src.storms_plt import surface_map_storm_forecast
 from current_storms import current_forecast_track
 import src.gliders as gld
-from scripts import grab_cmems
+from scripts.harvest import grab_cmems
 
 # for downloading the CMEMS dataset
 cmems_nc_savedir = '/Users/garzio/Documents/rucool/hurricane_glider_project/CMEMS'

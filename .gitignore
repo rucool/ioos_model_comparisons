@@ -16,3 +16,4 @@ data/rtofs/rtofs.20210319/.nfs000000000000b1f200010ce5
 *.png
 *.zip
 *.DS_Store
+*.xml

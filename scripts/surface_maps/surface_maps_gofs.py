@@ -73,9 +73,13 @@ with xr.open_dataset(url, drop_variables='tau') as gofs:
                 kwargs['gliders'] = active_gliders(extent, t0, t1)
 
             if bathy:
-                kwargs['bathy'] = bathy.sel(lon=slice(extent[0] - 1, extent[1] + 1),
-                                            lat=slice(extent[2] - 1, extent[3] + 1)
-                                            )
+                kwargs['bathy'] = bathy.sel(
+                    lon=slice(extent[0] - 1, extent[1] + 1),
+                    lat=slice(extent[2] - 1, extent[3] + 1)
+                )
+
+            # extent = np.add(extent, [-1, 1, -1, 1]).tolist()
+            # print(f'Region: {region[0]}, Extent: {extent}')
 
             # subset dataset to the proper extents for each region
             sub = tds.sel(

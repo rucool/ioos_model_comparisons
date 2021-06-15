@@ -469,3 +469,203 @@ def add_currents(sub, dsd):
     else:
         q = plt.quiver(qds.lon.squeeze().data, qds.lat.squeeze().data, u.squeeze(), v.squeeze(), **qargs)
     return q
+
+
+def region_subplot(axs, ds, var, extent, title, argo, gliders, bathy, vargs):
+    h = axs.contourf(ds['lon'], ds['lat'], ds[var].squeeze(), **vargs)
+    axs.set_title(title)
+
+    if bathy:
+        levels = np.arange(-100, 0, 50)
+        bath_lat = bathy.variables['lat'][:]
+        bath_lon = bathy.variables['lon'][:]
+        bath_elev = bathy.variables['elevation'][:]
+
+        CS = axs.contour(bath_lon, bath_lat, bath_elev,  levels, linewidths=.75, alpha=.5, colors='k', transform=ccrs.PlateCarree())
+        axs.clabel(CS, [-100], inline=True, fontsize=6, fmt=fmt)
+        # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
+
+    # if limits['currents']['bool']:
+    #     q = add_currents(limits['currents']['coarsen'], dsd)
+
+    # Axes properties and features
+    axs.set_extent(extent)
+    axs.add_feature(LAND, edgecolor='black')
+    axs.add_feature(cfeature.RIVERS)
+    axs.add_feature(cfeature.LAKES)
+    axs.add_feature(cfeature.BORDERS)
+    axs.add_feature(state_lines, zorder=11, edgecolor='black')
+
+    if not argo.empty:
+        most_recent = argo.loc[argo.groupby('platform_number')['time (UTC)'].idxmax()]
+
+        for float in most_recent.itertuples():
+            axs.plot(float._4, float._5, marker='o', markersize=7, markeredgecolor='black', label=float.platform_number,
+                    transform=ccrs.PlateCarree())
+            axs.legend(loc='upper right', fontsize=6)
+
+    if not gliders.empty:
+        for g, new_df in gliders.groupby(level=0):
+            q = new_df.iloc[-1]
+            axs.plot(new_df['longitude (degrees_east)'], new_df['latitude (degrees_north)'], color='white',
+                    linewidth=1.5, transform=ccrs.PlateCarree())
+            axs.plot(q['longitude (degrees_east)'], q['latitude (degrees_north)'], marker='^', markeredgecolor='black',
+                    markersize=8.5, label=g, transform=ccrs.PlateCarree())
+            axs.legend(loc='upper right', fontsize=6)
+
+    return h
+
+
+def plot_model_regions_comparison(ds, ds2,
+                                  region,
+                                  t1,
+                                  bathy=None,
+                                  argo=None,
+                                  gliders=None,
+                                  transform=None,
+                                  model=None,
+                                  save_dir=None,
+                                  dpi=None):
+    """
+
+    :param lon: longitude
+    :param lat: latitude
+    :param variable: data variable you want to plot
+    :param kwargs:
+    :return:
+    """
+    bathy = bathy or None
+    transform = transform or ccrs.PlateCarree()
+    # argo = argo or pd.DataFrame()
+    # gliders = gliders or pd.DataFrame()
+    save_dir = save_dir or os.getcwd()
+    model = model or 'rtofs'
+    dpi = dpi or 150
+
+    region_name = region[0]
+    limits = region[1]
+    extent = limits['lonlat']
+
+    region_file_str = ('_').join(region_name.lower().split(' '))
+    save_dir_region = os.path.join(save_dir, 'regions', region_file_str)
+
+    for k, v in limits.items():
+        if k == 'lonlat':
+            continue
+        elif k == 'currents':
+            continue
+
+        var_str = ' '.join(ds[k].standard_name.split('_')).title()
+        save_dir_var = os.path.join(save_dir_region, k)
+
+        for item in v:
+            depth = item['depth']
+            ds1d = ds.sel(depth=depth)
+            ds2d = ds2.sel(depth=depth)
+
+            save_dir_depth = os.path.join(save_dir_var, f'{depth}m')
+
+            sname = f'{k}-model-comparison-{t1.strftime("%Y-%m-%dT%H%M%SZ")}'
+
+            save_dir_final = os.path.join(save_dir_depth, t1.strftime('%Y/%m'))
+            os.makedirs(save_dir_final, exist_ok=True)
+            save_file = os.path.join(save_dir_final, sname)
+            save_file = save_file + '.png'
+
+#             if os.path.isfile(save_file):
+#                 continue
+
+            vargs = {}
+            vargs['vmin'] = item['limits'][0]
+            vargs['vmax'] = item['limits'][1]
+            vargs['transform'] = transform
+            vargs['cmap'] = cmaps(ds[k].name)
+            vargs['extend'] = 'both'
+
+            if k == 'sea_surface_height':
+                continue
+                # vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
+            elif k == 'salinity':
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
+            elif k == 'temperature':
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
+
+            try:
+                vargs.pop('vmin'), vargs.pop('vmax')
+            except KeyError:
+                pass
+
+            # fig = plt.figure(constrained_layout=True, figsize=(11, 8))
+            # gs = fig.add_gridspec(1, 2, wspace=0.125)
+
+            fig, axs = plt.subplots(
+                1, 2,
+                sharex=True,
+                sharey=True,
+                figsize=(14, 7),
+                constrained_layout=True,
+                subplot_kw=dict(projection=ccrs.Mercator()),
+            )
+
+            # fig.subplots_adjust(hspace=0.5, left=0.07, right=0.93)
+
+            title = f'Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n' \
+                     f'Time: {str(t1)} UTC'
+
+            h1 = region_subplot(axs[0], ds1d, k, extent, 'RTOFS', argo, gliders, bathy, vargs)
+            # Gridlines and grid labels
+            gl = axs[0].gridlines(
+                draw_labels=True,
+                linewidth=.5,
+                color='black',
+                alpha=0.25,
+                linestyle='--'
+            )
+
+            gl.top_labels = gl.right_labels = False
+            gl.xlabel_style = {'size': 8, 'color': 'black'}
+            gl.ylabel_style = {'size': 8, 'color': 'black'}
+            gl.xformatter = LONGITUDE_FORMATTER
+            gl.yformatter = LATITUDE_FORMATTER
+            plt.setp(axs[0], ylabel='Longitude', xlabel='Latitude')
+
+            h2 = region_subplot(axs[1], ds2d, k, extent, 'GOFS', argo, gliders, bathy, vargs)
+            # Gridlines and grid labels
+            gl = axs[1].gridlines(
+                draw_labels=True,
+                linewidth=.5,
+                color='black',
+                alpha=0.25,
+                linestyle='--'
+            )
+
+            gl.top_labels = gl.right_labels = gl.ylabels_left = False
+            gl.xlabel_style = {'size': 8, 'color': 'black'}
+            gl.ylabel_style = {'size': 8, 'color': 'black'}
+            gl.xformatter = LONGITUDE_FORMATTER
+            gl.yformatter = LATITUDE_FORMATTER
+            plt.setp(axs[1], ylabel='Longitude', xlabel='Latitude')
+
+            # if limits['currents']['bool']:
+            #     q = add_currents(limits['currents']['coarsen'], dsd)
+
+            # divider = make_axes_locatable(axs[0])
+            # cax = divider.append_axes("bottom", size="5%", pad=0.05)
+            # plt.colorbar(h1, cax=cax)
+            #
+            # divider = make_axes_locatable(axs[1])
+            # cax = divider.append_axes("bottom", size="5%", pad=0.05)
+            # plt.colorbar(h2, cax=cax)
+
+            cb = fig.colorbar(h1, ax=axs[0], location='bottom')
+            cb.set_label(ds1d[k].units)
+
+            cb = fig.colorbar(h2, ax=axs[1], location='bottom')
+            cb.set_label(ds2d[k].units)
+
+            # plt.tight_layout()
+
+            plt.suptitle(title)
+
+            plt.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            plt.close()
