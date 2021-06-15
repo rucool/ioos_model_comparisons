@@ -11,7 +11,7 @@ import pandas as pd
 
 # Realtime Server Inputs
 url = '/home/hurricaneadm/data/rtofs/'
-save_dir = '/www/web/rucool/hurricane/model_comparisons/surface_maps_comparison/'
+save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/surface_maps_comparison/'
 bathymetry = '/home/hurricaneadm/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
 
 # Testing Inputs
