@@ -21,7 +21,7 @@ save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to
 
 gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 
-days = 30
+days = 10
 dpi = 150
 
 regions = limits('rtofs', ['sab'])
@@ -160,10 +160,13 @@ for region in regions.items():
 
             # Temperature
             ax[0].plot(filtered['temp (degree_Celsius)'], filtered['pres (decibar)'],
+                       'b-',
                        label=f'{float} [{str(round(x, 2))}, {str(round(y, 2))}]')
             ax[0].plot(gofs_temp['temperature'].squeeze(), gofs_temp['depth'].squeeze(),
+                       'r-',
                        label=f'GOFS [{ gofs_lon }, { gofs_lat }]')
             ax[0].plot(rtofs_sub['temperature'].squeeze(), rtofs_sub['depth'].squeeze(),
+                       'g-',
                        label=f'RTOFS [{ rtofs_lon }, { rtofs_lat }]')
             ax[0].set_ylim([400, 1])
             ax[0].set_xlim([8, 30])
@@ -173,10 +176,13 @@ for region in regions.items():
 
             # Salinity
             ax[1].plot(filtered['psal (PSU)'], filtered['pres (decibar)'],
+                       'b-',
                        label=f'{float} [{str(round(x, 2))}, {str(round(y, 2))}]')
             ax[1].plot(gofs_temp['salinity'].squeeze(), gofs_temp['depth'].squeeze(),
+                       'r-',
                        label=f'GOFS [{ gofs_lon }, { gofs_lat }]')
             ax[1].plot(rtofs_sub['salinity'].squeeze(), rtofs_sub['depth'].squeeze(),
+                       'g-',
                        label=f'RTOFS [{ rtofs_lon }, { rtofs_lat }]')
             ax[1].set_ylim([400, 1])
             ax[1].grid(True, linestyle='--', linewidth=.5)
