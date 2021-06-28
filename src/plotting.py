@@ -475,16 +475,6 @@ def region_subplot(axs, ds, var, extent, title, argo, gliders, bathy, vargs):
     h = axs.contourf(ds['lon'], ds['lat'], ds[var].squeeze(), **vargs)
     axs.set_title(title)
 
-    if bathy:
-        levels = np.arange(-100, 0, 50)
-        bath_lat = bathy.variables['lat'][:]
-        bath_lon = bathy.variables['lon'][:]
-        bath_elev = bathy.variables['elevation'][:]
-
-        CS = axs.contour(bath_lon, bath_lat, bath_elev,  levels, linewidths=.75, alpha=.5, colors='k', transform=ccrs.PlateCarree())
-        axs.clabel(CS, [-100], inline=True, fontsize=6, fmt=fmt)
-        # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
-
     # if limits['currents']['bool']:
     #     q = add_currents(limits['currents']['coarsen'], dsd)
 
@@ -512,6 +502,18 @@ def region_subplot(axs, ds, var, extent, title, argo, gliders, bathy, vargs):
             axs.plot(q['longitude (degrees_east)'], q['latitude (degrees_north)'], marker='^', markeredgecolor='black',
                     markersize=8.5, label=g, transform=ccrs.PlateCarree())
             axs.legend(loc='upper right', fontsize=6)
+
+    if bathy:
+        # levels = np.arange(-1500, 0, 150)
+        levels = np.array([-600, -100])
+        bath_lat = bathy.variables['lat'][:]
+        bath_lon = bathy.variables['lon'][:]
+        bath_elev = bathy.variables['elevation'][:]
+
+        CS = axs.contour(bath_lon, bath_lat, bath_elev, levels, linewidths=.75, alpha=.5, colors='k',
+                         transform=ccrs.PlateCarree())
+        axs.clabel(CS, levels, inline=True, fontsize=6, fmt=fmt)
+        # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
 
     return h
 
