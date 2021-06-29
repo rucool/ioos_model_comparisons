@@ -5,12 +5,10 @@ import numpy as np
 import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from src.platforms import active_argo_floats, active_gliders
-import pandas as pd
 from collections import namedtuple
 import os
-from matplotlib.colors import Normalize
 from oceans.ocfis import uv2spdir, spdir2uv
+import matplotlib.ticker as mticker
 
 
 
@@ -55,6 +53,8 @@ def add_map_features(axis, extent, edgecolor=None, landcolor=None):
     gl.top_labels = gl.right_labels = False
     gl.xlabel_style = {'size': 10, 'color': 'black'}
     gl.ylabel_style = {'size': 10, 'color': 'black'}
+    gl.xlocator = mticker.MaxNLocator(integer=True)
+    gl.ylocator = mticker.MaxNLocator(integer=True)
     gl.xformatter = LONGITUDE_FORMATTER
     gl.yformatter = LATITUDE_FORMATTER
 
@@ -191,6 +191,8 @@ def plot_model(variable, extent, title, save_file, vmin=None, vmax=None, bathy=N
     gl.xlabels_top = gl.ylabels_right = False
     gl.xlabel_style = {'size': 10, 'color': 'black'}
     gl.ylabel_style = {'size': 10, 'color': 'black'}
+    gl.xlocator = mticker.MaxNLocator(integer=True)
+    gl.ylocator = mticker.MaxNLocator(integer=True)
     gl.xformatter = LONGITUDE_FORMATTER
     gl.yformatter = LATITUDE_FORMATTER
 
@@ -410,6 +412,8 @@ def plot_model_region(ds, region, t1,
             gl.top_labels = gl.right_labels = False
             gl.xlabel_style = {'size': 10, 'color': 'black'}
             gl.ylabel_style = {'size': 10, 'color': 'black'}
+            gl.xlocator = mticker.MaxNLocator(integer=True)
+            gl.ylocator = mticker.MaxNLocator(integer=True)
             gl.xformatter = LONGITUDE_FORMATTER
             gl.yformatter = LATITUDE_FORMATTER
 
@@ -618,6 +622,7 @@ def plot_model_regions_comparison(ds, ds2,
             # Gridlines and grid labels
             gl = axs[0].gridlines(
                 draw_labels=True,
+                dms=True,
                 linewidth=.5,
                 color='black',
                 alpha=0.25,
@@ -627,8 +632,11 @@ def plot_model_regions_comparison(ds, ds2,
             gl.top_labels = gl.right_labels = False
             gl.xlabel_style = {'size': 8, 'color': 'black'}
             gl.ylabel_style = {'size': 8, 'color': 'black'}
+            gl.xlocator = mticker.MaxNLocator(integer=True)
+            gl.ylocator = mticker.MaxNLocator(integer=True)
             gl.xformatter = LONGITUDE_FORMATTER
             gl.yformatter = LATITUDE_FORMATTER
+
             plt.setp(axs[0], ylabel='Longitude', xlabel='Latitude')
 
             h2 = region_subplot(axs[1], ds2d, k, extent, 'GOFS', argo, gliders, bathy, vargs)
@@ -644,6 +652,8 @@ def plot_model_regions_comparison(ds, ds2,
             gl.top_labels = gl.right_labels = gl.ylabels_left = False
             gl.xlabel_style = {'size': 8, 'color': 'black'}
             gl.ylabel_style = {'size': 8, 'color': 'black'}
+            gl.xlocator = mticker.MaxNLocator(integer=True)
+            gl.ylocator = mticker.MaxNLocator(integer=True)
             gl.xformatter = LONGITUDE_FORMATTER
             gl.yformatter = LATITUDE_FORMATTER
             plt.setp(axs[1], ylabel='Longitude', xlabel='Latitude')

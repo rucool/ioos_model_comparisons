@@ -6,7 +6,7 @@ from src.plotting import plot_model_regions_comparison
 from src.common import limits
 import datetime as dt
 import numpy as np
-from src.plotting import active_gliders, active_argo_floats
+from src.platforms import active_gliders, active_argo_floats
 import pandas as pd
 
 # Realtime Server Inputs
