@@ -154,8 +154,8 @@ def limits(model=None, regions=None):
         wind_extent = [-68.2, -56.4, 9.25, 19.75]
         # wind_sea_water_temperature = [dict(depth=0, limits=[25, 28, .25])]
         # wind_salinity = [dict(depth=0, limits=[34.75, 37, .1])]
-        wind_sea_water_temperature = [dict(depth=0, limits=[25, 29, .25])]
-        wind_salinity = [dict(depth=0, limits=[33, 37, .25])]
+        wind_sea_water_temperature = [dict(depth=0, limits=[25, 30, .5])]
+        wind_salinity = [dict(depth=0, limits=[34.6, 37, .1])]
         wind_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         wind_currents = dict(bool=True, coarsen=6)
 
