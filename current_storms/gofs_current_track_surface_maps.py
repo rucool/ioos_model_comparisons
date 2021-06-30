@@ -20,7 +20,7 @@ pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in
 
 url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 # save_dir = '/Users/garzio/Documents/rucool/hurricane_glider_project/current_storm_tracks'
-save_dir = '/www/home/lgarzio/public_html/hurricane_gliders/current_storm_tracks'  # in server
+save_dir = '/www/home/lgarzio/public_html/hurricanes/current_storm_tracks'  # in server
 #bathymetry = '/Users/garzio/Documents/rucool/hurricane_glider_project/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
 bathymetry = False
 map_projection = ccrs.PlateCarree()

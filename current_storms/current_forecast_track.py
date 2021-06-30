@@ -131,5 +131,5 @@ def main(today, save_dir):
 
 if __name__ == '__main__':
     #  savedir = '/Users/garzio/Documents/rucool/hurricane_glider_project/current_storm_tracks'
-    savedir = '/www/home/lgarzio/public_html/hurricane_gliders/current_storm_tracks'  # in server
+    savedir = '/www/home/lgarzio/public_html/hurricanes/current_storm_tracks'  # in server
     main(dt.date.today(), savedir)
