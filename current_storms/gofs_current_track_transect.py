@@ -2,7 +2,7 @@
 
 """
 Author: Mike Smith
-Last modified: Lori Garzio on 4/22/2021
+Last modified: Lori Garzio on 7/2/2021
 Create a transect of GOFS temperature and salinity by latitude and longitude for each model forecast for today under
 current storm forecast tracks.
 """
@@ -17,20 +17,29 @@ from current_storms import current_forecast_track
 import src.storms as storms
 
 url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
-save_dir = '/Users/garzio/Documents/rucool/hurricane_glider_project/current_storm_tracks'
+save_dir = '/www/home/lgarzio/public_html/hurricanes/current_storm_tracks'  # in server
+# save_dir = '/Users/garzio/Documents/rucool/hurricane_glider_project/current_storm_tracks'
+days = 1  # number of days to search previous to today's date for GOFS data
 color_lims = dict(temp=dict(shallow=np.arange(6, 32)),
-                  salt=dict(shallow=np.arange(31.2, 37.2, .2)))
+                  salt=dict(shallow=np.arange(34, 37.2, .2)))
 
 today = dt.date.today()
+now = dt.datetime.utcnow()
+sdir = os.path.join(save_dir, now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'))
+
+# define times to grab GOFS data, matching the resolution of RTOFS data (every 6 hours)
+time_start = today - dt.timedelta(days=days)
+time_end = today + dt.timedelta(days=1)
+ranges = pd.date_range(time_start, time_end, freq='6H')
 
 # get forecast tracks for today
-forecast_tracks = current_forecast_track.main(today)
+forecast_tracks = current_forecast_track.main(now, save_dir)
 
 with xr.open_dataset(url, drop_variables='tau') as ds:
     ds = ds.rename({'surf_el': 'sea_surface_height', 'water_temp': 'temperature', 'water_u': 'u', 'water_v': 'v'})
 
     # Get all the datetimes for today at 0-500m
-    ds = ds.sel(time=slice(pd.to_datetime(today), today + dt.timedelta(days=1)), depth=slice(0, 500))
+    ds = ds.sel(time=ranges[ranges <= pd.to_datetime(ds.time.max().data)], depth=slice(0, 500))
 
     for tracks in forecast_tracks.items():
         ft = tracks[1]['forecast_track']
@@ -41,7 +50,7 @@ with xr.open_dataset(url, drop_variables='tau') as ds:
             gofs = ds.sel(time=t)
             date_str = pd.to_datetime(t.values).strftime('%Y-%m-%d %H:%M:%S')
             date_save = pd.to_datetime(t.values).strftime('%Y-%m-%dT%H%M%SZ')
-            save_dir_storm = os.path.join(save_dir, today.strftime('%Y%m%d'), tracks[0], 'transects', 'gofs')
+            save_dir_storm = os.path.join(save_dir, now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'), tracks[0], 'transects', 'gofs')
             os.makedirs(save_dir_storm, exist_ok=True)
 
             # get the custom temperature transect along the storm track
@@ -52,7 +61,7 @@ with xr.open_dataset(url, drop_variables='tau') as ds:
             targs = {}
             targs['cmap'] = cmocean.cm.thermal
             targs['clab'] = 'Temperature ($^oC$)'
-            targs['title'] = f'{tracks[0]}: Storm Track Forecast on {today.strftime("%Y-%m-%d")}\n GOFS Temperature at {date_str} UTC'
+            targs['title'] = f'{tracks[0]}: Storm Track Forecast on {tracks[1]["forecast_time"].strftime("%Y-%m-%d %H:%M UTC")}\n GOFS Temperature at {date_str} UTC'
             targs['save_file'] = os.path.join(save_dir_storm, f'{tracks[0]}_gofs_transect_temp-lon-{date_save}.png')
             #targs['levels'] = dict(shallow=np.arange(6, 32))
             targs['levels'] = color_lims['temp']
@@ -72,7 +81,7 @@ with xr.open_dataset(url, drop_variables='tau') as ds:
             # plot salinity by longitude
             sargs = {}
             sargs['cmap'] = cmocean.cm.haline
-            sargs['title'] = f'{tracks[0]}: Storm Track Forecast on {today.strftime("%Y-%m-%d")}\n GOFS Salinity at {date_str} UTC'
+            sargs['title'] = f'{tracks[0]}: Storm Track Forecast on {tracks[1]["forecast_time"].strftime("%Y-%m-%d %H:%M UTC")}\n GOFS Salinity at {date_str} UTC'
             sargs['save_file'] = os.path.join(save_dir_storm, f'{tracks[0]}_gofs_transect_salt-lon-{date_save}.png')
             #sargs['levels'] = dict(shallow=np.arange(31.2, 37.2, .2))
             sargs['levels'] = color_lims['salt']
