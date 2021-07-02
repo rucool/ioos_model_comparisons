@@ -2,7 +2,7 @@
 
 """
 Author: Mike Smith
-Last modified: Lori Garzio on 6/30/2021
+Last modified: Lori Garzio on 7/2/2021
 Create surface maps of RTOFS temperature and salinity for each model forecast for today, overlaid with current storm
 forecast tracks released today.
 """
@@ -19,7 +19,6 @@ from current_storms import current_forecast_track
 import src.gliders as gld
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
-
 # url = '/Users/garzio/Documents/rucool/hurricane_glider_project/RTOFS/RTOFS_6hourly_North_Atlantic/'
 url = '/home/hurricaneadm/data/rtofs'  # on server
 # save_dir = '/Users/garzio/Documents/rucool/hurricane_glider_project/current_storm_tracks'
@@ -31,10 +30,13 @@ argo = True
 gliders = True
 dpi = 150
 search_time = 48  # number of hours to search previous to today's date for gliders/argo
+days = 2  # number of days to search including today's date for RTOFS data (e.g. 2 = search for today and yesterday)
 
 today = dt.date.today()
-sdir = os.path.join(save_dir, today.strftime('%Y%m%d'))
+now = dt.datetime.utcnow()
+sdir = os.path.join(save_dir, now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'))
 
+# define times to search for gliders and argo floats
 t0 = today - dt.timedelta(hours=search_time)
 t1 = today + dt.timedelta(hours=24)
 
@@ -50,14 +52,16 @@ else:
     bathy = False
 
 # get forecast tracks for today
-forecast_tracks = current_forecast_track.main(today, save_dir)
+forecast_tracks = current_forecast_track.main(now, save_dir)
 
 if forecast_tracks:
-    # get RTOFS files for today
-    rtofs_files = glob(os.path.join(url, today.strftime('rtofs.%Y%m%d'), '*.nc'))
+    # define times to grab RTOFS data
+    date_list = [today - dt.timedelta(days=x) for x in range(days)]
+    rtofs_files = [glob(os.path.join(url, x.strftime('rtofs.%Y%m%d'), '*.nc')) for x in date_list]
+    rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
 
-    # get RTOFS files for 0Z
-    md = (today - dt.timedelta(days=1)).strftime('rtofs.%Y%m%d')
+    # get RTOFS files for 0Z on the first day
+    md = (dt.datetime.strptime(rtofs_files[0].split('/')[-2].split('.')[-1], '%Y%m%d') - dt.timedelta(days=1)).strftime('rtofs.%Y%m%d')
     rtofs_files.insert(0, os.path.join(url, md, 'rtofs_glo_3dz_f024_6hrly_hvr_US_east.nc'))
 
     for tracks in forecast_tracks.items():
@@ -109,8 +113,10 @@ if forecast_tracks:
                         lon = ds.lon.data
 
                         # subset the RTOFS grid
-                        lonIndex = np.round(np.interp(extent[:2], lon[0, :], np.arange(0, len(lon[0, :])))).astype(int)
-                        latIndex = np.round(np.interp(extent[2:], lat[:, 0], np.arange(0, len(lat[:, 0])))).astype(int)
+                        lonidx = [extent[0] - 1, extent[1] + 1]
+                        latidx = [extent[2] - 1, extent[3] + 1]
+                        lonIndex = np.round(np.interp(lonidx, lon[0, :], np.arange(0, len(lon[0, :])))).astype(int)
+                        latIndex = np.round(np.interp(latidx, lat[:, 0], np.arange(0, len(lat[:, 0])))).astype(int)
                         sub = ds.sel(X=slice(lonIndex[0], lonIndex[1]), Y=slice(latIndex[0], latIndex[1]))
                         surface_map_storm_forecast(sub, region, **kwargs)
                 except OSError:

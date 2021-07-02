@@ -2,7 +2,7 @@
 
 """
 Author: Mike Smith
-Last modified: Lori Garzio on 6/30/2021
+Last modified: Lori Garzio on 7/2/2021
 Create surface maps of GOFS temperature and salinity for each model forecast for today, overlaid with current storm
 forecast tracks released today.
 """
@@ -19,19 +19,27 @@ pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in
 
 
 url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
-# save_dir = '/Users/garzio/Documents/rucool/hurricane_glider_project/current_storm_tracks'
-save_dir = '/www/home/lgarzio/public_html/hurricanes/current_storm_tracks'  # in server
+save_dir = '/Users/garzio/Documents/rucool/hurricane_glider_project/current_storm_tracks'
+#save_dir = '/www/home/lgarzio/public_html/hurricanes/current_storm_tracks'  # in server
 #bathymetry = '/Users/garzio/Documents/rucool/hurricane_glider_project/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
 bathymetry = False
 map_projection = ccrs.PlateCarree()
-argo = True
-gliders = True
+argo = False
+gliders = False
 dpi = 150
 search_time = 48  # number of hours to search previous to today's date for gliders/argo
+days = 1  # number of days to search previous to today's date for GOFS data
 
 today = dt.date.today()
-sdir = os.path.join(save_dir, today.strftime('%Y%m%d'))
+now = dt.datetime.utcnow()
+sdir = os.path.join(save_dir, now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'))
 
+# define times to grab GOFS data, matching the resolution of RTOFS data (every 6 hours)
+time_start = today - dt.timedelta(days=days)
+time_end = today + dt.timedelta(days=1)
+ranges = pd.date_range(time_start, time_end, freq='6H')
+
+# define times to search for gliders and argo floats
 t0 = today - dt.timedelta(hours=search_time)
 t1 = today + dt.timedelta(hours=24)
 
@@ -47,7 +55,7 @@ else:
     bathy = False
 
 # get forecast tracks for today
-forecast_tracks = current_forecast_track.main(today, save_dir)
+forecast_tracks = current_forecast_track.main(now, save_dir)
 
 if forecast_tracks:
     for tracks in forecast_tracks.items():
@@ -93,8 +101,8 @@ if forecast_tracks:
             with xr.open_dataset(url, drop_variables='tau') as gofs:
                 gofs = gofs.rename({'surf_el': 'sea_surface_height', 'water_temp': 'temperature', 'water_u': 'u', 'water_v': 'v'})
 
-                # Get all the datetimes for today
-                ds = gofs.sel(time=slice(pd.to_datetime(today), today + dt.timedelta(days=1)))
+                # Select date range
+                ds = gofs.sel(time=ranges[ranges <= pd.to_datetime(gofs.time.max().data)])
                 for t in ds.time:
                     print(f'Accessing GOFS: {str(t.dt.strftime("%Y-%m-%d %H:%M:%S").data)}')
                     tds = ds.sel(time=t)  # Select the latest time

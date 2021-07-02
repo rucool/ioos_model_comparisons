@@ -72,9 +72,9 @@ def get_track_coordinates(kml_file):
     return track
 
 
-def main(today, save_dir):
-    sdir = os.path.join(save_dir, today.strftime('%Y%m%d'), 'kmz')
-    download_current_kmz(today, sdir)
+def main(now, save_dir):
+    sdir = os.path.join(save_dir, now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'), 'kmz')
+    download_current_kmz(now, sdir)
 
     kmz_files = glob.glob(os.path.join(sdir, '*.kmz'))
     if len(kmz_files) > 0:
@@ -90,6 +90,7 @@ def main(today, save_dir):
         for i, f in enumerate(zip_files_track_latest):
             name = f.split('/')[-1].split('_')[0]
             tracks[name] = dict()
+            tracks[name]['forecast_time'] = now
             kmz = ZipFile(f, 'r')
             if 'TRACK' in f:
                 kml_f = glob.glob(f[:-4] + '/*.kml')
@@ -130,6 +131,6 @@ def main(today, save_dir):
 
 
 if __name__ == '__main__':
-    #  savedir = '/Users/garzio/Documents/rucool/hurricane_glider_project/current_storm_tracks'
-    savedir = '/www/home/lgarzio/public_html/hurricanes/current_storm_tracks'  # in server
-    main(dt.date.today(), savedir)
+    savedir = '/Users/garzio/Documents/rucool/hurricane_glider_project/current_storm_tracks'
+    # savedir = '/www/home/lgarzio/public_html/hurricanes/current_storm_tracks'  # in server
+    main(dt.datetime.utcnow(), savedir)
