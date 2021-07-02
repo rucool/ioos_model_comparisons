@@ -125,7 +125,7 @@ def surface_map_storm_forecast(ds, region,
                 if len(dsd.depth) > 1:
                     raise ValueError('More than one depth between 0-1m')
 
-            title = f'{forecast[0]}: Storm Track Forecast on {t1.strftime("%Y-%m-%d")}\n' \
+            title = f'{forecast[0]}: Storm Track Forecast on {forecast[1]["forecast_time"].strftime("%Y-%m-%d %H:%M UTC")}\n' \
                     f'{model.upper()} {var_str} at {str(t1)} UTC'
             sname = f'{forecast[0]}_{region[1]["code"]}_{model}_{k}_{t1.strftime("%Y-%m-%dT%H%M%SZ")}'
             save_file = os.path.join(save_dir_maps, sname)
@@ -198,8 +198,9 @@ def surface_map_storm_forecast(ds, region,
 
             if forecast:
                 for fc_type, fc in forecast[1].items():
-                    ax.plot(fc['lon'], fc['lat'], ls=fc['plt']['ls'], color=fc['plt']['color'], linewidth=fc['plt']['lw'],
-                            transform=ccrs.PlateCarree(), label=fc['plt']['name'])
+                    if 'forecast_time' not in fc_type:
+                        ax.plot(fc['lon'], fc['lat'], ls=fc['plt']['ls'], color=fc['plt']['color'], linewidth=fc['plt']['lw'],
+                                transform=ccrs.PlateCarree(), label=fc['plt']['name'])
                 ax.legend(loc='best', fontsize=8)
 
             if argo:
