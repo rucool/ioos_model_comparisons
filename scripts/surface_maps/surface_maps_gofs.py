@@ -1,11 +1,13 @@
-import xarray as xr
-import cartopy.crs as ccrs
 import datetime as dt
-from src.plotting import plot_model_region
-from src.common import limits
-import pandas as pd
+
+import cartopy.crs as ccrs
 import numpy as np
+import pandas as pd
+import xarray as xr
+
+from src.common import limits
 from src.platforms import active_gliders, active_argo_floats
+from src.plotting import plot_model_region
 
 # Figures
 # Surface fields: sst (rtofs, gofs, copernicus), ssh (gofs, copernicus), sss (rtofs, gofs, copernicus)
@@ -27,7 +29,7 @@ map_projection = ccrs.PlateCarree()
 argo = True
 gliders = True
 dpi = 150
-search_hours = 24
+search_hours = 24*5
 
 regions = limits('gofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
 
@@ -47,7 +49,6 @@ time_start = today - dt.timedelta(days=days)
 time_end = today + dt.timedelta(days=1)
 ranges = pd.date_range(time_start, time_end, freq='6H')
 
-
 with xr.open_dataset(url, drop_variables='tau') as gofs:
     gofs = gofs.rename({'surf_el': 'sea_surface_height', 'water_temp': 'temperature', 'water_u': 'u', 'water_v': 'v'})
 
@@ -60,6 +61,7 @@ with xr.open_dataset(url, drop_variables='tau') as gofs:
 
         t0 = pd.to_datetime(tds.time.data - np.timedelta64(search_hours, 'h'))
         t1 = pd.to_datetime(tds.time.data)
+        kwargs['t0'] = t0
 
         # Loop through regions
         for region in regions.items():
@@ -77,9 +79,6 @@ with xr.open_dataset(url, drop_variables='tau') as gofs:
                     lon=slice(extent[0] - 1, extent[1] + 1),
                     lat=slice(extent[2] - 1, extent[3] + 1)
                 )
-
-            # extent = np.add(extent, [-1, 1, -1, 1]).tolist()
-            # print(f'Region: {region[0]}, Extent: {extent}')
 
             # subset dataset to the proper extents for each region
             sub = tds.sel(

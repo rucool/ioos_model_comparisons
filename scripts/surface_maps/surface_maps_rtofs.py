@@ -6,7 +6,7 @@ from src.plotting import plot_model_region
 from src.common import limits
 import datetime as dt
 import numpy as np
-from src.plotting import active_gliders, active_argo_floats
+from src.platforms import active_gliders, active_argo_floats
 import pandas as pd
 
 # Figures
@@ -29,7 +29,7 @@ map_projection = ccrs.PlateCarree()
 argo = True
 gliders = True
 dpi = 150
-search_hours = 24  #Hours back from timestamp to search for drifters/gliders=
+search_hours = 24*5  #Hours back from timestamp to search for drifters/gliders=
 
 regions = limits('rtofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
 
@@ -58,6 +58,7 @@ for f in rtofs_files:
 
             t0 = pd.to_datetime(ds.time.data[0] - np.timedelta64(search_hours, 'h'))
             t1 = pd.to_datetime(ds.time.data[0])
+            kwargs['t0'] = t0
 
             # Loop through regions
             for region in regions.items():

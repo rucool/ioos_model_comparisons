@@ -4,7 +4,7 @@ from glob import glob
 from src.common import limits
 import datetime as dt
 import numpy as np
-from src.plotting import active_argo_floats
+from src.platforms import active_argo_floats
 import pandas as pd
 import matplotlib.pyplot as plt
 import cartopy.feature as cfeature

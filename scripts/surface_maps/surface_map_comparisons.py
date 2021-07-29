@@ -24,7 +24,7 @@ map_projection = ccrs.PlateCarree()
 argo = True
 gliders = True
 dpi = 150
-search_hours = 24  #Hours back from timestamp to search for drifters/gliders
+search_hours = 24*5  #Hours back from timestamp to search for drifters/gliders
 
 gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 

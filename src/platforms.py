@@ -8,7 +8,7 @@ Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
 
 
-def active_argo_floats(bbox= None, time_start=None, time_end=None):
+def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
     """
 
     :param lon_lims: list containing westernmost longitude and easternmost latitude
@@ -20,18 +20,24 @@ def active_argo_floats(bbox= None, time_start=None, time_end=None):
 
     url_Argo = 'http://www.ifremer.fr/erddap'
 
-    bbox = bbox or [-100, -80, 18, 32]
+    bbox = bbox or [-100, -45, 5, 46]
     time_end = time_end or dt.date.today()
     time_start = time_start or (time_end - dt.timedelta(days=1))
+    floats = floats or False
 
     constraints = {
         'time>=': str(time_start),
         'time<=': str(time_end),
-        'longitude>=': bbox[0],
-        'longitude<=': bbox[1],
-        'latitude>=': bbox[2],
-        'latitude<=': bbox[3],
     }
+
+    if bbox:
+        constraints['longitude>='] = bbox[0]
+        constraints['longitude<='] = bbox[1]
+        constraints['latitude>='] = bbox[2]
+        constraints['latitude<='] = bbox[3]
+
+    if floats:
+        constraints['platform_number='] = floats
 
     variables = [
         'platform_number',

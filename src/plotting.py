@@ -1,16 +1,15 @@
+import os
+from collections import namedtuple
+
+import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cmocean
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
-import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from collections import namedtuple
-import os
 from oceans.ocfis import uv2spdir, spdir2uv
-import matplotlib.ticker as mticker
-
-
 
 LAND = cfeature.NaturalEarthFeature(
     'physical', 'land', '10m',
@@ -69,7 +68,8 @@ def cmaps(variable):
     return cmap
 
 
-def plot_model(variable, extent, title, save_file, vmin=None, vmax=None, bathy=None, ptype=None, cmap=None, markers=None, transform=None):
+def plot_model(variable, extent, title, save_file, vmin=None, vmax=None, bathy=None, ptype=None, cmap=None,
+               markers=None, transform=None):
     """
 
     :param lon: longitude
@@ -283,7 +283,8 @@ def plot_model_region(ds, region, t1,
                       transform=None,
                       model=None,
                       save_dir=None,
-                      dpi=None):
+                      dpi=None,
+                      t0=None):
     """
 
     :param lon: longitude
@@ -322,8 +323,9 @@ def plot_model_region(ds, region, t1,
 
             save_dir_depth = os.path.join(save_dir_var, f'{depth}m')
 
-            title = f'Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n' \
-                    f'Time: {str(t1)} UTC, Model: {model.upper()}'
+            title = f'Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n'\
+                    f'Time: {str(t1)} UTC, Model: {model.upper()}\n'\
+                    f'Glider/Argo Window {str(t0)} to {str(t1)}'
             sname = f'{model}-{k}-{t1.strftime("%Y-%m-%dT%H%M%SZ")}'
 
             save_dir_final = os.path.join(save_dir_depth, t1.strftime('%Y/%m'))
@@ -331,8 +333,8 @@ def plot_model_region(ds, region, t1,
             save_file = os.path.join(save_dir_final, sname)
             save_file = save_file + '.png'
 
-#             if os.path.isfile(save_file):
-#                 continue
+            #             if os.path.isfile(save_file):
+            #                 continue
 
             vargs = {}
             vargs['vmin'] = item['limits'][0]
@@ -369,7 +371,8 @@ def plot_model_region(ds, region, t1,
                 bath_lon = bathy.variables['lon'][:]
                 bath_elev = bathy.variables['elevation'][:]
 
-                CS = plt.contour(bath_lon, bath_lat, bath_elev,  levels, linewidths=.75, alpha=.5, colors='k', transform=ccrs.PlateCarree())
+                CS = plt.contour(bath_lon, bath_lat, bath_elev, levels, linewidths=.75, alpha=.5, colors='k',
+                                 transform=ccrs.PlateCarree())
                 ax.clabel(CS, [-100], inline=True, fontsize=6, fmt=fmt)
                 # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
 
@@ -389,33 +392,53 @@ def plot_model_region(ds, region, t1,
                 most_recent = argo.loc[argo.groupby('platform_number')['time (UTC)'].idxmax()]
 
                 for float in most_recent.itertuples():
-                    ax.plot(float._4, float._5, marker='o', markersize=7, markeredgecolor='black', label=float.platform_number, transform=ccrs.PlateCarree())
+                    ax.plot(float._4, float._5, marker='o', markersize=7, markeredgecolor='black',
+                            label=float.platform_number, transform=ccrs.PlateCarree())
                     ax.legend(loc='upper right', fontsize=6)
 
             if not gliders.empty:
                 for g, new_df in gliders.groupby(level=0):
                     q = new_df.iloc[-1]
-                    ax.plot(new_df['longitude (degrees_east)'], new_df['latitude (degrees_north)'], color='white', linewidth=1.5, transform=ccrs.PlateCarree())
-                    ax.plot(q['longitude (degrees_east)'], q['latitude (degrees_north)'], marker='^', markeredgecolor='black', markersize=8.5, label=g, transform=ccrs.PlateCarree())
+                    ax.plot(new_df['longitude (degrees_east)'], new_df['latitude (degrees_north)'], color='white',
+                            linewidth=1.5, transform=ccrs.PlateCarree())
+                    ax.plot(q['longitude (degrees_east)'], q['latitude (degrees_north)'], marker='^',
+                            markeredgecolor='black', markersize=8.5, label=g, transform=ccrs.PlateCarree())
                     ax.legend(loc='upper right', fontsize=6)
 
+            # # Gridlines and grid labels
+            # gl = ax.gridlines(
+            #     draw_labels=True,
+            #     linewidth=.5,
+            #     color='black',
+            #     alpha=0.25,
+            #     linestyle='--'
+            # )
+            #
+            # gl.top_labels = gl.right_labels = False
+            # gl.xlabel_style = {'size': 10, 'color': 'black'}
+            # gl.ylabel_style = {'size': 10, 'color': 'black'}
+            # gl.xlocator = mticker.MaxNLocator(integer=True)
+            # gl.ylocator = mticker.MaxNLocator(integer=True)
+            # gl.xformatter = LONGITUDE_FORMATTER
+            # gl.yformatter = LATITUDE_FORMATTER
 
-            # Gridlines and grid labels
-            gl = ax.gridlines(
-                draw_labels=True,
-                linewidth=.5,
-                color='black',
-                alpha=0.25,
-                linestyle='--'
-            )
+            # [-100, -80, 18, 32]
+            xl = [extent[0], extent[1]]
+            yl = [extent[2], extent[3]]
+            tick0x, tick1, ticklab = get_ticks(xl, 'we', yl)
+            ax.set_xticks(tick0x, minor=True, crs=ccrs.PlateCarree())
+            ax.set_xticks(tick1, crs=ccrs.PlateCarree())
+            ax.set_xticklabels(ticklab)
 
-            gl.top_labels = gl.right_labels = False
-            gl.xlabel_style = {'size': 10, 'color': 'black'}
-            gl.ylabel_style = {'size': 10, 'color': 'black'}
-            gl.xlocator = mticker.MaxNLocator(integer=True)
-            gl.ylocator = mticker.MaxNLocator(integer=True)
-            gl.xformatter = LONGITUDE_FORMATTER
-            gl.yformatter = LATITUDE_FORMATTER
+            # get and add latitude ticks/labels
+            tick0y, tick1, ticklab = get_ticks(yl, 'sn', xl)
+            ax.set_yticks(tick0y, minor=True, crs=ccrs.PlateCarree())
+            ax.set_yticks(tick1, crs=ccrs.PlateCarree())
+            ax.set_yticklabels(ticklab)
+            gl = ax.gridlines(draw_labels=False, linewidth=.5, color='gray', alpha=0.5, linestyle='--',
+                              crs=ccrs.PlateCarree())  # ,crs=mercproj)
+            gl.xlocator = mticker.FixedLocator(tick0x)
+            gl.ylocator = mticker.FixedLocator(tick0y)
 
             # Set colorbar height equal to plot height
             divider = make_axes_locatable(ax)
@@ -425,7 +448,6 @@ def plot_model_region(ds, region, t1,
             # generate colorbar
             cbar = plt.colorbar(h, cax=cax)
             cbar.set_label(ds[k].units)
-
 
             plt.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
@@ -477,7 +499,7 @@ def add_currents(sub, dsd):
 
 def region_subplot(axs, ds, var, extent, title, argo, gliders, bathy, vargs):
     h = axs.contourf(ds['lon'], ds['lat'], ds[var].squeeze(), **vargs)
-    axs.set_title(title)
+    axs.set_title(title, fontsize=20)
 
     # if limits['currents']['bool']:
     #     q = add_currents(limits['currents']['coarsen'], dsd)
@@ -495,16 +517,16 @@ def region_subplot(axs, ds, var, extent, title, argo, gliders, bathy, vargs):
 
         for float in most_recent.itertuples():
             axs.plot(float._4, float._5, marker='o', markersize=7, markeredgecolor='black', label=float.platform_number,
-                    transform=ccrs.PlateCarree())
+                     transform=ccrs.PlateCarree())
             axs.legend(loc='upper right', fontsize=6)
 
     if not gliders.empty:
         for g, new_df in gliders.groupby(level=0):
             q = new_df.iloc[-1]
             axs.plot(new_df['longitude (degrees_east)'], new_df['latitude (degrees_north)'], color='white',
-                    linewidth=1.5, transform=ccrs.PlateCarree())
+                     linewidth=1.5, transform=ccrs.PlateCarree())
             axs.plot(q['longitude (degrees_east)'], q['latitude (degrees_north)'], marker='^', markeredgecolor='black',
-                    markersize=8.5, label=g, transform=ccrs.PlateCarree())
+                     markersize=8.5, label=g, transform=ccrs.PlateCarree())
             axs.legend(loc='upper right', fontsize=6)
 
     if bathy:
@@ -531,7 +553,8 @@ def plot_model_regions_comparison(ds, ds2,
                                   transform=None,
                                   model=None,
                                   save_dir=None,
-                                  dpi=None):
+                                  dpi=None,
+                                  t0=None):
     """
 
     :param lon: longitude
@@ -578,8 +601,8 @@ def plot_model_regions_comparison(ds, ds2,
             save_file = os.path.join(save_dir_final, sname)
             save_file = save_file + '.png'
 
-#             if os.path.isfile(save_file):
-#                 continue
+            #             if os.path.isfile(save_file):
+            #                 continue
 
             vargs = {}
             vargs['vmin'] = item['limits'][0]
@@ -616,46 +639,80 @@ def plot_model_regions_comparison(ds, ds2,
             # fig.subplots_adjust(hspace=0.5, left=0.07, right=0.93)
 
             title = f'Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n' \
-                     f'Time: {str(t1)} UTC'
+                    f'Time: {str(t1)} UTC\n'\
+                    f'Glider/Argo Search: {str(t0)} to {str(t1)}'
+
 
             h1 = region_subplot(axs[0], ds1d, k, extent, 'RTOFS', argo, gliders, bathy, vargs)
             # Gridlines and grid labels
-            gl = axs[0].gridlines(
-                draw_labels=True,
-                dms=True,
-                linewidth=.5,
-                color='black',
-                alpha=0.25,
-                linestyle='--'
-            )
+            xl = [extent[0], extent[1]]
+            yl = [extent[2], extent[3]]
+            tick0x, tick1, ticklab = get_ticks(xl, 'we', yl)
+            axs[0].set_xticks(tick0x, minor=True, crs=ccrs.PlateCarree())
+            axs[0].set_xticks(tick1, crs=ccrs.PlateCarree())
+            axs[0].set_xticklabels(ticklab)
 
-            gl.top_labels = gl.right_labels = False
-            gl.xlabel_style = {'size': 8, 'color': 'black'}
-            gl.ylabel_style = {'size': 8, 'color': 'black'}
-            gl.xlocator = mticker.MaxNLocator(integer=True)
-            gl.ylocator = mticker.MaxNLocator(integer=True)
-            gl.xformatter = LONGITUDE_FORMATTER
-            gl.yformatter = LATITUDE_FORMATTER
+            # get and add latitude ticks/labels
+            tick0y, tick1, ticklab = get_ticks(yl, 'sn', xl)
+            axs[0].set_yticks(tick0y, minor=True, crs=ccrs.PlateCarree())
+            axs[0].set_yticks(tick1, crs=ccrs.PlateCarree())
+            axs[0].set_yticklabels(ticklab)
+
+            gl = axs[0].gridlines(draw_labels=False, linewidth=.5, color='gray', alpha=0.5, linestyle='--',
+                              crs=ccrs.PlateCarree())  # ,crs=mercproj)
+            gl.xlocator = mticker.FixedLocator(tick0x)
+            gl.ylocator = mticker.FixedLocator(tick0y)
+            # gl = axs[0].gridlines(
+            #     draw_labels=True,
+            #     dms=True,
+            #     linewidth=.5,
+            #     color='black',
+            #     alpha=0.25,
+            #     linestyle='--'
+            # )
+            #
+            # gl.top_labels = gl.right_labels = False
+            # gl.xlabel_style = {'size': 8, 'color': 'black'}
+            # gl.ylabel_style = {'size': 8, 'color': 'black'}
+            # gl.xlocator = mticker.MaxNLocator(integer=True)
+            # gl.ylocator = mticker.MaxNLocator(integer=True)
+            # gl.xformatter = LONGITUDE_FORMATTER
+            # gl.yformatter = LATITUDE_FORMATTER
 
             plt.setp(axs[0], ylabel='Longitude', xlabel='Latitude')
 
             h2 = region_subplot(axs[1], ds2d, k, extent, 'GOFS', argo, gliders, bathy, vargs)
-            # Gridlines and grid labels
-            gl = axs[1].gridlines(
-                draw_labels=True,
-                linewidth=.5,
-                color='black',
-                alpha=0.25,
-                linestyle='--'
-            )
+            # # Gridlines and grid labels
+            # gl = axs[1].gridlines(
+            #     draw_labels=True,
+            #     linewidth=.5,
+            #     color='black',
+            #     alpha=0.25,
+            #     linestyle='--'
+            # )
+            #
+            # gl.top_labels = gl.right_labels = gl.ylabels_left = False
+            # gl.xlabel_style = {'size': 8, 'color': 'black'}
+            # gl.ylabel_style = {'size': 8, 'color': 'black'}
+            # gl.xlocator = mticker.MaxNLocator(integer=True)
+            # gl.ylocator = mticker.MaxNLocator(integer=True)
+            # gl.xformatter = LONGITUDE_FORMATTER
+            # gl.yformatter = LATITUDE_FORMATTER
+            tick0x, tick1, ticklab = get_ticks(xl, 'we', yl)
+            axs[1].set_xticks(tick0x, minor=True, crs=ccrs.PlateCarree())
+            axs[1].set_xticks(tick1, crs=ccrs.PlateCarree())
+            axs[1].set_xticklabels(ticklab)
 
-            gl.top_labels = gl.right_labels = gl.ylabels_left = False
-            gl.xlabel_style = {'size': 8, 'color': 'black'}
-            gl.ylabel_style = {'size': 8, 'color': 'black'}
-            gl.xlocator = mticker.MaxNLocator(integer=True)
-            gl.ylocator = mticker.MaxNLocator(integer=True)
-            gl.xformatter = LONGITUDE_FORMATTER
-            gl.yformatter = LATITUDE_FORMATTER
+            # get and add latitude ticks/labels
+            tick0y, tick1, ticklab = get_ticks(yl, 'sn', xl)
+            axs[1].set_yticks(tick0y, minor=True, crs=ccrs.PlateCarree())
+            axs[1].set_yticks(tick1, crs=ccrs.PlateCarree())
+            axs[1].set_yticklabels(ticklab)
+
+            gl = axs[1].gridlines(draw_labels=False, linewidth=.5, color='gray', alpha=0.5, linestyle='--',
+                                  crs=ccrs.PlateCarree())  # ,crs=mercproj)
+            gl.xlocator = mticker.FixedLocator(tick0x)
+            gl.ylocator = mticker.FixedLocator(tick0y)
             plt.setp(axs[1], ylabel='Longitude', xlabel='Latitude')
 
             # if limits['currents']['bool']:
@@ -681,3 +738,92 @@ def plot_model_regions_comparison(ds, ds2,
 
             plt.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
+
+
+# function to define major and minor tick locations and major tick labels
+def get_ticks(bounds, dirs, otherbounds):
+    dirs = dirs.lower()
+    l0 = np.float(bounds[0])
+    l1 = np.float(bounds[1])
+    r = np.max([l1 - l0, np.float(otherbounds[1]) - np.float(otherbounds[0])])
+    if r <= 1.5:
+        # <1.5 degrees: 15' major ticks, 5' minor ticks
+        minor_int = 1.0 / 12.0
+        major_int = 1.0 / 4.0
+    elif r <= 3.0:
+        # <3 degrees: 30' major ticks, 10' minor ticks
+        minor_int = 1.0 / 6.0
+        major_int = 0.5
+    elif r <= 7.0:
+        # <7 degrees: 1d major ticks, 15' minor ticks
+        minor_int = 0.25
+        major_int = np.float(1)
+    elif r <= 15:
+        # <15 degrees: 2d major ticks, 30' minor ticks
+        minor_int = 0.5
+        major_int = np.float(2)
+    elif r <= 30:
+        # <30 degrees: 3d major ticks, 1d minor ticks
+        minor_int = np.float(1)
+        major_int = np.float(3)
+    else:
+        # >=30 degrees: 5d major ticks, 1d minor ticks
+        minor_int = np.float(1)
+        major_int = np.float(5)
+
+    minor_ticks = np.arange(np.ceil(l0 / minor_int) * minor_int, np.ceil(l1 / minor_int) * minor_int + minor_int,
+                            minor_int)
+    minor_ticks = minor_ticks[minor_ticks <= l1]
+    major_ticks = np.arange(np.ceil(l0 / major_int) * major_int, np.ceil(l1 / major_int) * major_int + major_int,
+                            major_int)
+    major_ticks = major_ticks[major_ticks <= l1]
+
+    if major_int < 1:
+        d, m, s = dd2dms(np.array(major_ticks))
+        if dirs == 'we' or dirs == 'ew' or dirs == 'lon' or dirs == 'long' or dirs == 'longitude':
+            n = 'W' * sum(d < 0)
+            p = 'E' * sum(d >= 0)
+            dir = n + p
+            major_tick_labels = [str(np.abs(int(d[i]))) + u"\N{DEGREE SIGN}" + str(int(m[i])) + "'" + dir[i] for i in
+                                 range(len(d))]
+        elif dirs == 'sn' or dirs == 'ns' or dirs == 'lat' or dirs == 'latitude':
+            n = 'S' * sum(d < 0)
+            p = 'N' * sum(d >= 0)
+            dir = n + p
+            major_tick_labels = [str(np.abs(int(d[i]))) + u"\N{DEGREE SIGN}" + str(int(m[i])) + "'" + dir[i] for i in
+                                 range(len(d))]
+        else:
+            major_tick_labels = [str(int(d[i])) + u"\N{DEGREE SIGN}" + str(int(m[i])) + "'" for i in range(len(d))]
+    else:
+        d = major_ticks
+        if dirs == 'we' or dirs == 'ew' or dirs == 'lon' or dirs == 'long' or dirs == 'longitude':
+            n = 'W' * sum(d < 0)
+            p = 'E' * sum(d >= 0)
+            dir = n + p
+            major_tick_labels = [str(np.abs(int(d[i]))) + u"\N{DEGREE SIGN}" + dir[i] for i in range(len(d))]
+        elif dirs == 'sn' or dirs == 'ns' or dirs == 'lat' or dirs == 'latitude':
+            n = 'S' * sum(d < 0)
+            p = 'N' * sum(d >= 0)
+            dir = n + p
+            major_tick_labels = [str(np.abs(int(d[i]))) + u"\N{DEGREE SIGN}" + dir[i] for i in range(len(d))]
+        else:
+            major_tick_labels = [str(int(d[i])) + u"\N{DEGREE SIGN}" for i in range(len(d))]
+
+    return minor_ticks, major_ticks, major_tick_labels
+
+
+# decimal degrees to degree-minute-second converter
+def dd2dms(vals):
+    n = np.empty(np.shape(vals))
+    n[:] = False
+    n[vals < 0] = True
+    vals[n == True] = -vals[n == True]
+    d = np.floor(vals)
+    rem = vals - d
+    rem = rem * 60
+    m = np.floor(rem)
+    rem -= m
+    s = np.round(rem * 60)
+    d[n == True] = -d[n == True]
+    return d, m, s
+
