@@ -56,6 +56,7 @@ for f in rtofs_files:
 
             t0 = pd.to_datetime(rtofs.time.data[0] - np.timedelta64(search_hours, 'h'))
             t1 = pd.to_datetime(rtofs.time.data[0])
+            kwargs['t0'] = t0
 
             # Loop through regions
             for region in regions.items():

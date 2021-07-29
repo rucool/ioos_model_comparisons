@@ -24,7 +24,7 @@ gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 days = 10
 dpi = 150
 
-regions = limits('rtofs', ['sab'])
+regions = limits('rtofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
 
 # initialize keyword arguments for map plot
 kwargs = dict()

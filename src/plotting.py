@@ -499,7 +499,7 @@ def add_currents(sub, dsd):
 
 def region_subplot(axs, ds, var, extent, title, argo, gliders, bathy, vargs):
     h = axs.contourf(ds['lon'], ds['lat'], ds[var].squeeze(), **vargs)
-    axs.set_title(title, fontsize=20)
+    axs.set_title(title, fontsize=16)
 
     # if limits['currents']['bool']:
     #     q = add_currents(limits['currents']['coarsen'], dsd)
