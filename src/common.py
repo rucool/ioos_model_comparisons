@@ -106,7 +106,7 @@ def limits(model=None, regions=None):
         mab_extent = [-77, -68, 35, 43]
         # mab_sea_water_temperature = [dict(depth=0, limits=[5, 26, .5])]
         # mab_salinity = [dict(depth=0, limits=[30, 38, .1])]
-        mab_sea_water_temperature = [dict(depth=0, limits=[15, 29, .5])]
+        mab_sea_water_temperature = [dict(depth=0, limits=[15, 29, .5]), dict(depth=100, limits=[10, 20, .5])]
         mab_salinity = [dict(depth=0, limits=[31, 37, .25])]
         mab_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         mab_currents = dict(bool=True, coarsen=6)
