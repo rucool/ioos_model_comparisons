@@ -218,10 +218,13 @@ def surface_map_storm_forecast(ds, region,
                     ax.plot(values['longitude'], values['latitude'], color='white', linewidth=1.5, transform=ccrs.PlateCarree())
                     ax.plot(values['longitude'][-1], values['latitude'][-1], color='white', marker='^',
                             markeredgecolor='black', markersize=8.5, transform=ccrs.PlateCarree())
-                    gltimes.append(np.max(values['time']))
-                    gltimes.append(np.min(values['time']))
+                    # change glider times to strings because some times for different gliders are in different formats
+                    gltimes.append(pd.to_datetime(np.max(values['time'])).strftime('%Y-%m-%dT%H:%M:%S'))
+                    gltimes.append(pd.to_datetime(np.min(values['time'])).strftime('%Y-%m-%dT%H:%M:%S'))
+                # change glider times back to datetimes to find min and max
+                gltimes = [pd.to_datetime(x) for x in gltimes]
                 title = '{}\n Gliders (triangles): {} to {} '.format(title, pd.to_datetime(np.min(gltimes)).strftime('%Y-%m-%dT%H:%M'),
-                                                                 pd.to_datetime(np.max(atimes)).strftime('%Y-%m-%dT%H:%M'))
+                                                                 pd.to_datetime(np.max(gltimes)).strftime('%Y-%m-%dT%H:%M'))
 
             # Plot title
             plt.title(title)
