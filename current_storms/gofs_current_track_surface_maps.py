@@ -59,15 +59,16 @@ forecast_tracks = current_forecast_track.main(now, save_dir)
 
 if forecast_tracks:
     for tracks in forecast_tracks.items():
-        sdir_track = os.path.join(sdir, tracks[0])
-        os.makedirs(sdir_track, exist_ok=True)
-        kwargs['save_dir'] = sdir_track
         kwargs['forecast'] = tracks
         stm_region = forecast_storm_region(tracks[1]['forecast_track'])
 
         if len(stm_region) < 1:
             print('No region found for storm: {}'.format(tracks[0]))
         else:
+            sdir_track = os.path.join(sdir, tracks[0])
+            os.makedirs(sdir_track, exist_ok=True)
+            kwargs['save_dir'] = sdir_track
+
             # Loop through regions - there should only be 1 for the current storm
             for region in stm_region.items():
                 extent = region[1]['lonlat']
