@@ -2,7 +2,7 @@
 
 """
 Author: Mike Smith
-Last modified: Lori Garzio on 7/2/2021
+Last modified: Lori Garzio on 8/17/2021
 Create surface maps of GOFS temperature and salinity for each model forecast for today, overlaid with current storm
 forecast tracks released today.
 """
@@ -66,48 +66,48 @@ if forecast_tracks:
         stm_region = forecast_storm_region(tracks[1]['forecast_track'])
 
         if len(stm_region) < 1:
-            raise ValueError('No region found for storm: {}'.format(tracks[0]))
+            print('No region found for storm: {}'.format(tracks[0]))
+        else:
+            # Loop through regions - there should only be 1 for the current storm
+            for region in stm_region.items():
+                extent = region[1]['lonlat']
+                if bathy:
+                    kwargs['bathy'] = bathy.sel(lon=slice(extent[0] - 1, extent[1] + 1),
+                                                lat=slice(extent[2] - 1, extent[3] + 1))
 
-        # Loop through regions - there should only be 1 for the current storm
-        for region in stm_region.items():
-            extent = region[1]['lonlat']
-            if bathy:
-                kwargs['bathy'] = bathy.sel(lon=slice(extent[0] - 1, extent[1] + 1),
-                                            lat=slice(extent[2] - 1, extent[3] + 1))
+                if argo:
+                    argo_data = get_argo_data(extent, t0, t1)
+                    if len(argo_data) > 0:
+                        kwargs['argo'] = argo_data
 
-            if argo:
-                argo_data = get_argo_data(extent, t0, t1)
-                if len(argo_data) > 0:
-                    kwargs['argo'] = argo_data
+                        argo_df = pd.DataFrame(argo_data)
+                        argo_df.sort_values('time', inplace=True)
+                        argo_savename = '{}_{}_argo_{}-{}.csv'.format(tracks[0], region[1]['code'],
+                                                                      t0.strftime('%Y%m%d'), t1.strftime('%Y%m%d'))
+                        argo_df.to_csv(os.path.join(sdir_track, argo_savename), index=False)
+                    else:
+                        kwargs['argo'] = False
 
-                    argo_df = pd.DataFrame(argo_data)
-                    argo_df.sort_values('time', inplace=True)
-                    argo_savename = '{}_{}_argo_{}-{}.csv'.format(tracks[0], region[1]['code'],
-                                                                  t0.strftime('%Y%m%d'), t1.strftime('%Y%m%d'))
-                    argo_df.to_csv(os.path.join(sdir_track, argo_savename), index=False)
-                else:
-                    kwargs['argo'] = False
+                if gliders:
+                    current_gliders = gld.glider_data(extent, t0, t1)
+                    if len(current_gliders) > 0:
+                        kwargs['gliders'] = current_gliders
+                        gl_savename = '{}_{}_gliders_{}-{}.csv'.format(tracks[0], region[1]['code'],
+                                                                       t0.strftime('%Y%m%d'), t1.strftime('%Y%m%d'))
+                        gld.glider_summary(current_gliders, os.path.join(sdir_track, gl_savename))
+                    else:
+                        kwargs['gliders'] = False
 
-            if gliders:
-                current_gliders = gld.glider_data(extent, t0, t1)
-                if len(current_gliders) > 0:
-                    kwargs['gliders'] = current_gliders
-                    gl_savename = '{}_{}_gliders_{}-{}.csv'.format(tracks[0], region[1]['code'],
-                                                                   t0.strftime('%Y%m%d'), t1.strftime('%Y%m%d'))
-                    gld.glider_summary(current_gliders, os.path.join(sdir_track, gl_savename))
-                else:
-                    kwargs['gliders'] = False
+                with xr.open_dataset(url, drop_variables='tau') as gofs:
+                    gofs = gofs.rename({'surf_el': 'sea_surface_height', 'water_temp': 'temperature', 'water_u': 'u', 'water_v': 'v'})
 
-            with xr.open_dataset(url, drop_variables='tau') as gofs:
-                gofs = gofs.rename({'surf_el': 'sea_surface_height', 'water_temp': 'temperature', 'water_u': 'u', 'water_v': 'v'})
+                    # Select date range
+                    ds = gofs.sel(time=ranges[ranges <= pd.to_datetime(gofs.time.max().data)])
+                    for t in ds.time:
+                        print(f'Accessing GOFS: {str(t.dt.strftime("%Y-%m-%d %H:%M:%S").data)}')
+                        tds = ds.sel(time=t)  # Select the latest time
 
-                # Select date range
-                ds = gofs.sel(time=ranges[ranges <= pd.to_datetime(gofs.time.max().data)])
-                for t in ds.time:
-                    print(f'Accessing GOFS: {str(t.dt.strftime("%Y-%m-%d %H:%M:%S").data)}')
-                    tds = ds.sel(time=t)  # Select the latest time
-
-                    # subset dataset to the proper extents for each region
-                    sub = tds.sel(lon=slice(extent[0] + 359, extent[1] + 361), lat=slice(extent[2] - 1, extent[3] + 1))
-                    sub['lon'] = sub['lon'] - 360  # Convert model lon to glider lon
-                    surface_map_storm_forecast(sub, region, **kwargs)
+                        # subset dataset to the proper extents for each region
+                        sub = tds.sel(lon=slice(extent[0] + 359, extent[1] + 361), lat=slice(extent[2] - 1, extent[3] + 1))
+                        sub['lon'] = sub['lon'] - 360  # Convert model lon to glider lon
+                        surface_map_storm_forecast(sub, region, **kwargs)
