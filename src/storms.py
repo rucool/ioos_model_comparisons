@@ -94,10 +94,24 @@ def forecast_storm_region(forecast_track):
 
     minlon = np.min(forecast_track['lon'])
     minlat = np.min(forecast_track['lat'])
+    maxlon = np.max(forecast_track['lon'])
+    maxlat = np.max(forecast_track['lat'])
+    mid_idx = int(len(forecast_track['lon'])/2)
+    midlon = forecast_track['lon'][mid_idx]
+    midlat = forecast_track['lat'][mid_idx]
     storm_region = dict()
     for name, region in regions.items():
+        # check the minimum forecast coordinates
         if np.logical_and(minlon >= region['lonlat'][0], minlon <= region['lonlat'][1]):
             if np.logical_and(minlat >= region['lonlat'][2], minlat <= region['lonlat'][3]):
+                storm_region[name] = region
+        # check the maximum forecast coordinates
+        if np.logical_and(maxlon >= region['lonlat'][0], maxlon <= region['lonlat'][1]):
+            if np.logical_and(maxlat >= region['lonlat'][2], maxlat <= region['lonlat'][3]):
+                storm_region[name] = region
+        # check the middle forecast coordinates
+        if np.logical_and(midlon >= region['lonlat'][0], midlon <= region['lonlat'][1]):
+            if np.logical_and(midlat >= region['lonlat'][2], midlat <= region['lonlat'][3]):
                 storm_region[name] = region
     if len(storm_region) < 1:
         if np.max(forecast_track['lon']) > -52:
