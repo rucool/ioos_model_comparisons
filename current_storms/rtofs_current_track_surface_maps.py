@@ -34,7 +34,7 @@ days = 2  # number of days to search including today's date for RTOFS data (e.g.
 
 today = dt.date.today()
 now = dt.datetime.utcnow()
-sdir = os.path.join(save_dir, now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'))
+sdir = os.path.join(save_dir, now.strftime('%Y%m'), now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'))
 
 # define times to search for gliders and argo floats
 t0 = today - dt.timedelta(hours=search_time)

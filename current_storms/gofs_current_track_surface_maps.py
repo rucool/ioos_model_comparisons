@@ -32,7 +32,7 @@ days = 1  # number of days to search previous to today's date for GOFS data
 
 today = dt.date.today()
 now = dt.datetime.utcnow()
-sdir = os.path.join(save_dir, now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'))
+sdir = os.path.join(save_dir, now.strftime('%Y%m'), now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'))
 
 # define times to grab GOFS data, matching the resolution of RTOFS data (every 6 hours)
 time_start = today - dt.timedelta(days=days)

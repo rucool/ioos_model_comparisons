@@ -73,7 +73,7 @@ def get_track_coordinates(kml_file):
 
 
 def main(now, save_dir):
-    sdir = os.path.join(save_dir, now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'), 'kmz')
+    sdir = os.path.join(save_dir,now.strftime('%Y%m'), now.strftime('%Y%m%d'), now.strftime('%Y%m%dT%H'), 'kmz')
     download_current_kmz(now, sdir)
 
     kmz_files = glob.glob(os.path.join(sdir, '*.kmz'))
