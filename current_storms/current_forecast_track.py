@@ -103,7 +103,7 @@ def main(now, save_dir):
                 tracks[name]['forecast_track']['plt'] = dict(ls='-.', color='gold', lw=2, name='Forecast Track')
 
                 # Get CONE coordinates
-                zip_file_cone_latest = [fl for fl in zip_files if np.logical_and(f.split('_')[0][2:] in fl, 'CONE' in fl)][0]
+                zip_file_cone_latest = [fl for fl in zip_files if np.logical_and(name in fl, 'CONE' in fl)][0]
                 kmz = ZipFile(zip_file_cone_latest, 'r')
                 kml_ff = glob.glob(os.path.join(sdir, zip_file_cone_latest.split('/')[-1][:-4]+'/*.kml'))
                 kml_cone_latest = kmz.open(kml_ff[0].split('/')[-1], 'r').read()
@@ -114,7 +114,7 @@ def main(now, save_dir):
                 tracks[name]['forecast_cone']['plt'] = dict(ls='-.', color='blue', lw=1, name='Forecast Cone')
 
                 # Get best track coordinates
-                zip_file_best_track = [fl for fl in zip_files if np.logical_and(f.split('_')[0][2:] in fl, 'best_track' in fl)][0]
+                zip_file_best_track = [fl for fl in zip_files if np.logical_and(name.lower() in fl, 'best_track' in fl)][0]
                 kmz = ZipFile(zip_file_best_track, 'r')
                 kml_ff = glob.glob(os.path.join(sdir, zip_file_best_track.split('/')[-1][:-4]+'/*.kml'))
                 kml_best_track = kmz.open(kml_ff[0].split('/')[-1], 'r').read()
