@@ -93,6 +93,10 @@ def forecast_storm_region(forecast_track):
     regions['Caribbean'].update(code='carib')
 
     storm_region = dict()
+    salinity_lims = {'values': [], 'interval': []}
+    temp_lims = {'values': [], 'interval': []}
+    lons = []
+    lats = []
     for name, region in regions.items():
         # check if the forecast track passes through each region
         for i in range(len(forecast_track['lon'])):
@@ -101,6 +105,14 @@ def forecast_storm_region(forecast_track):
             if np.logical_and(ilon >= region['lonlat'][0], ilon <= region['lonlat'][1]):
                 if np.logical_and(ilat >= region['lonlat'][2], ilat <= region['lonlat'][3]):
                     storm_region[name] = region
+                    # add limits to list
+                    salinity_lims['values'].append(region['salinity'][0]['limits'][0:2])
+                    salinity_lims['interval'].append(region['salinity'][0]['limits'][-1])
+                    temp_lims['values'].append(region['temperature'][0]['limits'][0:2])
+                    temp_lims['interval'].append(region['temperature'][0]['limits'][-1])
+                    lons.append(region['lonlat'][0:2])
+                    lats.append(region['lonlat'][2:4])
+
     if len(storm_region) < 1:
         if np.max(forecast_track['lon']) > -52:
             # Atlantic Ocean limits
@@ -114,6 +126,18 @@ def forecast_storm_region(forecast_track):
             atl.update(lonlat=extent)
             atl.update(salinity=salinity)
             atl.update(temperature=sea_water_temperature)
+
+    if len(storm_region) > 1:
+        # set limits for map of entire track
+        storm_region['full_track'] = {'lonlat': [np.nanmin(lons), np.nanmax(lons),
+                                                 np.nanmin(lats), np.nanmax(lats)],
+                                      'salinity': [{'depth': 0, 'limits': [np.nanmin(salinity_lims['values']),
+                                                                           np.nanmax(salinity_lims['values']),
+                                                                           np.nanmin(salinity_lims['interval'])]}],
+                                      'temperature': [{'depth': 0, 'limits': [np.nanmin(temp_lims['values']),
+                                                                              np.nanmax(temp_lims['values']),
+                                                                              np.nanmin(temp_lims['interval'])]}],
+                                      'code': 'full'}
 
     return storm_region
 
