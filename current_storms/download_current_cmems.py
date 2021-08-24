@@ -8,7 +8,7 @@ import datetime as dt
 import os
 import numpy as np
 from scripts.harvest import grab_cmems
-from src.common import limits
+from src.limits import limits_regions
 
 # COPERNICUS MARINE ENVIRONMENT MONITORING SERVICE (CMEMS)
 # ncCOP_global = '/home/lgarzio/cmems/global-analysis-forecast-phy-001-024_1565877333169.nc'  # on server
@@ -20,7 +20,7 @@ username = 'user'
 password = 'pwd'
 today = dt.datetime.combine(dt.date.today(), dt.datetime.min.time())
 tomorrow = today + dt.timedelta(days=1)
-regions = limits('gofs')
+regions = limits_regions('gofs')
 
 # add Atlantic Ocean limits
 regions['Atlantic'] = dict()
