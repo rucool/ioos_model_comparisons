@@ -3,7 +3,7 @@ import xarray as xr
 import os
 from glob import glob
 from src.plotting import plot_model_region
-from src.common import limits
+from src.limits import limits_regions
 import datetime as dt
 import numpy as np
 from src.platforms import active_gliders, active_argo_floats
@@ -26,12 +26,12 @@ bathymetry = '/home/hurricaneadm/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_
 
 days = 1
 map_projection = ccrs.PlateCarree()
-argo = True
-gliders = True
+argo = False
+gliders = False
 dpi = 150
 search_hours = 24*5  #Hours back from timestamp to search for drifters/gliders=
 
-regions = limits('rtofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
+regions = limits_regions('rtofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
 
 # initialize keyword arguments for map plot
 kwargs = dict()
@@ -75,6 +75,8 @@ for f in rtofs_files:
                         lon=slice(extent[0]-1, extent[1]+1),
                         lat=slice(extent[2]-1, extent[3]+1)
                     )
+
+                kwargs['transform'] = map_projection
 
                 extent = np.add(extent, [-1, 1, -1, 1]).tolist()
                 print(f'Region: {region[0]}, Extent: {extent}')

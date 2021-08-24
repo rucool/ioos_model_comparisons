@@ -1,30 +1,32 @@
 import xarray as xr
 import os
 from glob import glob
-from src.common import limits
+from src.limits import limits_regions
 import datetime as dt
 import numpy as np
 from src.platforms import active_argo_floats
 import pandas as pd
 import matplotlib.pyplot as plt
-import cartopy.feature as cfeature
 import cartopy.crs as ccrs
-from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import scipy.stats as stats
+from src.plotting import plot_region, region_subplot
+import cmocean
+import matplotlib.patheffects as path_effects
+from scripts.harvest.grab_cmems import copernicusmarine_datastore as grab_cmems
 
 url = '/home/hurricaneadm/data/rtofs/'
 save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to_model_comparisons/'
 
 # url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/argo_profile_model_comparisons/'
-
+user = 'user'
+password = 'password'
 gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 
-days = 10
+days = 8
 dpi = 150
 
-regions = limits('rtofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
+regions = limits_regions('rtofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
 
 # initialize keyword arguments for map plot
 kwargs = dict()
@@ -47,67 +49,60 @@ now = pd.Timestamp.utcnow()
 t0 = pd.to_datetime(now - pd.Timedelta(days, 'd'))
 t1 = pd.to_datetime(now)
 
-LAND = cfeature.NaturalEarthFeature(
-    'physical', 'land', '10m',
-    edgecolor='face',
-    facecolor='tan'
-)
-
-state_lines = cfeature.NaturalEarthFeature(
-    category='cultural',
-    name='admin_1_states_provinces_lines',
-    scale='50m',
-    facecolor='none'
-)
+cmems_salinity = grab_cmems('global-analysis-forecast-phy-001-024-3dinst-so', user, pw)
+cmems_temp = grab_cmems('global-analysis-forecast-phy-001-024-3dinst-thetao', user, pw)
+cmems = xr.merge([cmems_salinity, cmems_temp])
+cmems = cmems.sel(depth=slice(0, 400), time=slice(t0, t1),)
 
 # Loop through regions
-for region in regions.items():
-    extent = region[1]['lonlat']
-    print(f'Region: {region[0]}, Extent: {extent}')
+for region, values in regions.items():
+    extent = values['lonlat']
+    print(f'Region: {region}, Extent: {extent}')
 
-    temp_save_dir = os.path.join(save_dir, '_'.join(region[0].split(' ')).lower())
+    temp_save_dir = os.path.join(save_dir, '_'.join(region.split(' ')).lower())
     os.makedirs(temp_save_dir, exist_ok=True)
 
     floats = active_argo_floats(extent, t0, t1)
 
     temp_df = floats.loc[floats.groupby('platform_number')['time (UTC)'].idxmax()]
 
-    fig, ax = plt.subplots(
-        figsize=(11, 8),
-        subplot_kw=dict(projection=ccrs.Mercator())
-    )
-    # Plot title
-    plt.title(f'Argo Floats\n Active: {t0.strftime("%Y-%m-%dT%H:%M:%SZ")} to {t1.strftime("%Y-%m-%dT%H:%M:%SZ")}')
-    # Axes properties and features
-    ax.set_extent(extent)
-    ax.add_feature(LAND, edgecolor='black')
-    ax.add_feature(cfeature.RIVERS)
-    ax.add_feature(cfeature.LAKES)
-    ax.add_feature(cfeature.BORDERS)
-    ax.add_feature(state_lines, zorder=11, edgecolor='black')
+    region_limits = regions[region]
 
-    for index, row in temp_df.iterrows():
-        ax.plot(row['longitude (degrees_east)'], row['latitude (degrees_north)'],
-                marker='o', label=row['platform_number'], transform=ccrs.PlateCarree())
-        # ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=8,)
+    vargs = {}
+    vargs['vmin'] = values['temperature'][0]['limits'][0]
+    vargs['vmax'] = values['temperature'][0]['limits'][1]
+    vargs['transform'] = ccrs.PlateCarree()
+    vargs['cmap'] = cmocean.cm.thermal
+    vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], values['temperature'][0]['limits'][2])
+    vargs['argo'] = temp_df
 
-    # Gridlines and grid labels
-    gl = ax.gridlines(
-        draw_labels=True,
-        linewidth=.5,
-        color='black',
-        alpha=0.25,
-        linestyle='--'
-    )
+    try:
+        vargs.pop('vmin'), vargs.pop('vmax')
+    except KeyError:
+        pass
 
-    gl.xlabels_top = gl.ylabels_right = False
-    gl.xlabel_style = {'size': 10, 'color': 'black'}
-    gl.ylabel_style = {'size': 10, 'color': 'black'}
-    gl.xformatter = LONGITUDE_FORMATTER
-    gl.yformatter = LATITUDE_FORMATTER
-    save_file = os.path.join(save_dir, f'argo_floats-{"_".join(region[0].split(" ")).lower()}-{t0.strftime("%Y-%m-%dT%H%M%SZ")}-to-{t1.strftime("%Y-%m-%dT%H%M%SZ")}')
-    plt.savefig(save_file, dpi=300, bbox_inches='tight', pad_inches=0.1)
-    plt.close()
+    save_file = os.path.join(save_dir, "_".join(region.split(" ")).lower() ,f'argo_floats-{"_".join(region.split(" ")).lower()}-{t0.strftime("%Y-%m-%dT%H%M%SZ")}-to-{t1.strftime("%Y-%m-%dT%H%M%SZ")}')
+    plot_region(rtofs['temperature'].isel(depth=0, time=0),
+                extent,
+                f'Argo Floats\n Active: {t0.strftime("%Y-%m-%dT%H:%M:%SZ")} to {t1.strftime("%Y-%m-%dT%H:%M:%SZ")}',
+                save_file,
+                **vargs
+                )
+
+    # fig = plt.figure(figsize=(22, 10))
+    # plt.rcParams['figure.constrained_layout.use'] = True
+    # grid = plt.GridSpec(20, 6, wspace=0.5, hspace=0.2, figure=fig)
+    # ax1 = plt.subplot(grid[1:24, :3], projection=ccrs.Mercator())
+    # ax2 = plt.subplot(grid[1:24, 3:], projection=ccrs.Mercator())
+    # ax3 = plt.subplot(grid[26:30, :])
+
+    # # fig, axs = plt.subplots(figsize=(20, 8))
+    # fig = plt.figure(figsize=(20, 16))
+    # # plt.rcParams['figure.constrained_layout.use'] = True
+    # grid = plt.GridSpec(10, 16, hspace=0, wspace=0.1, figure=fig)
+    # ax1 = plt.subplot(grid[0:4, 0:15], projection=ccrs.Mercator())
+    # ax2 = plt.subplot(grid[5:9, 0:15], projection=ccrs.Mercator())
+    # ax3 = plt.subplot(grid[:, 15])
 
     for float in floats.platform_number.unique():
 
@@ -116,6 +111,7 @@ for region in regions.items():
         for t_float in temp['time (UTC)'].unique():
             temp_float_time = temp[temp['time (UTC)'] == t_float]
             filtered = temp_float_time[(np.abs(stats.zscore(temp_float_time['psal (PSU)'])) < 3)]  # filter salinity
+            filtered = filtered[filtered['pres (decibar)'] <= 400]
 
             # temp = temp.sort_values(by=['pres (decibar)'])
             x = filtered['longitude (degrees_east)'].unique()[-1]
@@ -132,7 +128,7 @@ for region in regions.items():
                 lon=x_gofs,
                 lat=y,
                 method='nearest')
-
+            gofs_temp = gofs_temp.sel(depth=slice(0, 400))
             gofs_temp = gofs_temp.squeeze()
 
             # interpolating transect X and Y to lat and lon
@@ -145,13 +141,21 @@ for region in regions.items():
                 Y=rtofslatIndex,
                 method='nearest'
             )
+
+            rtofs_sub = rtofs_sub.sel(depth=slice(0, 400))
             rtofs_sub = rtofs_sub.squeeze()
             rtofs_sub.load()
 
-            fig, ax = plt.subplots(
-                1, 2,
-                sharey=True
-            )
+            cmems_sub = cmems.sel(longitude=x, latitude=y, time=t_float, method='nearest')
+
+            fig = plt.figure(figsize=(14, 8))
+            plt.rcParams['figure.constrained_layout.use'] = True
+            grid = plt.GridSpec(6, 10, hspace=0.2, wspace=0.2, figure=fig)
+            ax1 = plt.subplot(grid[:, :3])  # Temperature
+            ax2 = plt.subplot(grid[:, 4:7])  # Salinity
+            ax3 = plt.subplot(grid[0, 7:])  # Plot Title
+            ax4 = plt.subplot(grid[2:4, 7:], projection=vargs['transform'])  # Map
+            ax5 = plt.subplot(grid[5, 7:])  # Legend for profile plots
 
             gofs_lon = str(round(gofs_temp.lon.data - 360, 2))
             gofs_lat = str(round(gofs_temp.lat.data - 0, 2))
@@ -159,44 +163,72 @@ for region in regions.items():
             rtofs_lat = str(round(np.float64(rtofs_sub.lat.data), 2))
 
             # Temperature
-            ax[0].plot(filtered['temp (degree_Celsius)'], filtered['pres (decibar)'],
-                       'b-',
+            ax1.plot(filtered['temp (degree_Celsius)'], filtered['pres (decibar)'],
+                       'b-o',
                        label=f'{float} [{str(round(x, 2))}, {str(round(y, 2))}]')
-            ax[0].plot(gofs_temp['temperature'].squeeze(), gofs_temp['depth'].squeeze(),
-                       'r-',
+            ax1.plot(gofs_temp['temperature'].squeeze(), gofs_temp['depth'].squeeze(),
+                       'r-o',
                        label=f'GOFS [{ gofs_lon }, { gofs_lat }]')
-            ax[0].plot(rtofs_sub['temperature'].squeeze(), rtofs_sub['depth'].squeeze(),
-                       'g-',
+            ax1.plot(rtofs_sub['temperature'].squeeze(), rtofs_sub['depth'].squeeze(),
+                       'g-o',
                        label=f'RTOFS [{ rtofs_lon }, { rtofs_lat }]')
-            ax[0].set_ylim([400, 1])
-            ax[0].set_xlim([8, 30])
-            ax[0].grid(True, linestyle='--', linewidth=.5)
-            ax[0].legend(loc='upper left', fontsize=6)
-            plt.setp(ax[0], ylabel='Depth (m)', xlabel='Temperature (˚C)')
+            ax1.plot(cmems_sub['thetao'].squeeze(), cmems_sub['depth'].squeeze(),
+                       'm-o',
+                       label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
+
+            ax1.set_ylim([400, 1])
+            ax1.grid(True, linestyle='--', linewidth=.5)
+            ax1.tick_params(axis='both', labelsize=13)
+            ax1.set_xlabel('Temperature (˚C)', fontsize=14)
+            ax1.set_ylabel('Depth (m)', fontsize=14)
 
             # Salinity
-            ax[1].plot(filtered['psal (PSU)'], filtered['pres (decibar)'],
-                       'b-',
+            ax2.plot(filtered['psal (PSU)'], filtered['pres (decibar)'],
+                       'b-o',
                        label=f'{float} [{str(round(x, 2))}, {str(round(y, 2))}]')
-            ax[1].plot(gofs_temp['salinity'].squeeze(), gofs_temp['depth'].squeeze(),
-                       'r-',
+            ax2.plot(gofs_temp['salinity'].squeeze(), gofs_temp['depth'].squeeze(),
+                       'r-o',
                        label=f'GOFS [{ gofs_lon }, { gofs_lat }]')
-            ax[1].plot(rtofs_sub['salinity'].squeeze(), rtofs_sub['depth'].squeeze(),
-                       'g-',
+            ax2.plot(rtofs_sub['salinity'].squeeze(), rtofs_sub['depth'].squeeze(),
+                       'g-o',
                        label=f'RTOFS [{ rtofs_lon }, { rtofs_lat }]')
-            ax[1].set_ylim([400, 1])
-            ax[1].grid(True, linestyle='--', linewidth=.5)
-            ax[1].legend(loc='upper left', fontsize=6)
-            plt.setp(ax[1], ylabel='Depth (m)', xlabel='Salinity (psu)')
+            ax2.plot(cmems_sub['so'].squeeze(), cmems_sub['depth'].squeeze(),
+                       'm-o',
+                       label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
+            ax2.set_ylim([400, 1])
+            ax2.grid(True, linestyle='--', linewidth=.5)
+            ax2.tick_params(axis='both', labelsize=13)
+            ax2.set_xlabel('Salinity (psu)', fontsize=14)
+            ax2.set_ylabel('Depth (m)', fontsize=14)
 
-            t_str = t_float.strftime('%Y-%m-%d %H:%M:%SZ')
-            plt.suptitle(f'Argo #{float} Profile Comparisons\n'
+            text = ax3.text(-0.125, 1.0, f'Argo #{float} Profile Comparisons\n'
                          f'ARGO: { t_float.strftime("%Y-%m-%d %H:%M:%SZ") }\n'
                          f'RTOFS: {pd.to_datetime(rtofs_sub.time.data)}\n'
-                         f'GOFS: {pd.to_datetime(gofs_temp.time.data)}', fontsize=8)
-            save_str = f'{t_float.strftime("%Y-%m-%dT%H%M%SZ")}-argo_{float}-model-comparison.png'
+                         f'GOFS: {pd.to_datetime(gofs_temp.time.data)}',
+                            ha='left', va='top', size=18, fontweight='bold')
 
+            text.set_path_effects([path_effects.Normal()])
+            ax3.set_axis_off()
+
+            dx = dy = 2.25  # Area around the point of interest.
+            ax4 = region_subplot(fig, ax4, extent,
+                                 transform=vargs['transform'],
+                                 argo=filtered,
+                                 ticks=None)
+
+            h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
+
+            ax5.legend(h, l, ncol=1, loc='center', fontsize=12)
+            ax5.set_axis_off()
+
+            from src.plotting import map_add_ticks
+            map_add_ticks(ax4, extent, fontsize=10)
+
+            # t_str = t_float.strftime('%Y-%m-%d %H:%M:%SZ')
+
+            save_str = f'{t_float.strftime("%Y-%m-%dT%H%M%SZ")}-argo_{float}-model-comparison.png'
             full_file = os.path.join(temp_save_dir, save_str)
+
             plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
 

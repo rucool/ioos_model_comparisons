@@ -1,11 +1,9 @@
 import datetime as dt
-
 import cartopy.crs as ccrs
 import numpy as np
 import pandas as pd
 import xarray as xr
-
-from src.common import limits
+from src.limits import limits_regions
 from src.platforms import active_gliders, active_argo_floats
 from src.plotting import plot_model_region
 
@@ -31,7 +29,7 @@ gliders = True
 dpi = 150
 search_hours = 24*5
 
-regions = limits('gofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
+regions = limits_regions('gofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
 
 # initialize keyword arguments for map plot
 kwargs = dict()
@@ -79,6 +77,8 @@ with xr.open_dataset(url, drop_variables='tau') as gofs:
                     lon=slice(extent[0] - 1, extent[1] + 1),
                     lat=slice(extent[2] - 1, extent[3] + 1)
                 )
+
+            kwargs['transform'] = map_projection
 
             # subset dataset to the proper extents for each region
             sub = tds.sel(
