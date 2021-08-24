@@ -10,7 +10,7 @@ import numpy as np
 import xarray as xr
 import cftime
 from collections import namedtuple
-from src.common import limits
+from src.limits import limits_regions
 from src.platforms import active_argo_floats, active_gliders
 
 
@@ -38,7 +38,19 @@ def convert_gofs_target_lon(gofs_lon):
     return gofslon_convert
 
 
-def custom_transect(ds, varname, target_lons, target_lats, model):
+def custom_transect(ds, variables, target_lons, target_lats, model):
+    """
+
+    :param ds: xarray dataset
+    :param variables: <list> of variables
+    :param target_lons: transect longitudes
+    :param target_lats: transect latitudes
+    :param model: <str> 'gofs' or 'rtofs'
+    :return:
+    """
+    if not isinstance(variables, list):
+        variables = [variables]
+
     lat = ds.lat.values
     lon = ds.lon.values
 
@@ -70,21 +82,24 @@ def custom_transect(ds, varname, target_lons, target_lats, model):
         lat_subset = lat[lat_idx_final, 0]
 
     depth = ds.depth.values
-    target_var = np.empty((len(depth), len(lon_idx_final)))
-    target_var[:] = np.nan
+    var_dict = dict()
 
-    for pos in range(len(lon_idx_final)):
-        print(len(lon_idx_final), pos)
-        if model in ['gofs', 'cmems']:
-            target_var[:, pos] = ds.variables[varname][:, lat_idx_final[pos], lon_idx_final[pos]]
-        elif model == 'rtofs':
-            target_var[:, pos] = ds.variables[varname][0, :, lat_idx_final[pos], lon_idx_final[pos]]
+    for varname in variables:
+        target_var = np.empty((len(depth), len(lon_idx_final)))
+        target_var[:] = np.nan
+        for pos in range(len(lon_idx_final)):
+            print(len(lon_idx_final), pos)
+            if model in ['gofs', 'cmems']:
+                target_var[:, pos] = ds.variables[varname][:, lat_idx_final[pos], lon_idx_final[pos]]
+            elif model == 'rtofs':
+                target_var[:, pos] = ds.variables[varname][0, :, lat_idx_final[pos], lon_idx_final[pos]]
+        var_dict[varname] = target_var
 
-    return target_var, depth, lon_subset, lat_subset
+    return var_dict, depth, lon_subset, lat_subset
 
 
 def forecast_storm_region(forecast_track):
-    regions = limits(regions=['mab', 'gom', 'carib', 'sab'])
+    regions = limits_regions(regions=['mab', 'gom', 'carib', 'sab'])
 
     # add shortened codes for the regions
     regions['Gulf of Mexico'].update(code='gom')

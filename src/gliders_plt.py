@@ -64,7 +64,7 @@ def glider_track(ds, region, bathy=None, save_dir=None, dpi=None, custom_transec
 
     margs = dict()
     margs['landcolor'] = landcolor
-    sp.add_map_features(ax, extent, **margs)
+    sp.map_add_features(ax, extent, **margs)
 
     # plot full glider track
     sct = ax.scatter(ds.longitude.values, ds.latitude.values, c=ds.time.values, marker='.', s=10, cmap='rainbow',
@@ -318,7 +318,7 @@ def surface_map_glider_track(ds, region,
                 ax.clabel(CS, [-100], inline=True, fontsize=7, fmt=sp.fmt)
                 # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
 
-            sp.add_map_features(ax, extent)
+            sp.map_add_features(ax, extent)
 
             if argo:
                 atimes = []
