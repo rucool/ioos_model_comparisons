@@ -6,12 +6,15 @@ Last modified: Lori Garzio on 2/22/2021
 """
 import datetime as dt
 import os
+import xarray as xr
 
 
 def download_ds(out_dir, out_name, st, et, coordlims, depth_max, user, pwd):
     url = 'http://nrt.cmems-du.eu/motu-web/Motu'
     service_id = 'GLOBAL_ANALYSIS_FORECAST_PHY_001_024-TDS'
     product_id = 'global-analysis-forecast-phy-001-024'
+
+    os.makedirs(out_dir, exist_ok=True)
 
     motuc = 'python -m motuclient --motu ' + url + \
             ' --service-id ' + service_id + \
@@ -33,3 +36,19 @@ def download_ds(out_dir, out_name, st, et, coordlims, depth_max, user, pwd):
 
     os.system(motuc)
     print('\nCMEMS file downloaded to: {}'.format(os.path.join(out_dir, out_name)))
+    return os.path.join(out_dir, out_name)
+
+
+def copernicusmarine_datastore(dataset, username, password):
+    from pydap.client import open_url
+    from pydap.cas.get_cookies import setup_session
+    cas_url = 'https://cmems-cas.cls.fr/cas/login'
+    session = setup_session(cas_url, username, password)
+    database = ['my', 'nrt']
+    url = f'https://{database[0]}.cmems-du.eu/thredds/dodsC/{dataset}'
+    try:
+        data_store = xr.backends.PydapDataStore(open_url(url, session=session))
+    except:
+        url = f'https://{database[1]}.cmems-du.eu/thredds/dodsC/{dataset}'
+        data_store = xr.backends.PydapDataStore(open_url(url, session=session))
+    return xr.open_dataset(data_store)
