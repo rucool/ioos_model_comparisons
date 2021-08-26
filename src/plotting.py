@@ -622,7 +622,7 @@ def plot_region(da, extent, title, save_file, transects=None, argo=None, gliders
 
 
 def region_subplot(fig, ax, extent, da=None, title=None, argo=None, gliders=None, bathy=None, transects=None, vmin=None,
-                vmax=None, transform=None, cmap=None, levels=None, ticks=None):
+                vmax=None, transform=None, cmap=None, levels=None, ticks=None, colorbar=True):
     if argo is None:
         argo = pd.DataFrame()
 
@@ -677,7 +677,9 @@ def region_subplot(fig, ax, extent, da=None, title=None, argo=None, gliders=None
                        bbox_transform=ax.transAxes,
                        borderpad=0,
                        )
-    cb = fig.colorbar(h, cax=axins)
-    cb.ax.tick_params(labelsize=12)
+
+    if colorbar:
+        cb = fig.colorbar(h, cax=axins)
+        cb.ax.tick_params(labelsize=12)
 
     return ax
