@@ -20,7 +20,7 @@ save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to
 # url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/argo_profile_model_comparisons/'
 user = 'user'
-password = 'password'
+pw = 'password'
 gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 
 days = 8
@@ -214,7 +214,8 @@ for region, values in regions.items():
             ax4 = region_subplot(fig, ax4, extent,
                                  transform=vargs['transform'],
                                  argo=filtered,
-                                 ticks=None)
+                                 ticks=None,
+                                 colorbar=False)
 
             h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
 
