@@ -115,7 +115,7 @@ if forecast_tracks:
 
                             # subset the RTOFS grid
                             lonidx = [extent[0] - 1, extent[1] + 1]
-                            latidx = [extent[2] - 1, extent[3] + 1]
+                            latidx = [extent[2] - 2, extent[3] + 2]
                             lonIndex = np.round(np.interp(lonidx, lon[0, :], np.arange(0, len(lon[0, :])))).astype(int)
                             latIndex = np.round(np.interp(latidx, lat[:, 0], np.arange(0, len(lat[:, 0])))).astype(int)
                             sub = ds.sel(X=slice(lonIndex[0], lonIndex[1]), Y=slice(latIndex[0], latIndex[1]))

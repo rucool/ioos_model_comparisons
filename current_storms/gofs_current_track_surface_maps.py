@@ -109,6 +109,6 @@ if forecast_tracks:
                         tds = ds.sel(time=t)  # Select the latest time
 
                         # subset dataset to the proper extents for each region
-                        sub = tds.sel(lon=slice(extent[0] + 359, extent[1] + 361), lat=slice(extent[2] - 1, extent[3] + 1))
+                        sub = tds.sel(lon=slice(extent[0] + 359, extent[1] + 361), lat=slice(extent[2] - 2, extent[3] + 2))
                         sub['lon'] = sub['lon'] - 360  # Convert model lon to glider lon
                         surface_map_storm_forecast(sub, region, **kwargs)
