@@ -8,6 +8,7 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from oceans.ocfis import uv2spdir, spdir2uv
 from src.calc import dd2dms
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -219,9 +220,10 @@ def map_add_currents(currents, sub=None):
     return q
 
 
-def map_add_features(axis, extent, edgecolor=None, landcolor=None):
+def map_add_features(axis, extent, edgecolor=None, landcolor=None, add_ticks=None):
     edgecolor = edgecolor or 'black'
     landcolor = landcolor or 'tan'
+    add_ticks = add_ticks or None
 
     # Axes properties and features
     axis.set_extent(extent)
@@ -230,6 +232,24 @@ def map_add_features(axis, extent, edgecolor=None, landcolor=None):
     axis.add_feature(cfeature.LAKES)
     axis.add_feature(cfeature.BORDERS)
     axis.add_feature(state_lines, zorder=11, edgecolor=edgecolor)
+
+    if add_ticks:
+        # Gridlines and grid labels
+        gl = axis.gridlines(
+            draw_labels=True,
+            linewidth=.5,
+            color='black',
+            alpha=0.25,
+            linestyle='--'
+        )
+
+        gl.top_labels = gl.right_labels = False
+        gl.xlabel_style = {'size': 10, 'color': 'black'}
+        gl.ylabel_style = {'size': 10, 'color': 'black'}
+        gl.xlocator = mticker.MaxNLocator(integer=True)
+        gl.ylocator = mticker.MaxNLocator(integer=True)
+        gl.xformatter = LONGITUDE_FORMATTER
+        gl.yformatter = LATITUDE_FORMATTER
 
 
 def map_add_gliders(ax, df, transform):
