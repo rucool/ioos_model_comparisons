@@ -44,7 +44,7 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
             mt0 = gl_t0 - dt.timedelta(hours=1)
             mt1 = gl_t1 + dt.timedelta(hours=1)
 
-            ds = gofs.sel(time=slice(mt0, mt1), depth=slice(0, 500))
+            ds = gofs.sel(time=slice(mt0, mt1), depth=slice(0, 1000))
             model_t0str = pd.to_datetime(np.nanmin(ds.time.values)).strftime('%Y-%m-%dT%H:%M')
             model_t1str = pd.to_datetime(np.nanmax(ds.time.values)).strftime('%Y-%m-%dT%H:%M')
 
@@ -74,14 +74,14 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
             targs['levels'] = color_lims['temp']
             targs['ylims'] = ylims
             targs['xlab'] = 'Time'
-            plot_transect(ds.time.values, -ds.depth.values, mtemp, **targs)
+            plot_transect(ds.time.values, ds.depth.values, mtemp, **targs)
 
             # plot temperature by time (glider time/location) - model and glider
             del targs['title']
             targs['title0'] = f'{glider_name} transect {gl_t0str} to {gl_t1str}'
             targs['title1'] = f'GOFS Temperature: {model_t0str} to {model_t1str}'
             targs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_gofs_glider_transect_temp-{gl_t0save}.png')
-            plot_transects(gl_tm, -gl_depth, gl_temp, ds.time.values, -ds.depth.values, mtemp, **targs)
+            plot_transects(gl_tm, gl_depth, gl_temp, ds.time.values, ds.depth.values, mtemp, **targs)
 
             # get the salinity transect from the glider
             gl_tm, gl_lon, gl_lat, gl_depth, gl_salt = gld.grid_glider_data(glider_df, 'salinity', 0.5)
@@ -96,14 +96,14 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
             sargs['levels'] = color_lims['salt']
             sargs['ylims'] = ylims
             sargs['xlab'] = 'Time'
-            plot_transect(ds.time.values, -ds.depth.values, msalt, **sargs)
+            plot_transect(ds.time.values, ds.depth.values, msalt, **sargs)
 
             # plot salinity by time (glider time/location) - model and glider
             del sargs['title']
             sargs['title0'] = f'{glider_name} transect {gl_t0str} to {gl_t1str}'
             sargs['title1'] = f'GOFS Salinity: {model_t0str} to {model_t1str}'
             sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_gofs_glider_transect_salt-{gl_t0save}.png')
-            plot_transects(gl_tm, -gl_depth, gl_salt, ds.time.values, -ds.depth.values, msalt, **sargs)
+            plot_transects(gl_tm, gl_depth, gl_salt, ds.time.values, ds.depth.values, msalt, **sargs)
 
 
 if __name__ == '__main__':

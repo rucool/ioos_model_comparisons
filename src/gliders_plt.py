@@ -137,6 +137,8 @@ def plot_transect(x, y, c, cmap=None, title=None, save_file=None, ylims=None, le
     if 'time' in xlab.lower():
         format_time_axis(ax)
 
+    ax.invert_yaxis()
+
     # Add titles and labels
     plt.title(title, size=12)
     plt.setp(ax, ylabel='Depth (m)', xlabel=xlab)
@@ -191,6 +193,8 @@ def plot_transects(glx, gly, glc, modelx, modely, modelc, cmap, title0=None, tit
         plt.colorbar(ax1, ax=axs[1], label=clab, pad=0.02)
     else:
         plt.colorbar(ax1, ax=axs[1], pad=0.02)
+
+    axs[0].invert_yaxis()
 
     # Add titles and labels
     plt.setp(axs[0], ylabel='Depth (m)')

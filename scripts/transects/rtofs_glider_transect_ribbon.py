@@ -39,8 +39,8 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         glider_name = glider.split('-')[0]
 
         # Subset time range (add a little extra to the glider time range)
-        mt0 = gl_t0 - dt.timedelta(hours=1)
-        mt1 = gl_t1 + dt.timedelta(hours=1)
+        mt0 = gl_t0 - dt.timedelta(hours=2)
+        mt1 = gl_t1 + dt.timedelta(hours=12)
 
         model_dates = [x.strftime('rtofs.%Y%m%d') for x in pd.date_range(mt0, mt1)]
         rtofs_files = [glob.glob(os.path.join(url, x, '*.nc')) for x in model_dates]
@@ -58,7 +58,7 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
             else:
                 td = 0
             mt = dt.datetime.strptime('T'.join((ymd, hr)), '%Y%m%dT%H') + dt.timedelta(days=td)
-            if np.logical_and(mt >= mt0, mt <= mt1):
+            if np.logical_and(mt >= mt0, mt <= gl_t1 + dt.timedelta(hours=1)):
                 rfiles.append(rf)
                 model_time = np.append(model_time, pd.to_datetime(mt))
 
@@ -68,7 +68,7 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         # open the first file to get some of the model information
         ds = xr.open_dataset(rfiles[0])
         ds = ds.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth'})
-        ds = ds.sel(depth=slice(0, 500))
+        ds = ds.sel(depth=slice(0, 1000))
         mlon = ds.lon.values
         mlat = ds.lat.values
 
@@ -87,7 +87,7 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
             print(f)
             with xr.open_dataset(f) as ds:
                 ds = ds.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth'})
-                ds = ds.sel(depth=slice(0, 500))
+                ds = ds.sel(depth=slice(0, 1000))
                 mtemp[:, i] = ds['temperature'][0, :, latIndex[i], lonIndex[i]].values
                 msalt[:, i] = ds['salinity'][0, :, latIndex[i], lonIndex[i]].values
 
@@ -104,14 +104,14 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         targs['levels'] = color_lims['temp']
         targs['ylims'] = ylims
         targs['xlab'] = 'Time'
-        plot_transect(model_time, -ds.depth.values, mtemp, **targs)
+        plot_transect(model_time, ds.depth.values, mtemp, **targs)
 
         # plot temperature by time (glider time/location) - model and glider
         del targs['title']
         targs['title0'] = f'{glider_name} transect {gl_t0str} to {gl_t1str}'
         targs['title1'] = f'RTOFS Temperature: {model_t0str} to {model_t1str}'
         targs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_glider_transect_temp-{gl_t0save}.png')
-        plot_transects(gl_tm, -gl_depth, gl_temp, model_time, -ds.depth.values, mtemp, **targs)
+        plot_transects(gl_tm, gl_depth, gl_temp, model_time, ds.depth.values, mtemp, **targs)
 
         # get the salinity transect
         gl_tm, gl_lon, gl_lat, gl_depth, gl_salt = gld.grid_glider_data(glider_df, 'salinity', 0.5)
@@ -126,14 +126,14 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         sargs['levels'] = color_lims['salt']
         sargs['ylims'] = ylims
         sargs['xlab'] = 'Time'
-        plot_transect(model_time, -ds.depth.values, msalt, **sargs)
+        plot_transect(model_time, ds.depth.values, msalt, **sargs)
 
         # plot salinity by time (glider time/location) - model and glider
         del sargs['title']
         sargs['title0'] = f'{glider_name} transect {gl_t0str} to {gl_t1str}'
         sargs['title1'] = f'RTOFS Salinity: {model_t0str} to {model_t1str}'
         sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_glider_transect_salt-{gl_t0save}.png')
-        plot_transects(gl_tm, -gl_depth, gl_salt, model_time, -ds.depth.values, msalt, **sargs)
+        plot_transects(gl_tm, gl_depth, gl_salt, model_time, ds.depth.values, msalt, **sargs)
 
 
 if __name__ == '__main__':

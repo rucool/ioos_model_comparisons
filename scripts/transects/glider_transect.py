@@ -40,7 +40,7 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         targs = {}
         targs['cmap'] = cmocean.cm.thermal
         targs['clab'] = 'Temperature ($^oC$)'
-        targs['title'] = f'{glider_name} transect {gl_t0str} to {gl_t0str}'
+        targs['title'] = f'{glider_name} transect {gl_t0str} to {gl_t1str}'
         targs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_transect_temp-{gl_t0save}.png')
         targs['xlab'] = 'Time'
         if ylims:
@@ -48,13 +48,13 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         if color_lims:
             targs['levels'] = color_lims['temp']
         print('plotting temperature by time')
-        plot_transect(gl_tm, -gl_depth, gl_temp, **targs)
+        plot_transect(gl_tm, gl_depth, gl_temp, **targs)
 
         # plot temperature by longitude
         targs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_transect_temp-lon-{gl_t0save}.png')
         targs['xlab'] = 'Longitude'
         print('plotting temperature by longitude')
-        plot_transect(gl_lon, -gl_depth, gl_temp, **targs)
+        plot_transect(gl_lon, gl_depth, gl_temp, **targs)
 
         # grid salinity data
         gl_tm, gl_lon, gl_lat, gl_depth, gl_salt = gld.grid_glider_data(glider_df, 'salinity', 0.5)
@@ -71,13 +71,13 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         if color_lims:
             sargs['levels'] = color_lims['salt']
         print('plotting salinity by time')
-        plot_transect(gl_tm, -gl_depth, gl_salt, **sargs)
+        plot_transect(gl_tm, gl_depth, gl_salt, **sargs)
 
         # plot salinity by longitude
         sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_transect_salt-lon-{gl_t0save}.png')
         sargs['xlab'] = 'Longitude'
         print('plotting salinity by longitude')
-        plot_transect(gl_lon, -gl_depth, gl_salt, **sargs)
+        plot_transect(gl_lon, gl_depth, gl_salt, **sargs)
 
 
 if __name__ == '__main__':
