@@ -12,3 +12,5 @@ tqdm~=4.58.0
 scipy~=1.6.1
 setuptools~=52.0.0
 beautifulsoup4~=4.9.3
+pydap
+lxml
