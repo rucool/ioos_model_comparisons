@@ -12,7 +12,7 @@ import scipy.stats as stats
 from src.plotting import plot_region, region_subplot
 import cmocean
 import matplotlib.patheffects as path_effects
-from scripts.harvest.grab_cmems import copernicusmarine_datastore as grab_cmems
+# from scripts.harvest.grab_cmems import copernicusmarine_datastore as grab_cmems
 
 url = '/home/hurricaneadm/data/rtofs/'
 save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to_model_comparisons/'
@@ -49,10 +49,10 @@ now = pd.Timestamp.utcnow()
 t0 = pd.to_datetime(now - pd.Timedelta(days, 'd'))
 t1 = pd.to_datetime(now)
 
-cmems_salinity = grab_cmems('global-analysis-forecast-phy-001-024-3dinst-so', user, pw)
-cmems_temp = grab_cmems('global-analysis-forecast-phy-001-024-3dinst-thetao', user, pw)
-cmems = xr.merge([cmems_salinity, cmems_temp])
-cmems = cmems.sel(depth=slice(0, 400), time=slice(t0, t1),)
+# cmems_salinity = grab_cmems('global-analysis-forecast-phy-001-024-3dinst-so', user, pw)
+# cmems_temp = grab_cmems('global-analysis-forecast-phy-001-024-3dinst-thetao', user, pw)
+# cmems = xr.merge([cmems_salinity, cmems_temp])
+# cmems = cmems.sel(depth=slice(0, 400), time=slice(t0, t1),)
 
 # Loop through regions
 for region, values in regions.items():
@@ -146,7 +146,7 @@ for region, values in regions.items():
             rtofs_sub = rtofs_sub.squeeze()
             rtofs_sub.load()
 
-            cmems_sub = cmems.sel(longitude=x, latitude=y, time=t_float, method='nearest')
+            # cmems_sub = cmems.sel(longitude=x, latitude=y, time=t_float, method='nearest')
 
             fig = plt.figure(figsize=(14, 8))
             plt.rcParams['figure.constrained_layout.use'] = True
@@ -172,9 +172,9 @@ for region, values in regions.items():
             ax1.plot(rtofs_sub['temperature'].squeeze(), rtofs_sub['depth'].squeeze(),
                        'g-o',
                        label=f'RTOFS [{ rtofs_lon }, { rtofs_lat }]')
-            ax1.plot(cmems_sub['thetao'].squeeze(), cmems_sub['depth'].squeeze(),
-                       'm-o',
-                       label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
+            # ax1.plot(cmems_sub['thetao'].squeeze(), cmems_sub['depth'].squeeze(),
+            #            'm-o',
+            #            label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
 
             ax1.set_ylim([400, 1])
             ax1.grid(True, linestyle='--', linewidth=.5)
@@ -192,9 +192,9 @@ for region, values in regions.items():
             ax2.plot(rtofs_sub['salinity'].squeeze(), rtofs_sub['depth'].squeeze(),
                        'g-o',
                        label=f'RTOFS [{ rtofs_lon }, { rtofs_lat }]')
-            ax2.plot(cmems_sub['so'].squeeze(), cmems_sub['depth'].squeeze(),
-                       'm-o',
-                       label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
+            # ax2.plot(cmems_sub['so'].squeeze(), cmems_sub['depth'].squeeze(),
+            #            'm-o',
+            #            label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
             ax2.set_ylim([400, 1])
             ax2.grid(True, linestyle='--', linewidth=.5)
             ax2.tick_params(axis='both', labelsize=13)
