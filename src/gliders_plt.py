@@ -37,7 +37,10 @@ def glider_track(ds, region, bathy=None, save_dir=None, dpi=None, custom_transec
     limits = region[1]
     extent = limits['lonlat']
 
-    glider_name = ds.deployment_name.split('-')[0]
+    try:
+        glider_name = ds.deployment_name.split('-')[0]
+    except AttributeError:
+        glider_name = ds.title.split('-')[0]
     glidert0 = np.nanmin(ds.time.values)
     glidert1 = np.nanmax(ds.time.values)
     glidert0_str = pd.to_datetime(glidert0).strftime('%Y-%m-%dT%H:%M')
@@ -45,7 +48,10 @@ def glider_track(ds, region, bathy=None, save_dir=None, dpi=None, custom_transec
     t0_save = pd.to_datetime(glidert0).strftime('%Y%m%dT%H%M')
     t1_save = pd.to_datetime(glidert1).strftime('%Y%m%dT%H%M')
 
-    title = f'{ds.deployment_name}\nTrack: {glidert0_str} to {glidert1_str}'
+    try:
+        title = f'{ds.deployment_name}\nTrack: {glidert0_str} to {glidert1_str}'
+    except AttributeError:
+        title = f'{ds.title}\nTrack: {glidert0_str} to {glidert1_str}'
     sname = f'{glider_name}_track_{t0_save}-{t1_save}'
     save_file = os.path.join(save_dir, sname)
 
@@ -60,15 +66,24 @@ def glider_track(ds, region, bathy=None, save_dir=None, dpi=None, custom_transec
         bath_lon = bathy.variables['lon'][:]
         bath_elev = bathy.variables['elevation'][:]
 
-        CS = plt.contourf(bath_lon, bath_lat, bath_elev,  levels, cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
+        plt.contourf(bath_lon, bath_lat, bath_elev, levels, cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
+
+        levs = np.arange(-100, 0, 50)
+        CS = plt.contour(bath_lon, bath_lat, bath_elev, levs, linewidths=.75, alpha=.5, colors='k',
+                         transform=ccrs.PlateCarree())
+        ax.clabel(CS, [-100], inline=True, fontsize=7, fmt='%d')
 
     margs = dict()
     margs['landcolor'] = landcolor
+    #margs['add_ticks'] = 'yes'
     sp.map_add_features(ax, extent, **margs)
+    sp.map_add_ticks(ax, extent)
 
     # plot full glider track
-    sct = ax.scatter(ds.longitude.values, ds.latitude.values, c=ds.time.values, marker='.', s=10, cmap='rainbow',
-                     transform=ccrs.PlateCarree())
+    ax.scatter(ds.longitude.values, ds.latitude.values, color='k', marker='.', s=60, transform=ccrs.PlateCarree(),
+               zorder=10)
+    sct = ax.scatter(ds.longitude.values, ds.latitude.values, c=ds.time.values, marker='.', s=15, cmap='rainbow',
+                     transform=ccrs.PlateCarree(), zorder=11)
     if current_glider_loc:
         ax.plot(ds.longitude.values[-1], ds.latitude.values[-1], color='white', marker='^', markeredgecolor='black',
                 markersize=8.5, transform=ccrs.PlateCarree())
@@ -121,6 +136,8 @@ def plot_transect(x, y, c, cmap=None, title=None, save_file=None, ylims=None, le
 
     if 'time' in xlab.lower():
         format_time_axis(ax)
+
+    ax.invert_yaxis()
 
     # Add titles and labels
     plt.title(title, size=12)
@@ -176,6 +193,8 @@ def plot_transects(glx, gly, glc, modelx, modely, modelc, cmap, title0=None, tit
         plt.colorbar(ax1, ax=axs[1], label=clab, pad=0.02)
     else:
         plt.colorbar(ax1, ax=axs[1], pad=0.02)
+
+    axs[0].invert_yaxis()
 
     # Add titles and labels
     plt.setp(axs[0], ylabel='Depth (m)')
@@ -319,6 +338,7 @@ def surface_map_glider_track(ds, region,
                 # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
 
             sp.map_add_features(ax, extent)
+            sp.map_add_ticks(ax, extent)
 
             if argo:
                 atimes = []

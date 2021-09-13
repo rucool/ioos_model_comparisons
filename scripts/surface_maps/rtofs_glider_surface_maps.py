@@ -87,8 +87,10 @@ def main(gliders, save_dir, bathymetry, m_t0, m_t1, g_t0, g_t1, lt, cgl):
                         lon = ds.lon.data
 
                         # subset the RTOFS grid
-                        lonIndex = np.round(np.interp(extent[:2], lon[0, :], np.arange(0, len(lon[0, :])))).astype(int)
-                        latIndex = np.round(np.interp(extent[2:], lat[:, 0], np.arange(0, len(lat[:, 0])))).astype(int)
+                        lonidx = [extent[0] - 1, extent[1] + 1]
+                        latidx = [extent[2] - 1, extent[3] + 1]
+                        lonIndex = np.round(np.interp(lonidx, lon[0, :], np.arange(0, len(lon[0, :])))).astype(int)
+                        latIndex = np.round(np.interp(latidx, lat[:, 0], np.arange(0, len(lat[:, 0])))).astype(int)
                         sub = ds.sel(X=slice(lonIndex[0], lonIndex[1]), Y=slice(latIndex[0], latIndex[1]))
                         surface_map_glider_track(sub, region, **kwargs)
                 except OSError:

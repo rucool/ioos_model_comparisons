@@ -60,7 +60,8 @@ def plot_transect(x, y, c, cmap, title=None, save_file=None, flip_y=None, levels
     plt.contour(x, y, c, [26], colors='k')  # add contour at 26m
 
     if flip_y:
-        ax.set_ylim(-500, 0)
+        #ax.set_ylim(-500, 0)
+        ax.set_ylim(-200, 0)
 
     # Add titles and labels
     plt.title(title, size=12)
@@ -194,14 +195,15 @@ def surface_map_storm_forecast(ds, region,
                 ax.clabel(CS, [-100], inline=True, fontsize=6, fmt=sp.fmt)
                 # plt.contourf(bath_lon, bath_lat, bath_elev, np.arange(-9000,9100,100), cmap=cmocean.cm.topo, transform=ccrs.PlateCarree())
 
-            sp.add_map_features(ax, extent)
+            sp.map_add_features(ax, extent)
+            sp.map_add_ticks(ax, extent)
 
             if forecast:
                 for fc_type, fc in forecast[1].items():
                     if 'forecast_time' not in fc_type:
                         ax.plot(fc['lon'], fc['lat'], ls=fc['plt']['ls'], color=fc['plt']['color'], linewidth=fc['plt']['lw'],
                                 transform=ccrs.PlateCarree(), label=fc['plt']['name'])
-                ax.legend(loc='best', fontsize=8)
+                ax.legend(loc='best', fontsize=10)
 
             if argo:
                 atimes = []
