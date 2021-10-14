@@ -78,7 +78,7 @@ def limits_regions(model=None, regions=None):
     """
 
     model = model or 'rtofs'
-    regions = regions or ['gom', 'sab', 'mab', 'carib', 'wind']
+    regions = regions or ['gom', 'sab', 'mab', 'carib', 'wind', 'nola']
 
     # Create new dictionary for selected model. Needs to be done because the variable names are different in each model
     # initialize empty dictionary for limits
@@ -88,6 +88,28 @@ def limits_regions(model=None, regions=None):
     # To add different depths for each variable, append to the specific variable list the following format:
     # dict(depth=n, limits=[min, max, stride])
 
+    if 'nola' in regions:
+        # Gulf of Mexico
+        limits['Gulf of Mexico'] = dict()
+        nola = limits['Gulf of Mexico']
+
+        # Limits
+        extent = [-93, -87, 26, 31]
+        sea_water_temperature = [dict(depth=0, limits=[27.5, 32, .5]), dict(depth=200, limits=[12, 24, .5])]
+        salinity = [dict(depth=0, limits=[34, 37, .25])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        currents = dict(bool=True, coarsen=8)
+
+        # Update Dictionary with limits defined above
+        nola.update(lonlat=extent)
+        nola.update(salinity=salinity)
+        nola.update(temperature=sea_water_temperature)
+        nola.update(currents=currents)
+
+        # GOFS has sea surface height
+        if model == 'gofs':
+            nola.update(sea_surface_height=sea_surface_height)
+
     if 'gom' in regions:
         # Gulf of Mexico
         limits['Gulf of Mexico'] = dict()
@@ -95,7 +117,7 @@ def limits_regions(model=None, regions=None):
 
         # Limits
         gom_extent = [-100, -80, 18, 31]
-        gom_sea_water_temperature = [dict(depth=0, limits=[27.5, 32, .5]), dict(depth=200, limits=[12, 24, .5])]
+        gom_sea_water_temperature = [dict(depth=0, limits=[26, 31, .5]), dict(depth=200, limits=[12, 24, .5])]
         gom_salinity = [dict(depth=0, limits=[34, 37, .25])]
         gom_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         gom_currents = dict(bool=True, coarsen=8)
@@ -117,7 +139,7 @@ def limits_regions(model=None, regions=None):
 
         # Limits
         sab_extent = [-82, -64, 25, 36]
-        sab_sea_water_temperature = [dict(depth=0, limits=[24, 32, .5])]
+        sab_sea_water_temperature = [dict(depth=0, limits=[24, 30, .5])]
         sab_salinity = [dict(depth=0, limits=[36, 37, .1])]
         sab_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         sab_currents = dict(bool=True, coarsen=7)
@@ -161,7 +183,7 @@ def limits_regions(model=None, regions=None):
 
         # Limits
         carib_extent = [-89, -55, 7, 23]
-        carib_sea_water_temperature = [dict(depth=0, limits=[25, 30, .5])]
+        carib_sea_water_temperature = [dict(depth=0, limits=[26, 31.5, .5])]
         carib_salinity = [dict(depth=0, limits=[34.6, 37, .1])]
         carib_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         carib_currents = dict(bool=True, coarsen=12)
@@ -183,7 +205,7 @@ def limits_regions(model=None, regions=None):
 
         # Limits
         wind_extent = [-68.2, -56.4, 9.25, 19.75]
-        wind_sea_water_temperature = [dict(depth=0, limits=[25, 30, .5])]
+        wind_sea_water_temperature = [dict(depth=0, limits=[26, 30, .5])]
         wind_salinity = [dict(depth=0, limits=[34.6, 37, .1])]
         wind_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         wind_currents = dict(bool=True, coarsen=6)
