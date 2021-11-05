@@ -6,6 +6,7 @@ from collections import namedtuple
 
 Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
+time_formatter = '%Y-%m-%dT%H:%M:%SZ'
 
 
 def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
@@ -17,8 +18,6 @@ def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
     :param time_end: time to end looking for floats
     :return:
     """
-
-    url_Argo = 'http://www.ifremer.fr/erddap'
 
     bbox = bbox or [-100, -45, 5, 46]
     time_end = time_end or dt.date.today()
@@ -50,7 +49,7 @@ def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
     ]
 
     e = ERDDAP(
-        server=url_Argo,
+        server='IFREMER',
         protocol='tabledap',
         response='nc'
     )
@@ -71,15 +70,13 @@ def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
 
 
 def active_gliders(bbox=None, time_start=None, time_end=None):
-    url = 'https://data.ioos.us/gliders/erddap'
-
     bbox = bbox or [-100, -40, 18, 60]
     time_end = time_end or dt.date.today()
     time_start = time_start or (time_end - dt.timedelta(days=1))
     t0 = time_start.strftime('%Y-%m-%dT%H:%M:%SZ')
     t1 = time_end.strftime('%Y-%m-%dT%H:%M:%SZ')
 
-    e = ERDDAP(server=url)
+    e = ERDDAP(server='NGDAC')
 
     # Grab every dataset available
     # datasets = pd.read_csv(e.get_search_url(response='csv', search_for='all'))
@@ -129,7 +126,7 @@ def active_gliders(bbox=None, time_start=None, time_end=None):
             ]
 
     e = ERDDAP(
-            server=url,
+            server='NGDAC',
             protocol='tabledap',
             response='nc'
     )
@@ -163,3 +160,113 @@ def active_gliders(bbox=None, time_start=None, time_end=None):
 
     return ndf
 
+
+def active_drifters(bbox=None, time_start=None, time_end=None):
+    bbox = bbox or [-100, -40, 18, 60]
+    time_end = time_end or dt.date.today()
+    time_start = time_start or (time_end - dt.timedelta(days=1))
+    t0 = time_start.strftime('%Y-%m-%dT%H:%M:%SZ')
+    t1 = time_end.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    e = ERDDAP(server='OSMC', protocol="tabledap")
+    e.dataset_id = "gdp_interpolated_drifter"
+
+    # Setting constraints
+    e.constraints = {
+        "time>=": t0,
+        "time<=": t1,
+        'longitude>=': bbox[0],
+        'longitude<=': bbox[1],
+        'latitude>=': bbox[2],
+        'latitude<=': bbox[3],
+    }
+
+    # e.variables = [
+    #     "WMO",
+    #     "latitude",
+    #     "longitude",
+    #     "time",
+    # ]
+
+    try:
+        df = e.to_pandas()
+    except ValueError:
+        return pd.DataFrame()
+
+    return df
+
+
+def get_ndbc(bbox=None, time_start=None, time_end=None, buoy=None):
+    bbox = bbox or [-100, -45, 5, 46]
+    time_end = time_end or dt.date.today()
+    time_start = time_start or (time_end - dt.timedelta(days=1))
+    buoy = buoy or False
+    time_formatter = '%Y-%m-%dT%H:%M:%SZ'
+
+    e = ERDDAP(
+        server='CSWC',
+        protocol='tabledap',
+        response='csv'
+    )
+
+    e.dataset_id = 'cwwcNDBCMet'
+    e.constraints = {
+        'time>=': time_start.strftime(time_formatter),
+        'time<=': time_end.strftime(time_formatter),
+    }
+
+    if bbox:
+        e.constraints['longitude>='] = bbox[0]
+        e.constraints['longitude<='] = bbox[1]
+        e.constraints['latitude>='] = bbox[2]
+        e.constraints['latitude<='] = bbox[3]
+
+    e.variables = [
+        "station",
+        "latitude",
+        "longitude",
+        "time"
+    ]
+
+    if buoy:
+        e.constraints['station='] = buoy
+
+    df = e.to_pandas(
+        parse_dates=['time (UTC)'],
+        skiprows=(1,)  # units information can be dropped.
+    ).dropna()
+
+    stations = df.station.unique()
+
+    # e.variables = [
+    #     "station",
+    #     "latitude",
+    #     "longitude",
+    #     "wd",
+    #     "wspd",
+    #     "gst",
+    #     "wvht",
+    #     "dpd",
+    #     "apd",
+    #     "mwd",
+    #     "bar",
+    #     "atmp",
+    #     "wtmp",
+    #     "dewp",
+    #     # "vis",
+    #     # "ptdy",
+    #     # "tide",
+    #     "wspu",
+    #     "wspv",
+    #     "time",
+    # ]
+
+    try:
+        df = e.to_pandas(
+            parse_dates=['time (UTC)'],
+            skiprows=(1,)  # units information can be dropped.
+        ).dropna()
+    except HTTPError:
+        df = pd.DataFrame()
+
+    return df

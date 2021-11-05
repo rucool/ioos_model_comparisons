@@ -95,16 +95,76 @@ def limits_regions(model=None, regions=None):
 
         # Limits
         extent = [-93, -87, 26, 31]
-        sea_water_temperature = [dict(depth=0, limits=[27.5, 32, .5]), dict(depth=200, limits=[12, 24, .5])]
-        salinity = [dict(depth=0, limits=[34, 37, .25])]
+        sea_water_temperature = [dict(depth=0, limits=[27.5, 32, .5])]
+        # salinity = [dict(depth=0, limits=[34, 37, .25])]
         sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
-        currents = dict(bool=True, coarsen=8)
+        currents = dict(bool=False, coarsen=8)
 
         # Update Dictionary with limits defined above
         nola.update(lonlat=extent)
-        nola.update(salinity=salinity)
+        # nola.update(salinity=salinity)
         nola.update(temperature=sea_water_temperature)
         nola.update(currents=currents)
+
+        # GOFS has sea surface height
+        if model == 'gofs':
+            nola.update(sea_surface_height=sea_surface_height)
+
+    if 'usvi' in regions:
+        # Gulf of Mexico
+        limits['Virgin Islands'] = dict()
+        vi = limits['Virgin Islands']
+
+        # Limits
+        extent = [-66.26, -62.61, 16.5, 19]
+        # 19.027909879161452, -66.26100277351196
+        # 16.568466806347633, -62.61079850383202
+        sea_water_temperature = [dict(depth=0, limits=[27.5, 29.5, .25])]
+        salinity = [dict(depth=0, limits=[34, 36.5, .1])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        currents = dict(bool=True,
+                        coarsen=2,
+                        scale=60,
+                        headwidth=4,
+                        headlength=4,
+                        headaxislength=3.5
+                        )
+
+        # Update Dictionary with limits defined above
+        vi.update(lonlat=extent)
+        vi.update(salinity=salinity)
+        vi.update(temperature=sea_water_temperature)
+        vi.update(currents=currents)
+
+        # GOFS has sea surface height
+        if model == 'gofs':
+            nola.update(sea_surface_height=sea_surface_height)
+
+    if 'west_indies' in regions:
+        # Gulf of Mexico
+        limits['West Indies'] = dict()
+        wi = limits['West Indies']
+
+        # Limits
+        extent = [-67, -61, 14, 19]
+        # 19.027909879161452, -66.26100277351196
+        # 16.568466806347633, -62.61079850383202
+        sea_water_temperature = [dict(depth=0, limits=[27.5, 29.5, .25])]
+        salinity = [dict(depth=0, limits=[34, 36.5, .25 ])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        currents = dict(bool=True,
+                        coarsen=3,
+                        scale=40,
+                        headwidth=5,
+                        headlength=5,
+                        headaxislength=4.5
+                        )
+
+        # Update Dictionary with limits defined above
+        wi.update(lonlat=extent)
+        wi.update(salinity=salinity)
+        wi.update(temperature=sea_water_temperature)
+        wi.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
@@ -120,7 +180,7 @@ def limits_regions(model=None, regions=None):
         gom_sea_water_temperature = [dict(depth=0, limits=[26, 31, .5]), dict(depth=200, limits=[12, 24, .5])]
         gom_salinity = [dict(depth=0, limits=[34, 37, .25])]
         gom_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
-        gom_currents = dict(bool=True, coarsen=8)
+        gom_currents = dict(bool=False, coarsen=8)
 
         # Update Dictionary with limits defined above
         gom.update(lonlat=gom_extent)
@@ -186,13 +246,19 @@ def limits_regions(model=None, regions=None):
         carib_sea_water_temperature = [dict(depth=0, limits=[26, 31.5, .5])]
         carib_salinity = [dict(depth=0, limits=[34.6, 37, .1])]
         carib_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
-        carib_currents = dict(bool=True, coarsen=12)
+        currents = dict(bool=True,
+                        coarsen=12,
+                        scale=60,
+                        headwidth=4,
+                        headlength=4,
+                        headaxislength=3.5
+                        )
 
         # Update Dictionary with limits defined above
         carib.update(lonlat=carib_extent)
         carib.update(salinity=carib_salinity)
         carib.update(temperature=carib_sea_water_temperature)
-        carib.update(currents=carib_currents)
+        carib.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':

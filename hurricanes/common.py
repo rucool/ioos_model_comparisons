@@ -4,7 +4,14 @@ import datetime as dt
 import logging
 import pandas as pd
 import numpy as np
+import sys
 
+import lxml.html
+
+try:
+    from urllib.request import urlopen, urlretrieve
+except Exception:
+    from urllib import urlopen, urlretrieve
 
 def list_files(main_dir):
     """
@@ -51,3 +58,40 @@ def rename_model_variables(ds, model):
 
     return ds.rename(rename)
 
+
+def url_lister(url):
+    urls = []
+    connection = urlopen(url)
+    dom = lxml.html.fromstring(connection.read())
+    for link in dom.xpath("//a/@href"):
+        urls.append(link)
+    return urls
+
+
+def download(url, path):
+    sys.stdout.write(fname + "\n")
+    if not os.path.isfile(path):
+        urlretrieve(url, filename=path, reporthook=progress_hook(sys.stdout))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+
+def progress_hook(out):
+    """
+    Return a progress hook function, suitable for passing to
+    urllib.retrieve, that writes to the file object *out*.
+    """
+
+    def it(n, bs, ts):
+        got = n * bs
+        if ts < 0:
+            outof = ""
+        else:
+            # On the last block n*bs can exceed ts, so we clamp it
+            # to avoid awkward questions.
+            got = min(got, ts)
+            outof = "/%d [%d%%]" % (ts, 100 * got // ts)
+        out.write("\r  %d%s" % (got, outof))
+        out.flush()
+
+    return it

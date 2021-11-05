@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.dates as mdates
-import src.plotting as sp
+import hurricanes.plotting as sp
 from oceans.ocfis import uv2spdir, spdir2uv
 import cmocean
 
@@ -125,23 +125,41 @@ def plot_transect(x, y, c, cmap=None, title=None, save_file=None, ylims=None, le
         cs = plt.contourf(x, y, c, cmap=cmap, levels=levels['shallow'], extend=extend)
     else:
         cs = plt.contourf(x, y, c, cmap=cmap, extend=extend)
+
     if clab:
-        plt.colorbar(cs, ax=ax, label=clab, pad=0.02)
+        cb = plt.colorbar(cs, ax=ax, label=clab, pad=0.02)
     else:
-        plt.colorbar(cs, ax=ax, pad=0.02)
-    plt.contour(x, y, c, [26], colors='k')  # add contour at 26C
+        cb = plt.colorbar(cs, ax=ax, pad=0.02)
+
+    cb.ax.tick_params(labelsize=14)
+    cb.set_label(clab, fontsize=16)
+    isotherm = plt.contour(x, y, c, [26], colors='k')  # add contour at 26C
+    # test = isotherm.allsegs[0][0]
+    # plt.axhline(test[:, 1].max())
+    xfmt = mdates.DateFormatter('%d-%b-%Y\n%H:%M:%S')
+    ax.xaxis.set_major_formatter(xfmt)
+
+    plt.xticks(rotation=45, fontsize=16)
+    plt.yticks(fontsize=16)
 
     if ylims:
         ax.set_ylim(ylims)
 
-    if 'time' in xlab.lower():
-        format_time_axis(ax)
+    # if 'time' in xlab.lower():
+    #     format_time_axis(ax)
 
-    ax.invert_yaxis()
+    # ax.invert_yaxis()
+
+    # # Plot Model transitional times
+    # time_df = pd.DataFrame(x, columns=['datetime'])
+    # time_df['hour'] = time_df['datetime'].dt.hour
+    # transition_times = pd.concat([time_df[(time_df['hour'] == 0)], time_df[(time_df['hour'] == 6)]])
+    # [plt.axvline(t, color='gray', linestyle='--') for t in transition_times['datetime']]
 
     # Add titles and labels
-    plt.title(title, size=12)
-    plt.setp(ax, ylabel='Depth (m)', xlabel=xlab)
+    plt.title(title, size=20, fontweight='bold')
+    plt.ylabel('Depth (m)', fontsize=18, fontweight='bold')
+    # plt.setp(ax, ylabel='Depth (m)', xlabel=xlab)
     plt.tight_layout()
 
     plt.savefig(save_file, bbox_inches='tight', pad_inches=0.1, dpi=300)
@@ -179,9 +197,28 @@ def plot_transects(glx, gly, glc, modelx, modely, modelc, cmap, title0=None, tit
         axs[0].set_ylim(ylims)
 
     if clab:
-        plt.colorbar(ax0, ax=axs[0], label=clab, pad=0.02)
+        cb = plt.colorbar(ax0, ax=axs[0], label=clab, pad=0.02)
     else:
-        plt.colorbar(ax0, ax=axs[0], pad=0.02)
+        cb = plt.colorbar(ax0, ax=axs[0], pad=0.02)
+
+    cb.ax.tick_params(labelsize=14)
+    cb.set_label(clab, fontsize=16)
+    # plt.contour(x, y, c, [26], colors='k')  # add contour at 26C
+    xfmt = mdates.DateFormatter('%d-%b-%Y\n%H:%M:%S')
+    axs[0].xaxis.set_major_formatter(xfmt)
+
+    # axs[0].set_xticklabels(rotation=45, fontsize=13)
+    # axs[0].set_yticklabels(fontsize=14)
+    axs[0].tick_params(axis='both', which='major', labelsize=13)
+    axs[0].tick_params(axis='both', which='minor', labelsize=8)
+    axs[0].set_ylabel('Depth (m)', fontsize=15, fontweight='bold')
+    axs[0].set_title(title0, fontsize=16, fontweight='bold')
+
+    # # Plot Model transitional times
+    # time_df = pd.DataFrame(modelx, columns=['datetime'])
+    # time_df['hour'] = time_df['datetime'].dt.hour
+    # transition_times = pd.concat([time_df[(time_df['hour'] == 9)], time_df[(time_df['hour'] == 12)]])
+    # [axs[0].axvline(t, color='gray', linestyle='--') for t in transition_times['datetime']]
 
     # format model plot
     axs[1].contour(modelx, modely, modelc, [26], colors='k')  # add contour at 26C
@@ -190,17 +227,33 @@ def plot_transects(glx, gly, glc, modelx, modely, modelc, cmap, title0=None, tit
         axs[1].set_ylim(ylims)
 
     if clab:
-        plt.colorbar(ax1, ax=axs[1], label=clab, pad=0.02)
+        cb = plt.colorbar(ax1, ax=axs[1], label=clab, pad=0.02)
     else:
-        plt.colorbar(ax1, ax=axs[1], pad=0.02)
+        cb = plt.colorbar(ax1, ax=axs[1], pad=0.02)
 
-    axs[0].invert_yaxis()
+    # axs[0].invert_yaxis()
+    cb.ax.tick_params(labelsize=14)
+    cb.set_label(clab, fontsize=16)
+    # plt.contour(x, y, c, [26], colors='k')  # add contour at 26C
+    xfmt = mdates.DateFormatter('%d-%b-%Y\n%H:%M:%S')
+    axs[1].xaxis.set_major_formatter(xfmt)
+
+    plt.xticks(rotation=45)
+    # axs[1].set_yticks(fontsize=14)
+    axs[1].tick_params(axis='both', which='major', labelsize=13)
+    axs[1].tick_params(axis='both', which='minor', labelsize=8)
+    axs[1].set_xlabel('Time (GMT)', fontsize=15, fontweight='bold')
+    axs[1].set_ylabel('Depth (m)', fontsize=15, fontweight='bold')
+    axs[1].set_title(title1, fontsize=16, fontweight='bold')
+    # [axs[1].axvline(t, color='gray', linestyle='--') for t in transition_times['datetime']]
 
     # Add titles and labels
-    plt.setp(axs[0], ylabel='Depth (m)')
-    plt.setp(axs[0], title=title0)
-    plt.setp(axs[1], ylabel='Depth (m)', xlabel=xlab)
-    plt.setp(axs[1], title=title1)
+    # plt.setp(axs[0], ylabel='Depth (m)')
+    # plt.setp(axs[0], title=title0)
+    #
+    # plt.setp(axs[1], ylabel='Depth (m)', xlabel=xlab)
+    # plt.setp(axs[1], title=title1)
+
     plt.tight_layout()
 
     plt.savefig(save_file, bbox_inches='tight', pad_inches=0.1, dpi=300)

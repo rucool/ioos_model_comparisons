@@ -9,7 +9,8 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 from erddapy import ERDDAP
-from src.common import limits
+
+# from src.common import limits
 
 
 ioos_url = 'https://data.ioos.us/gliders/erddap'
@@ -220,6 +221,8 @@ def glider_dataset(gliderid, time_start=None, time_end=None, variables=None, fil
         'time',
         'temperature',
         'salinity',
+        'density',
+        'profile_id'
     ]
     filetype = filetype or 'nc'
 

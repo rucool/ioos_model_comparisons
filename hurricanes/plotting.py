@@ -7,14 +7,31 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 from oceans.ocfis import uv2spdir, spdir2uv
-from src.calc import dd2dms
+from hurricanes.calc import dd2dms
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from matplotlib.colors import ListedColormap
 import matplotlib.colors
 from itertools import cycle
+import copy
+
+from glob import glob
+import geopandas
+import lxml.html
+import sys
+import warnings
+
+from dateutil import parser
+from pytz import timezone
+
+# Suppresing warnings for a "pretty output."
+warnings.simplefilter("ignore")
+
+try:
+    from urllib.request import urlopen, urlretrieve
+except Exception:
+    from urllib import urlopen, urlretrieve
 
 
 LAND = cfeature.NaturalEarthFeature(
@@ -154,7 +171,7 @@ def get_ticks(bounds, dirs, otherbounds):
 def map_add_argo(ax, df, transform):
     most_recent = df.loc[df.groupby('platform_number')['time (UTC)'].idxmax()]
 
-    custom_cmap = categorical_cmap(10, 4, cmap="tab10")
+    custom_cmap = categorical_cmap(10, 5, cmap="tab10")
     marker = cycle(['o', 'h', 'p'])
 
     n = 0
@@ -164,6 +181,9 @@ def map_add_argo(ax, df, transform):
                 transform=transform)
         # map_add_legend(ax)
         n = n + 1
+    ax.plot(-88.237, 29.207, marker='*', markersize=12, markeredgecolor='black', color='red', label='NDBC-42040', transform=transform)
+    ax.plot(-89.649, 28.988, marker='*', markersize=12, markeredgecolor='black', color='orange', label='NDBC-42084', transform=transform)
+
     return ax
 
 
@@ -182,20 +202,24 @@ def map_add_bathymetry(ax, ds, transform, levels=None):
     return ax
 
 
-def map_add_currents(currents, sub=None):
+def map_add_currents(ax, currents, coarsen=None, scale=None, headwidth=None, headlength=None, headaxislength=None):
     """
     Add currents to map
     :param dsd: dataset
     :param sub: amount to downsample by
     :return:
     """
+    scale = scale or 90
+    headwidth = headwidth or 2.75
+    headlength = headlength or 2.75
+    headaxislength = headaxislength or 2.5
+    coarsen = coarsen or 2
 
-    sub = sub or 2
     try:
-        qds = currents.coarsen(lon=sub, boundary='pad').mean().coarsen(lat=sub, boundary='pad').mean()
+        qds = currents.coarsen(lon=coarsen, boundary='pad').mean().coarsen(lat=coarsen, boundary='pad').mean()
         mesh = True
     except ValueError:
-        qds = currents.coarsen(X=sub, boundary='pad').mean().coarsen(Y=sub, boundary='pad').mean()
+        qds = currents.coarsen(X=coarsen, boundary='pad').mean().coarsen(Y=coarsen, boundary='pad').mean()
         mesh = False
 
     angle, speed = uv2spdir(qds['u'], qds['v'])  # convert u/v to angle and speed
@@ -206,17 +230,17 @@ def map_add_currents(currents, sub=None):
     )
 
     qargs = {}
-    qargs['scale'] = 90
-    qargs['headwidth'] = 2.75
-    qargs['headlength'] = 2.75
-    qargs['headaxislength'] = 2.5
+    qargs['scale'] = scale
+    qargs['headwidth'] = headwidth
+    qargs['headlength'] = headlength
+    qargs['headaxislength'] = headaxislength
     qargs['transform'] = ccrs.PlateCarree()
 
     if mesh:
         lons, lats = np.meshgrid(qds['lon'], qds['lat'])
-        q = plt.quiver(lons, lats, u, v, **qargs)
+        q = ax.quiver(lons, lats, u, v, **qargs)
     else:
-        q = plt.quiver(qds.lon.squeeze().data, qds.lat.squeeze().data, u.squeeze(), v.squeeze(), **qargs)
+        q = ax.quiver(qds.lon.squeeze().data, qds.lat.squeeze().data, u.squeeze(), v.squeeze(), **qargs)
     return q
 
 
@@ -255,7 +279,7 @@ def map_add_features(axis, extent, edgecolor=None, landcolor=None, add_ticks=Non
 def map_add_gliders(ax, df, transform):
     for g, new_df in df.groupby(level=0):
         q = new_df.iloc[-1]
-        ax.plot(new_df['longitude (degrees_east)'], new_df['latitude (degrees_north)'], color='white',
+        ax.plot(new_df['longitude (degrees_east)'], new_df['latitude (degrees_north)'], color='black',
                 linewidth=1.5, transform=ccrs.PlateCarree())
         ax.plot(q['longitude (degrees_east)'], q['latitude (degrees_north)'], marker='^', markeredgecolor='black',
                 markersize=8.5, label=g, transform=transform)
@@ -331,6 +355,7 @@ def plot_model_region(ds, region, t1,
                       bathy=None,
                       argo=None,
                       gliders=None,
+                      currents=None,
                       transform=None,
                       model=None,
                       save_dir=None,
@@ -345,9 +370,10 @@ def plot_model_region(ds, region, t1,
     :return:
     """
     bathy = bathy or None
-    transform = transform or ccrs.PlateCarree()
-    # argo = argo or pd.DataFrame()
-    # gliders = gliders or pd.DataFrame()
+    transform = transform or dict(map=ccrs.Mercator(), data=ccrs.PlateCarree())
+    # argo = argo or False
+    # gliders = gliders or False
+    currents = currents or dict(bool=False)
     save_dir = save_dir or os.getcwd()
     model = model or 'rtofs'
     dpi = dpi or 150
@@ -358,6 +384,12 @@ def plot_model_region(ds, region, t1,
 
     region_file_str = ('_').join(region_name.lower().split(' '))
     save_dir_region = os.path.join(save_dir, 'regions', region_file_str)
+
+    # if not gliders:
+    #     gliders = pd.DataFrame()
+    #
+    # if not argo:
+    #     argo = pd.DataFrame()
 
     for k, v in limits.items():
         if k == 'lonlat':
@@ -375,8 +407,10 @@ def plot_model_region(ds, region, t1,
             save_dir_depth = os.path.join(save_dir_var, f'{depth}m')
 
             title = f'Region: {region_name.title()}, Variable: {var_str} @ {depth}m\n'\
-                    f'Time: {str(t1)} UTC, Model: {model.upper()}\n'\
-                    f'Glider/Argo Window {str(t0)} to {str(t1)}'
+                    f'Time: {str(t1)} UTC, Model: {model.upper()}\n'
+
+            if not gliders.empty or not argo.empty:
+                    title += f'Glider/Argo Window {str(t0)} to {str(t1)}'
             sname = f'{model}-{k}-{t1.strftime("%Y-%m-%dT%H%M%SZ")}'
 
             save_dir_final = os.path.join(save_dir_depth, t1.strftime('%Y/%m'))
@@ -387,7 +421,7 @@ def plot_model_region(ds, region, t1,
             vargs = {}
             vargs['vmin'] = item['limits'][0]
             vargs['vmax'] = item['limits'][1]
-            vargs['transform'] = transform
+            vargs['transform'] = transform['data']
             vargs['cmap'] = cmaps(ds[k].name)
 
             if k == 'sea_surface_height':
@@ -404,7 +438,7 @@ def plot_model_region(ds, region, t1,
 
             fig, ax = plt.subplots(
                 figsize=(11, 8),
-                subplot_kw=dict(projection=ccrs.Mercator())
+                subplot_kw=dict(projection=transform['map'])
             )
 
             # Plot title
@@ -413,10 +447,157 @@ def plot_model_region(ds, region, t1,
             vargs['gliders'] = gliders
             vargs['bathy'] = bathy
 
-
-            region_subplot(fig, ax, extent, dsd[k].squeeze(), title, **vargs)
+            ax = region_subplot(fig, ax, extent, dsd[k].squeeze(), title, **vargs)
             # ax.plot(track['lon'], track['lat'], 'k-', linewidth=6, transform=vargs['transform'])
+            if currents['bool']:
+                cwargs = copy.deepcopy(currents)
+                cwargs.pop('bool')
+                map_add_currents(ax, dsd, **cwargs)
             map_add_ticks(ax, extent)
+
+            h, l = ax.get_legend_handles_labels()  # get labels and handles from ax1
+
+
+            # Shrink current axis's height by 10% on the bottom
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                             box.width, box.height * 0.9])
+
+            # Put a legend below current axis
+            ax.legend(h, l, loc='upper center', bbox_to_anchor=(0.5, -0.05),
+                      fancybox=True, shadow=True, ncol=5)
+
+            #
+            # if l:
+            #     ax.legend(h, l, ncol=6, loc='center', fontsize=10)
+            #     # ax.set_axis_off()
+
+            os.environ["CPL_ZIP_ENCODING"] = "UTF-8"
+            os.environ["TZ"] = "GMT0"
+
+            def url_lister(url):
+                urls = []
+                connection = urlopen(url)
+                dom = lxml.html.fromstring(connection.read())
+                for link in dom.xpath("//a/@href"):
+                    urls.append(link)
+                return urls
+
+            def download(url, path):
+                sys.stdout.write(fname + "\n")
+                if not os.path.isfile(path):
+                    urlretrieve(url, filename=path, reporthook=progress_hook(sys.stdout))
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+
+            def progress_hook(out):
+                """
+                Return a progress hook function, suitable for passing to
+                urllib.retrieve, that writes to the file object *out*.
+                """
+
+                def it(n, bs, ts):
+                    got = n * bs
+                    if ts < 0:
+                        outof = ""
+                    else:
+                        # On the last block n*bs can exceed ts, so we clamp it
+                        # to avoid awkward questions.
+                        got = min(got, ts)
+                        outof = "/%d [%d%%]" % (ts, 100 * got // ts)
+                    out.write("\r  %d%s" % (got, outof))
+                    out.flush()
+
+                return it
+
+            code = "al092021"
+
+            hurricane = "{}_5day".format(code)
+
+            nhc = "http://www.nhc.noaa.gov/gis/forecast/archive/"
+
+            # We don't need the latest file b/c that is redundant to the latest number.
+            # fnames = [
+            #     fname
+            #     for fname in url_lister(nhc)
+            #     if fname.startswith(hurricane) and "latest" not in fname
+            # ]
+
+            base = os.path.abspath(os.path.join(os.path.curdir, "data", hurricane))
+
+            # if not os.path.exists(base):
+            #     os.makedirs(base)
+
+            # for fname in fnames:
+            #     url = "{}/{}".format(nhc, fname)
+            #     path = os.path.join(base, fname)
+            #     download(url, path)
+
+            cones, points = [], []
+            for fname in sorted(glob(os.path.join(base, "{}_*.zip".format(hurricane)))):
+                number = os.path.splitext(os.path.split(fname)[-1])[0].split("_")[-1]
+                pgn = geopandas.read_file(
+                    "/{}-{}_5day_pgn.shp".format(code, number), vfs="zip://{}".format(fname)
+                )
+                cones.append(pgn)
+
+                pts = geopandas.read_file(
+                    "/{}-{}_5day_pts.shp".format(code, number), vfs="zip://{}".format(fname)
+                )
+                # Only the first "obsevartion."
+                points.append(pts.iloc[0])
+
+            colors = {
+                "Subtropical Depression": "yellow",
+                "Tropical Depression": "yellow",
+                "Tropical Storm": "orange",
+                "Subtropical Storm": "orange",
+                "Hurricane": "red",
+                "Major Hurricane": "crimson",
+            }
+
+            size = {
+                "Subtropical Depression": 5,
+                "Tropical Depression": 6,
+                "Tropical Storm": 7,
+                "Subtropical Storm": 8,
+                "Hurricane": 9,
+                "Major Hurricane": 10,
+            }
+
+            time_orig = []
+            time_convert = []
+            lat = []
+            lon = []
+            strength = []
+
+            # All the points along the track.
+            for point in points:
+                if 'CDT' in point["FLDATELBL"]:
+                    tdt = parser.parse(point['FLDATELBL'].replace('CDT', '-05:00'))
+                    cdt = tdt.astimezone(timezone('UTC'))
+                elif 'EDT' in point['FLDATELBL']:
+                    tdt = parser.parse(point['FLDATELBL'].replace('EDT', '-04:00'))
+                    cdt = tdt.astimezone(timezone('UTC'))
+
+                time_orig.append(tdt)
+                time_convert.append(cdt)
+                strength.append(point["TCDVLP"])
+                lat.append(point["LAT"])
+                lon.append(point["LON"])
+                plt.plot(point['LON'], point["LAT"], color=colors[point["TCDVLP"]])
+
+            test = pd.DataFrame(
+                {'time_orig': time_orig, 'time_convert': time_convert, 'lon': lon, 'lat': lat, 'strength': strength})
+
+            test = test[
+                (test.lon >= extent[0]) & (test.lon <= extent[1]) & (test.lat >= extent[2]) & (test.lat <= extent[3])]
+            ax.plot(test.lon, test.lat, 'k-', linewidth=1, transform=transform['data'])
+            ax.scatter(test.lon, test.lat, c=test['strength'].map(colors), s=test['strength'].map(size) * 5,
+                       transform=transform['data'], zorder=12)
+            # for t in test.iterrows():
+            #     ax.text(t[1].lon - 1, t[1].lat , t[1].time_convert.strftime('%Y-%m-%dT%H:%M:%SZ'), fontsize=8,
+            #             fontweight='bold', color='white', transform=transform, zorder=20)
 
             plt.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
@@ -527,6 +708,11 @@ def plot_model_region_comparison(rtofs, gofs, region, time,
                 ax3.set_axis_off()
 
             plt.suptitle(r"$\bf{" + first_line + "}$" + second_line, fontsize=13)
+
+            # Remove this next section
+
+            # Remove previos section
+
             # plt.tight_layout()
 
             plt.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
@@ -701,5 +887,6 @@ def region_subplot(fig, ax, extent, da=None, title=None, argo=None, gliders=None
     if colorbar:
         cb = fig.colorbar(h, cax=axins)
         cb.ax.tick_params(labelsize=12)
+        cb.set_label(f'{da.name.title()} ({da.units})', fontsize=13)
 
     return ax
