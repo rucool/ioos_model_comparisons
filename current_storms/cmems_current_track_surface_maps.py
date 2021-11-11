@@ -12,10 +12,10 @@ import numpy as np
 import os
 import cartopy.crs as ccrs
 import datetime as dt
-from src.storms import get_argo_data, forecast_storm_region
-from src.storms_plt import surface_map_storm_forecast
+from hurricanes.storms import get_argo_data, forecast_storm_region
+from hurricanes.storms_plt import surface_map_storm_forecast
 from current_storms import current_forecast_track
-import src.gliders as gld
+import hurricanes.gliders as gld
 from scripts.harvest import grab_cmems
 
 # for downloading the CMEMS dataset

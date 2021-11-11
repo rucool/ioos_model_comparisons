@@ -13,10 +13,10 @@ import os
 import datetime as dt
 import numpy as np
 from glob import glob
-from src.storms import get_argo_data, forecast_storm_region
-from src.storms_plt import surface_map_storm_forecast
+from hurricanes.storms import get_argo_data, forecast_storm_region
+from hurricanes.storms_plt import surface_map_storm_forecast
 from current_storms import current_forecast_track
-import src.gliders as gld
+import hurricanes.gliders as gld
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 # url = '/Users/garzio/Documents/rucool/hurricane_glider_project/RTOFS/RTOFS_6hourly_North_Atlantic/'

@@ -13,9 +13,9 @@ import xarray as xr
 import datetime as dt
 import os
 from glob import glob
-from src.storms_plt import plot_transect
+from hurricanes.storms_plt import plot_transect
 from current_storms import current_forecast_track
-import src.storms as storms
+import hurricanes.storms as storms
 
 # url = '/Users/garzio/Documents/rucool/hurricane_glider_project/RTOFS/RTOFS_6hourly_North_Atlantic/'
 url = '/home/hurricaneadm/data/rtofs'  # on server
