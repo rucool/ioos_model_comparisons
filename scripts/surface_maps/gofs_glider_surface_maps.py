@@ -11,8 +11,8 @@ import pandas as pd
 import os
 import cartopy.crs as ccrs
 import datetime as dt
-import src.gliders as gld
-from src.gliders_plt import surface_map_glider_track
+import hurricanes.gliders as gld
+from hurricanes.gliders_plt import surface_map_glider_track
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 

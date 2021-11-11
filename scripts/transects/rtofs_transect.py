@@ -3,24 +3,24 @@ import os
 import cmocean
 import xarray as xr
 import datetime as dt
-from src.calc import calculate_transect, convert_ll_to_model_ll
-from src.plotting import plot_transects, plot_region
-from src.common import rename_model_variables
-from src.storms import custom_transect
-from src.limits import transects, limits_regions
+from hurricanes.calc import calculate_transect, convert_ll_to_model_ll
+from hurricanes.plotting import plot_transects, plot_region
+from hurricanes.common import rename_model_variables
+from hurricanes.storms import custom_transect
+from hurricanes.limits import transects, limits_regions
 import numpy as np
 import cartopy.crs as ccrs
 import pandas as pd
 
 
-# url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
-# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/'
+url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
+save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/'
 model = 'rtofs'
 transect_spacing = 0.05/20
-url = '/home/hurricaneadm/data/rtofs/'
-save_dir = '/www/web/rucool/hurricane/model_comparisons/transects/rtofs/'
+# url = '/home/hurricaneadm/data/rtofs/'
+# save_dir = '/www/web/rucool/hurricane/model_comparisons/transects/rtofs/'
 
-days = 4
+days = 5
 
 # transect coordinates and variable limits
 transects = transects()

@@ -1,27 +1,27 @@
 import xarray as xr
 import os
 from glob import glob
-from src.common import limits
+from hurricanes.limits import limits_regions
 import datetime as dt
 import numpy as np
-from src.platforms import active_argo_floats
+from hurricanes.platforms import active_argo_floats
 import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.stats as stats
 from matplotlib.lines import Line2D
 
 url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
-save_dir = '/plots/argo_profile_model_comparisons/'
+save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/argo_profile_model_comparisons/'
 
 gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 
-days_to_check_for_argo_surfacing = 30
+days_to_check_for_argo_surfacing = 15
 days_pre_surfacing = 1
 days_post_surfacing = 2
 dpi = 150
 figsize = (16, 12)
 
-regions = limits('rtofs', ['mab', 'carib'])
+regions = limits_regions('rtofs', ['gom', 'carib'])
 
 argo_search_end = dt.date.today()
 argo_search_start = argo_search_end - dt.timedelta(days=days_to_check_for_argo_surfacing)
@@ -50,10 +50,10 @@ rtofs = rtofs.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Dept
 # for r in regions:
 #     extent = regions[r]['lonlat']
 
-# floats = ['4901623', '4902534', '4903351', '5906437']
-extent = regions['Caribbean']['lonlat']
+floats = ['4903354', '4902350']
+extent = regions['Gulf of Mexico']['lonlat']
 
-floats = active_argo_floats(bbox=extent, time_start=argo_search_start, time_end=argo_search_end, floats='4903351')
+floats = active_argo_floats(bbox=extent, time_start=argo_search_start, time_end=argo_search_end, floats=floats[1])
 
 for argo in floats.platform_number.unique():
     temp = floats[floats['platform_number'] == argo]
@@ -133,7 +133,7 @@ for argo in floats.platform_number.unique():
                 ax[0, i].plot(r['temperature'].squeeze(), r['depth'].squeeze(), f'g{line[n]}', alpha=alpha[n])
 
                 ax[0, i].set_xlabel('Temperature (˚C)', fontsize=8)
-                ax[0, i].set_xlim([8, 30])
+                ax[0, i].set_xlim([8, 32])
 
                 # Salinity
                 ax[1, i].plot(filtered['psal (PSU)'], filtered['pres (decibar)'], 'b-', )

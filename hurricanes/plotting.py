@@ -171,8 +171,12 @@ def get_ticks(bounds, dirs, otherbounds):
 def map_add_argo(ax, df, transform):
     most_recent = df.loc[df.groupby('platform_number')['time (UTC)'].idxmax()]
 
-    custom_cmap = categorical_cmap(10, 5, cmap="tab10")
-    marker = cycle(['o', 'h', 'p'])
+    if most_recent.shape[0] > 50:
+        custom_cmap = 'black'
+        marker = cycle(['o'])
+    else:
+        custom_cmap = categorical_cmap(10, 5, cmap="tab10")
+        marker = cycle(['o', 'h', 'p'])
 
     n = 0
     for float in most_recent.itertuples():
@@ -467,137 +471,9 @@ def plot_model_region(ds, region, t1,
             ax.legend(h, l, loc='upper center', bbox_to_anchor=(0.5, -0.05),
                       fancybox=True, shadow=True, ncol=5)
 
-            #
             # if l:
             #     ax.legend(h, l, ncol=6, loc='center', fontsize=10)
             #     # ax.set_axis_off()
-
-            os.environ["CPL_ZIP_ENCODING"] = "UTF-8"
-            os.environ["TZ"] = "GMT0"
-
-            def url_lister(url):
-                urls = []
-                connection = urlopen(url)
-                dom = lxml.html.fromstring(connection.read())
-                for link in dom.xpath("//a/@href"):
-                    urls.append(link)
-                return urls
-
-            def download(url, path):
-                sys.stdout.write(fname + "\n")
-                if not os.path.isfile(path):
-                    urlretrieve(url, filename=path, reporthook=progress_hook(sys.stdout))
-                    sys.stdout.write("\n")
-                    sys.stdout.flush()
-
-            def progress_hook(out):
-                """
-                Return a progress hook function, suitable for passing to
-                urllib.retrieve, that writes to the file object *out*.
-                """
-
-                def it(n, bs, ts):
-                    got = n * bs
-                    if ts < 0:
-                        outof = ""
-                    else:
-                        # On the last block n*bs can exceed ts, so we clamp it
-                        # to avoid awkward questions.
-                        got = min(got, ts)
-                        outof = "/%d [%d%%]" % (ts, 100 * got // ts)
-                    out.write("\r  %d%s" % (got, outof))
-                    out.flush()
-
-                return it
-
-            code = "al092021"
-
-            hurricane = "{}_5day".format(code)
-
-            nhc = "http://www.nhc.noaa.gov/gis/forecast/archive/"
-
-            # We don't need the latest file b/c that is redundant to the latest number.
-            # fnames = [
-            #     fname
-            #     for fname in url_lister(nhc)
-            #     if fname.startswith(hurricane) and "latest" not in fname
-            # ]
-
-            base = os.path.abspath(os.path.join(os.path.curdir, "data", hurricane))
-
-            # if not os.path.exists(base):
-            #     os.makedirs(base)
-
-            # for fname in fnames:
-            #     url = "{}/{}".format(nhc, fname)
-            #     path = os.path.join(base, fname)
-            #     download(url, path)
-
-            cones, points = [], []
-            for fname in sorted(glob(os.path.join(base, "{}_*.zip".format(hurricane)))):
-                number = os.path.splitext(os.path.split(fname)[-1])[0].split("_")[-1]
-                pgn = geopandas.read_file(
-                    "/{}-{}_5day_pgn.shp".format(code, number), vfs="zip://{}".format(fname)
-                )
-                cones.append(pgn)
-
-                pts = geopandas.read_file(
-                    "/{}-{}_5day_pts.shp".format(code, number), vfs="zip://{}".format(fname)
-                )
-                # Only the first "obsevartion."
-                points.append(pts.iloc[0])
-
-            colors = {
-                "Subtropical Depression": "yellow",
-                "Tropical Depression": "yellow",
-                "Tropical Storm": "orange",
-                "Subtropical Storm": "orange",
-                "Hurricane": "red",
-                "Major Hurricane": "crimson",
-            }
-
-            size = {
-                "Subtropical Depression": 5,
-                "Tropical Depression": 6,
-                "Tropical Storm": 7,
-                "Subtropical Storm": 8,
-                "Hurricane": 9,
-                "Major Hurricane": 10,
-            }
-
-            time_orig = []
-            time_convert = []
-            lat = []
-            lon = []
-            strength = []
-
-            # All the points along the track.
-            for point in points:
-                if 'CDT' in point["FLDATELBL"]:
-                    tdt = parser.parse(point['FLDATELBL'].replace('CDT', '-05:00'))
-                    cdt = tdt.astimezone(timezone('UTC'))
-                elif 'EDT' in point['FLDATELBL']:
-                    tdt = parser.parse(point['FLDATELBL'].replace('EDT', '-04:00'))
-                    cdt = tdt.astimezone(timezone('UTC'))
-
-                time_orig.append(tdt)
-                time_convert.append(cdt)
-                strength.append(point["TCDVLP"])
-                lat.append(point["LAT"])
-                lon.append(point["LON"])
-                plt.plot(point['LON'], point["LAT"], color=colors[point["TCDVLP"]])
-
-            test = pd.DataFrame(
-                {'time_orig': time_orig, 'time_convert': time_convert, 'lon': lon, 'lat': lat, 'strength': strength})
-
-            test = test[
-                (test.lon >= extent[0]) & (test.lon <= extent[1]) & (test.lat >= extent[2]) & (test.lat <= extent[3])]
-            ax.plot(test.lon, test.lat, 'k-', linewidth=1, transform=transform['data'])
-            ax.scatter(test.lon, test.lat, c=test['strength'].map(colors), s=test['strength'].map(size) * 5,
-                       transform=transform['data'], zorder=12)
-            # for t in test.iterrows():
-            #     ax.text(t[1].lon - 1, t[1].lat , t[1].time_convert.strftime('%Y-%m-%dT%H:%M:%SZ'), fontsize=8,
-            #             fontweight='bold', color='white', transform=transform, zorder=20)
 
             plt.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
@@ -628,7 +504,7 @@ def plot_model_region_comparison(rtofs, gofs, region, time,
     :return:
     """
     bathy = bathy or None
-    transform = transform or ccrs.PlateCarree()
+    transform = transform or dict(map=ccrs.Mercator(), data=ccrs.PlateCarree())
     save_dir = save_dir or os.getcwd()
     dpi = dpi or 150
 
@@ -665,7 +541,7 @@ def plot_model_region_comparison(rtofs, gofs, region, time,
             vargs = {}
             vargs['vmin'] = item['limits'][0]
             vargs['vmax'] = item['limits'][1]
-            vargs['transform'] = transform
+            vargs['transform'] = transform['data']
             vargs['cmap'] = cmaps(rtofs[k].name)
             vargs['ticks'] = ticks
 
@@ -686,14 +562,9 @@ def plot_model_region_comparison(rtofs, gofs, region, time,
             fig = plt.figure(figsize=(16, 10), constrained_layout=True)
             # plt.rcParams['figure.constrained_layout.use'] = True
             grid = plt.GridSpec(12, 20, hspace=0.2, wspace=0.2, figure=fig)
-            ax1 = plt.subplot(grid[0:9, 0:9], projection=ccrs.Mercator())
-            ax2 = plt.subplot(grid[0:9, 10:19], projection=ccrs.Mercator())
+            ax1 = plt.subplot(grid[0:9, 0:9], projection=transform['map'])
+            ax2 = plt.subplot(grid[0:9, 10:19], projection=transform['map'])
             ax3 = plt.subplot(grid[9:11, :])
-
-            # grid = plt.GridSpec(8, 12,  hspace=1, figure=fig)
-            # ax1 = plt.subplot(grid[0:4, 0:10], projection=ccrs.Mercator())
-            # ax2 = plt.subplot(grid[4:, 0:10], projection=ccrs.Mercator())
-            # ax3 = plt.subplot(grid[:, 10:11])
 
             first_line = f'Region:{region_name.title()}, Variable:{var_str}, Depth: {depth}m'
             second_line = f'\nTime: {str(time)} UTC\nGlider/Argo Search Window: {str(t0)} to {str(time)}'
@@ -708,10 +579,6 @@ def plot_model_region_comparison(rtofs, gofs, region, time,
                 ax3.set_axis_off()
 
             plt.suptitle(r"$\bf{" + first_line + "}$" + second_line, fontsize=13)
-
-            # Remove this next section
-
-            # Remove previos section
 
             # plt.tight_layout()
 
@@ -875,16 +742,15 @@ def region_subplot(fig, ax, extent, da=None, title=None, argo=None, gliders=None
     ax.set_xlabel('Longitude', fontsize=14)
     ax.set_ylabel('Latitude', fontsize=14)
 
-    axins = inset_axes(ax,  # here using axis of the lowest plot
-                       width="2.5%",  # width = 5% of parent_bbox width
-                       height="100%",  # height : 340% good for a (4x4) Grid
-                       loc='lower left',
-                       bbox_to_anchor=(1.05, 0., 1, 1),
-                       bbox_transform=ax.transAxes,
-                       borderpad=0,
-                       )
-
     if colorbar:
+        axins = inset_axes(ax,  # here using axis of the lowest plot
+            width="2.5%",  # width = 5% of parent_bbox width
+            height="100%",  # height : 340% good for a (4x4) Grid
+            loc='lower left',
+            bbox_to_anchor=(1.05, 0., 1, 1),
+            bbox_transform=ax.transAxes,
+            borderpad=0
+            )
         cb = fig.colorbar(h, cax=axins)
         cb.ax.tick_params(labelsize=12)
         cb.set_label(f'{da.name.title()} ({da.units})', fontsize=13)

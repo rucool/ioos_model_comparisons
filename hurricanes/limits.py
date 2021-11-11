@@ -1,74 +1,5 @@
 import numpy as np
 
-
-def transects():
-    # transect coordinates and variable limits
-    # mesoscale features (mostly brought in by altimetry)
-    transects = dict(
-        # grace_path_carib=dict(
-        #     xaxis='longitude',
-        #     region='Gulf of Mexico',
-        #     extent=[-86.76, 21.05, -71.75, 17.35],
-        #     limits=dict(
-        #         temperature=dict(
-        #             deep=np.arange(4, 34),
-        #             shallow=np.arange(10, 34),
-        #             isobath=[26]
-        #         ),
-        #         salinity=dict(
-        #             deep=np.arange(34.75, 37, 0.1),
-        #             shallow=np.arange(34.75, 37, 0.1)))
-        # ),
-        # grace_path_gom=dict(
-        #     xaxis='longitude',
-        #     region='Gulf of Mexico',
-        #     extent=[-97.5, 21, -90.45, 21],
-        #     limits=dict(
-        #         temperature=dict(
-        #             deep=np.arange(4, 34),
-        #             shallow=np.arange(10, 34),
-        #             isobath=[26]
-        #         ),
-        #         salinity=dict(
-        #             deep=np.arange(34.75, 37, 0.1),
-        #             shallow=np.arange(34.75, 37, 0.1)))
-        # ),
-        henri_path_mab_overview=dict(
-            xaxis='latitude',
-            region='Mid Atlantic Bight',
-            extent=[-71.5, 41.5, -71.5, 36.5],
-            limits=dict(
-                temperature=dict(
-                    deep=np.arange(4, 34),
-                    shallow=np.arange(10, 34),
-                    isobath=[15, 26]
-                ),
-                salinity=dict(
-                    deep=np.arange(32, 37, 0.25),
-                    shallow=np.arange(32, 37, 0.25)
-                )
-            )
-        ),
-        henri_path_mab_shelf=dict(
-            xaxis='latitude',
-            region='Mid Atlantic Bight',
-            extent=[-71.5, 41.5, -71.5, 40],
-            limits=dict(
-                temperature=dict(
-                    deep=np.arange(4, 34),
-                    shallow=np.arange(10, 34),
-                    isobath=[15, 26]
-                ),
-                salinity=dict(
-                    deep=np.arange(32, 35.6, 0.25),
-                    shallow=np.arange(32, 35.6, 0.25)
-                )
-            )
-        ),
-    )
-    return transects
-
-
 def limits_regions(model=None, regions=None):
     """
     return extent and other variable limits of certain regions for rtofs or gofs
@@ -88,21 +19,43 @@ def limits_regions(model=None, regions=None):
     # To add different depths for each variable, append to the specific variable list the following format:
     # dict(depth=n, limits=[min, max, stride])
 
+    if 'north_atlantic' in regions:
+        # Gulf of Mexico
+        limits['North Atlantic'] = dict()
+        nola = limits['North Atlantic']
+
+        # Limits
+        extent = [-80, 0, 0, 50]
+        sea_water_temperature = [dict(depth=0, limits=[27.5, 32, .5]), dict(depth=200, limits=[12, 24, .5])]
+        salinity = [dict(depth=0, limits=[33, 37, .25])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        currents = dict(bool=False, coarsen=8)
+
+        # Update Dictionary with limits defined above
+        nola.update(lonlat=extent)
+        nola.update(salinity=salinity)
+        nola.update(temperature=sea_water_temperature)
+        nola.update(currents=currents)
+
+        # GOFS has sea surface height
+        if model == 'gofs':
+            nola.update(sea_surface_height=sea_surface_height)
+
     if 'nola' in regions:
         # Gulf of Mexico
         limits['Gulf of Mexico'] = dict()
         nola = limits['Gulf of Mexico']
 
         # Limits
-        extent = [-93, -87, 26, 31]
-        sea_water_temperature = [dict(depth=0, limits=[27.5, 32, .5])]
-        # salinity = [dict(depth=0, limits=[34, 37, .25])]
+        extent = [-94, -84, 25.5, 31]
+        sea_water_temperature = [dict(depth=0, limits=[27.5, 32, .5]), dict(depth=200, limits=[12, 24, .5])]
+        salinity = [dict(depth=0, limits=[33, 37, .25])]
         sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         currents = dict(bool=False, coarsen=8)
 
         # Update Dictionary with limits defined above
         nola.update(lonlat=extent)
-        # nola.update(salinity=salinity)
+        nola.update(salinity=salinity)
         nola.update(temperature=sea_water_temperature)
         nola.update(currents=currents)
 
@@ -287,3 +240,71 @@ def limits_regions(model=None, regions=None):
             wind.update(sea_surface_height=wind_sea_surface_height)
 
     return limits
+
+def transects():
+    # transect coordinates and variable limits
+    # mesoscale features (mostly brought in by altimetry)
+    transects = dict(
+        # grace_path_carib=dict(
+        #     xaxis='longitude',
+        #     region='Gulf of Mexico',
+        #     extent=[-86.76, 21.05, -71.75, 17.35],
+        #     limits=dict(
+        #         temperature=dict(
+        #             deep=np.arange(4, 34),
+        #             shallow=np.arange(10, 34),
+        #             isobath=[26]
+        #         ),
+        #         salinity=dict(
+        #             deep=np.arange(34.75, 37, 0.1),
+        #             shallow=np.arange(34.75, 37, 0.1)))
+        # ),
+        # grace_path_gom=dict(
+        #     xaxis='longitude',
+        #     region='Gulf of Mexico',
+        #     extent=[-97.5, 21, -90.45, 21],
+        #     limits=dict(
+        #         temperature=dict(
+        #             deep=np.arange(4, 34),
+        #             shallow=np.arange(10, 34),
+        #             isobath=[26]
+        #         ),
+        #         salinity=dict(
+        #             deep=np.arange(34.75, 37, 0.1),
+        #             shallow=np.arange(34.75, 37, 0.1)))
+        # ),
+        henri_path_mab_overview=dict(
+            xaxis='latitude',
+            region='Mid Atlantic Bight',
+            extent=[-71.5, 41.5, -71.5, 36.5],
+            limits=dict(
+                temperature=dict(
+                    deep=np.arange(4, 34),
+                    shallow=np.arange(10, 34),
+                    isobath=[15, 26]
+                ),
+                salinity=dict(
+                    deep=np.arange(32, 37, 0.25),
+                    shallow=np.arange(32, 37, 0.25)
+                )
+            )
+        ),
+        henri_path_mab_shelf=dict(
+            xaxis='latitude',
+            region='Mid Atlantic Bight',
+            extent=[-71.5, 41.5, -71.5, 40],
+            limits=dict(
+                temperature=dict(
+                    deep=np.arange(4, 34),
+                    shallow=np.arange(10, 34),
+                    isobath=[15, 26]
+                ),
+                salinity=dict(
+                    deep=np.arange(32, 35.6, 0.25),
+                    shallow=np.arange(32, 35.6, 0.25)
+                )
+            )
+        ),
+    )
+    return transects
+

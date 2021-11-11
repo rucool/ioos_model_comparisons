@@ -11,9 +11,9 @@ import pandas as pd
 import xarray as xr
 import datetime as dt
 import os
-import src.storms as storms
-import src.gliders as gld
-from src.gliders_plt import plot_transect, plot_transects
+import hurricanes.storms as storms
+import hurricanes.gliders as gld
+from hurricanes.gliders_plt import plot_transect, plot_transects
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 
@@ -107,11 +107,17 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
 
 
 if __name__ == '__main__':
-    glider_deployments = ['ru30-20210503T1929']
-    sdir = '/Users/garzio/Documents/rucool/hurricane_glider_project/gliders'
-    glider_t0 = dt.datetime(2021, 5, 4, 3, 0)  # False
-    glider_t1 = dt.datetime(2021, 5, 10, 0, 0)
-    y_limits = [-100, 0]  # None
-    c_limits = dict(temp=dict(shallow=np.arange(9, 15, .5)),
-                    salt=dict(shallow=np.arange(31.6, 36.4, .2)))
+    sdir = '/Users/mikesmith/Documents/'
+    # glider_deployments = ['ng645-20210613T0000']
+    # glider_t0 = dt.datetime(2021, 8, 28, 0, 0)  # False
+    # glider_t1 = dt.datetime(2021, 8, 31, 0, 0)
+    # y_limits = [100, 0]  # None
+    # c_limits = dict(temp=dict(shallow=np.arange(20, 30, 1)),
+    #                 salt=dict(shallow=np.arange(34, 37, .25)))
+    glider_deployments = ['ru33-20211001T1841']
+    glider_t0 = dt.datetime(2021, 10, 1, 0, 0)  # False
+    glider_t1 = dt.datetime(2021, 10, 11, 0, 0)
+    y_limits = [45, 0]  # None
+    c_limits = dict(temp=dict(shallow=np.arange(11, 22, 1)),
+                    salt=dict(shallow=np.arange(32, 34, .1)))
     main(glider_deployments, sdir, glider_t0, glider_t1, y_limits, c_limits)

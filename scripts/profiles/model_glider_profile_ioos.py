@@ -11,8 +11,8 @@ import xarray as xr
 import datetime as dt
 import os
 from matplotlib import pyplot as plt
-import src.storms as storms
-import src.gliders as gld
+import hurricanes.storms as storms
+import hurricanes.gliders as gld
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 
@@ -99,7 +99,7 @@ def main(gliders, save_dir, profile_t0, ylims, x_lims, gwh):
                     for pt in profiletimes:
                         # pt_idx = np.squeeze(np.argwhere(glider_ds.time.values == pt))
                         pt_gl = glider_ds[glider_ds['time'] == pt]
-                        pt_gl = pt_gl[pt_gl.pressure != 0.00]  # get rid of zeros
+                        # pt_gl = pt_gl[pt_gl.pressure != 0.00]  # get rid of zeros
                         x = pt_gl[pv]
                         y = pt_gl['depth']
                         xmask = ~np.isnan(x)  # get rid of nans so the lines are continuous
@@ -148,7 +148,7 @@ def main(gliders, save_dir, profile_t0, ylims, x_lims, gwh):
 
 if __name__ == '__main__':
     glider_deployments = ['maracoos_02-20210820T1546']
-    sdir = '/Users/garzio/Documents/rucool/hurricane_glider_project/gliders'
+    sdir = '/Users/garzio/Documents/'
     # plot_profile_time = [dt.datetime(2021, 5, 4, 12), dt.datetime(2021, 5, 7, 12), dt.datetime(2021, 5, 9, 18),
     #                      dt.datetime(2021, 5, 14, 6), dt.datetime(2021, 5, 16, 12), dt.datetime(2021, 5, 18, 0)]
     plot_profile_time = [dt.datetime(2021, 8, 26, 0)]

@@ -69,12 +69,12 @@ def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
     return df
 
 
-def active_gliders(bbox=None, time_start=None, time_end=None):
+def active_gliders(bbox=None, time_start=None, time_end=dt.date.today(), glider_id=None):
     bbox = bbox or [-100, -40, 18, 60]
-    time_end = time_end or dt.date.today()
     time_start = time_start or (time_end - dt.timedelta(days=1))
     t0 = time_start.strftime('%Y-%m-%dT%H:%M:%SZ')
     t1 = time_end.strftime('%Y-%m-%dT%H:%M:%SZ')
+    glider_id = glider_id or None
 
     e = ERDDAP(server='NGDAC')
 
@@ -82,16 +82,22 @@ def active_gliders(bbox=None, time_start=None, time_end=None):
     # datasets = pd.read_csv(e.get_search_url(response='csv', search_for='all'))
 
     # Search constraints
-    kw = {
-        'min_lon': bbox[0],
-        'max_lon': bbox[1],
-        'min_lat': bbox[2],
-        'max_lat': bbox[3],
-        'min_time': t0,
-        'max_time': t1,
-    }
+    kw = dict()
+    kw['min_time'] = t0
+    kw['max_time'] = t1
 
-    search_url = e.get_search_url(response='csv', **kw)
+    if bbox:
+        kw['min_lon'] = bbox[0]
+        kw['max_lon'] = bbox[1]
+        kw['min_lat'] = bbox[2]
+        kw['max_lat'] = bbox[3]
+
+    if glider_id:
+        search = glider_id
+    else:
+        search = None
+
+    search_url = e.get_search_url(search_for=search, response='csv', **kw)
 
     try:
         # Grab the results

@@ -3,9 +3,9 @@ import cartopy.crs as ccrs
 import numpy as np
 import pandas as pd
 import xarray as xr
-from src.limits import limits_regions
-from src.platforms import active_gliders, active_argo_floats
-from src.plotting import plot_model_region
+from hurricanes.limits import limits_regions
+from hurricanes.platforms import active_gliders, active_argo_floats
+from hurricanes.plotting import plot_model_region
 
 # Figures
 # Surface fields: sst (rtofs, gofs, copernicus), ssh (gofs, copernicus), sss (rtofs, gofs, copernicus)
@@ -22,8 +22,8 @@ url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/surface_maps/'
 bathymetry = '/home/hurricaneadm/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
 
-days = 0
-map_projection = ccrs.PlateCarree()
+days = 2
+projection = dict(map=ccrs.Mercator(), data=ccrs.PlateCarree())
 argo = True
 gliders = True
 dpi = 150
@@ -31,10 +31,11 @@ search_hours = 24*5
 
 regions = limits_regions('gofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
 
+
 # initialize keyword arguments for map plot
 kwargs = dict()
 kwargs['model'] = 'gofs'
-kwargs['transform'] = map_projection
+kwargs['transform'] = projection
 kwargs['save_dir'] = save_dir
 kwargs['dpi'] = dpi
 
@@ -77,8 +78,9 @@ with xr.open_dataset(url, drop_variables='tau') as gofs:
                     lon=slice(extent[0] - 1, extent[1] + 1),
                     lat=slice(extent[2] - 1, extent[3] + 1)
                 )
-
-            kwargs['transform'] = map_projection
+            
+            if region[1]['currents']['bool']:
+                    kwargs['currents'] = region[1]['currents']
 
             # subset dataset to the proper extents for each region
             sub = tds.sel(

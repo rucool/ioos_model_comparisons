@@ -9,8 +9,9 @@ List gliders available in the IOOS glider DAC for a specified time range and reg
 import os
 import datetime as dt
 import pandas as pd
-import src.gliders as gld
-from src.common import limits
+import hurricanes.gliders as gld
+from hurricanes import limits
+
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 

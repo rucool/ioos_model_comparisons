@@ -2,19 +2,19 @@ import cmocean
 import xarray as xr
 import datetime as dt
 import os
-from src.calc import calculate_transect, convert_ll_to_model_ll
-from src.plotting import plot_transects
-from src.common import rename_model_variables
-from src.storms import custom_transect
-from src.limits import transects, limits_regions
+from hurricanes.calc import calculate_transect, convert_ll_to_model_ll
+from hurricanes.plotting import plot_transects
+from hurricanes.common import rename_model_variables
+from hurricanes.storms import custom_transect
+from hurricanes.limits import transects, limits_regions
 import pandas as pd
 
-# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/'
-save_dir = '/www/web/rucool/hurricane/model_comparisons/transects/gofs/'
+save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/'
+# save_dir = '/www/web/rucool/hurricane/model_comparisons/transects/gofs/'
 model = 'gofs'
 transect_spacing = 0.05/20
 
-days = 3
+days = 1
 
 # Get today and yesterdays date
 today = dt.date.today()

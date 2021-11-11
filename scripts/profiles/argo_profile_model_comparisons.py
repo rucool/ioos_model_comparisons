@@ -1,27 +1,26 @@
 import xarray as xr
 import os
 from glob import glob
-from src.limits import limits_regions
+from hurricanes.limits import limits_regions
 import datetime as dt
 import numpy as np
-from src.platforms import active_argo_floats
+from hurricanes.platforms import active_argo_floats
 import pandas as pd
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import scipy.stats as stats
-from src.plotting import plot_region, region_subplot
+from hurricanes.plotting import plot_region, region_subplot
 import cmocean
 import matplotlib.patheffects as path_effects
 # from scripts.harvest.grab_cmems import copernicusmarine_datastore as grab_cmems
 
-url = '/home/hurricaneadm/data/rtofs/'
-save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to_model_comparisons/'
+# url = '/home/hurricaneadm/data/rtofs/'
+# save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to_model_comparisons/'
 
-# url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
-# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/argo_profile_model_comparisons/'
-user = 'user'
-pw = 'password'
-gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
+url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
+save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/argo_profile_model_comparisons/'
+# user = 'user'
+# pw = 'password'
 
 days = 8
 dpi = 150
@@ -41,8 +40,9 @@ rtofs_files = [glob(os.path.join(url, x.strftime('rtofs.%Y%m%d'), '*.nc')) for x
 rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
 rtofs = xr.open_mfdataset(rtofs_files)
 rtofs = rtofs.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth'})
+rtofs = rtofs.sel(depth=slice(0, 400))
 
-gofs = xr.open_dataset(gofs_url, drop_variables='tau')
+gofs = xr.open_dataset('https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0', drop_variables='tau')
 gofs = gofs.rename({'surf_el': 'sea_surface_height', 'water_temp': 'temperature', 'water_u': 'u', 'water_v': 'v'})
 
 now = pd.Timestamp.utcnow()
@@ -89,21 +89,6 @@ for region, values in regions.items():
                 **vargs
                 )
 
-    # fig = plt.figure(figsize=(22, 10))
-    # plt.rcParams['figure.constrained_layout.use'] = True
-    # grid = plt.GridSpec(20, 6, wspace=0.5, hspace=0.2, figure=fig)
-    # ax1 = plt.subplot(grid[1:24, :3], projection=ccrs.Mercator())
-    # ax2 = plt.subplot(grid[1:24, 3:], projection=ccrs.Mercator())
-    # ax3 = plt.subplot(grid[26:30, :])
-
-    # # fig, axs = plt.subplots(figsize=(20, 8))
-    # fig = plt.figure(figsize=(20, 16))
-    # # plt.rcParams['figure.constrained_layout.use'] = True
-    # grid = plt.GridSpec(10, 16, hspace=0, wspace=0.1, figure=fig)
-    # ax1 = plt.subplot(grid[0:4, 0:15], projection=ccrs.Mercator())
-    # ax2 = plt.subplot(grid[5:9, 0:15], projection=ccrs.Mercator())
-    # ax3 = plt.subplot(grid[:, 15])
-
     for float in floats.platform_number.unique():
 
         temp = floats[floats['platform_number'] == float]
@@ -139,11 +124,8 @@ for region, values in regions.items():
                 time=t_float,
                 X=rtofslonIndex,
                 Y=rtofslatIndex,
-                method='nearest'
-            )
-
-            rtofs_sub = rtofs_sub.sel(depth=slice(0, 400))
-            rtofs_sub = rtofs_sub.squeeze()
+                method='nearest',
+            ).squeeze()
             rtofs_sub.load()
 
             # cmems_sub = cmems.sel(longitude=x, latitude=y, time=t_float, method='nearest')
@@ -222,7 +204,7 @@ for region, values in regions.items():
             ax5.legend(h, l, ncol=1, loc='center', fontsize=12)
             ax5.set_axis_off()
 
-            from src.plotting import map_add_ticks
+            from hurricanes.plotting import map_add_ticks
             map_add_ticks(ax4, extent, fontsize=10)
 
             # t_str = t_float.strftime('%Y-%m-%d %H:%M:%SZ')

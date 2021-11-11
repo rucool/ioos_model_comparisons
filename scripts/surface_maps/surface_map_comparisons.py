@@ -2,11 +2,11 @@ import cartopy.crs as ccrs
 import xarray as xr
 import os
 from glob import glob
-from src.plotting import plot_model_region_comparison
-from src.limits import limits_regions
+from hurricanes.plotting import plot_model_region_comparison
+from hurricanes.limits import limits_regions
 import datetime as dt
 import numpy as np
-from src.platforms import active_gliders, active_argo_floats
+from hurricanes.platforms import active_gliders, active_argo_floats
 import pandas as pd
 
 # Realtime Server Inputs
@@ -19,8 +19,8 @@ bathymetry = '/home/hurricaneadm/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/surface_maps_comparison'
 # bathymetry = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
 
-days = 4
-map_projection = ccrs.PlateCarree()
+days = 0
+projection = dict(map=ccrs.Mercator(), data=ccrs.PlateCarree())
 argo = True
 gliders = True
 dpi = 150
@@ -28,11 +28,11 @@ search_hours = 24*5  #Hours back from timestamp to search for drifters/gliders
 
 gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 
-regions = limits_regions('rtofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
+regions = limits_regions('rtofs', ['carib'])
 
 # initialize keyword arguments for map plot
 kwargs = dict()
-kwargs['transform'] = map_projection
+kwargs['transform'] = projection
 kwargs['save_dir'] = save_dir
 kwargs['dpi'] = dpi
 
@@ -40,9 +40,10 @@ if bathymetry:
     bathy = xr.open_dataset(bathymetry)
 
 # Get today and yesterday dates
-today = dt.date.today()
+# today = dt.date.today()
+today = dt.date(2021, 8, 29)
 
-date_list = [dt.date.today() - dt.timedelta(days=x) for x in range(days+1)]
+date_list = [today - dt.timedelta(days=x) for x in range(days+1)]
 rtofs_files = [glob(os.path.join(url, x.strftime('rtofs.%Y%m%d'), '*.nc')) for x in date_list]
 rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
 

@@ -12,8 +12,8 @@ import os
 import glob
 import cartopy.crs as ccrs
 import datetime as dt
-import src.gliders as gld
-from src.gliders_plt import surface_map_glider_track
+import hurricanes.gliders as gld
+from hurricanes.gliders_plt import surface_map_glider_track
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 
@@ -98,14 +98,14 @@ def main(gliders, save_dir, bathymetry, m_t0, m_t1, g_t0, g_t1, lt, cgl):
 
 
 if __name__ == '__main__':
-    glider_deployments = ['ru30-20210503T1929']
-    sdir = '/Users/garzio/Documents/rucool/hurricane_glider_project/gliders'
-    bathy = '/Users/garzio/Documents/rucool/hurricane_glider_project/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
+    glider_deployments = ['ng645-20210613T0000']
+    sdir = '/Users/mikesmith/Documents/'
+    bathy = '../data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
     # bathy = False
-    model_t0 = dt.datetime(2021, 5, 10, 0, 0)  # False
+    model_t0 = dt.datetime(2021, 8, 28, 0, 0)  # False
     model_t1 = False
     glider_t0 = False  # dt.datetime(2021, 5, 4, 0, 0)
-    glider_t1 = dt.datetime(2021, 5, 10, 0, 0)
+    glider_t1 = dt.datetime(2021, 8, 30, 0, 0)
     line_transect = True  # True or False  # get a straight line transect, rather than a transect along the glider track
     curr_location = False  # indicate the current glider location with a triangle marker
     main(glider_deployments, sdir, bathy, model_t0, model_t1, glider_t0, glider_t1, line_transect, curr_location)

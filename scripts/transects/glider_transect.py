@@ -10,8 +10,8 @@ import numpy as np
 import pandas as pd
 import os
 import datetime as dt
-import src.gliders as gld
-from src.gliders_plt import plot_transect
+import hurricanes.gliders as gld
+from hurricanes.gliders_plt import plot_transect
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 
@@ -81,12 +81,13 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
 
 
 if __name__ == '__main__':
-    glider_deployments = ['ru30-20210503T1929']
-    sdir = '/Users/garzio/Documents/rucool/hurricane_glider_project/gliders'
-    glider_t0 = dt.datetime(2021, 5, 4, 3, 0)  # False
-    glider_t1 = dt.datetime(2021, 5, 10, 0, 0)
-    y_limits = [-100, 0]  # None
-    c_limits = dict(temp=dict(shallow=np.arange(9, 15, .5)),
-                    salt=dict(shallow=np.arange(31.6, 36.4, .2)))
+    glider_deployments = ['ru29-20210908T1943']
+    # glider_deployments = ['ru29-20210630T1343']
+    sdir = '/Users/mikesmith/Documents/'
+    glider_t0 = dt.datetime(2021, 6, 1, 0, 0)  # False
+    glider_t1 = dt.datetime(2021, 9, 25, 12, 0)
+    y_limits = [1000, 0]  # None
+    c_limits = dict(temp=dict(shallow=np.arange(4, 30, 1)),
+                    salt=dict(shallow=np.arange(34.8, 37.4, .2)))
     # c_limits = None
     main(glider_deployments, sdir, glider_t0, glider_t1, y_limits, c_limits)

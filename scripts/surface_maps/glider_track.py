@@ -9,8 +9,8 @@ import xarray as xr
 import pandas as pd
 import os
 import datetime as dt
-import src.gliders as gld
-from src.gliders_plt import glider_track
+import hurricanes.gliders as gld
+from hurricanes.src import glider_track
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 

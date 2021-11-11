@@ -2,11 +2,11 @@ import cartopy.crs as ccrs
 import xarray as xr
 import os
 from glob import glob
-from src.plotting import plot_model_region
-from src.limits import limits_regions
+from hurricanes.plotting import plot_model_region
+from hurricanes.limits import limits_regions
 import datetime as dt
 import numpy as np
-from src.platforms import active_gliders, active_argo_floats
+from hurricanes.platforms import active_gliders, active_argo_floats
 import pandas as pd
 
 # Figures
@@ -19,15 +19,15 @@ import pandas as pd
 # url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
 # save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/surface_maps/'
 # bathymetry = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
-#
+
 url = '/home/hurricaneadm/data/rtofs/'
 save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/surface_maps/'
 bathymetry = '/home/hurricaneadm/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
 
-days = 1
-map_projection = ccrs.PlateCarree()
-argo = False
-gliders = False
+days = 2
+projection = dict(map=ccrs.Mercator(), data=ccrs.PlateCarree())
+argo = True
+gliders = True
 dpi = 150
 search_hours = 24*5  #Hours back from timestamp to search for drifters/gliders=
 
@@ -36,7 +36,7 @@ regions = limits_regions('rtofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
 # initialize keyword arguments for map plot
 kwargs = dict()
 kwargs['model'] = 'rtofs'
-kwargs['transform'] = map_projection
+kwargs['transform'] = projection
 kwargs['save_dir'] = save_dir
 kwargs['dpi'] = dpi
 
@@ -44,7 +44,8 @@ if bathymetry:
     bathy = xr.open_dataset(bathymetry)
 
 # Get today and yesterday dates
-date_list = [dt.date.today() - dt.timedelta(days=x) for x in range(days)]
+today = dt.date.today()
+date_list = [today - dt.timedelta(days=x) for x in range(days)]
 rtofs_files = [glob(os.path.join(url, x.strftime('rtofs.%Y%m%d'), '*.nc')) for x in date_list]
 rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
 
@@ -76,7 +77,10 @@ for f in rtofs_files:
                         lat=slice(extent[2]-1, extent[3]+1)
                     )
 
-                kwargs['transform'] = map_projection
+                if region[1]['currents']['bool']:
+                    kwargs['currents'] = region[1]['currents']
+
+                # kwargs['transform'] = projection
 
                 extent = np.add(extent, [-1, 1, -1, 1]).tolist()
                 print(f'Region: {region[0]}, Extent: {extent}')

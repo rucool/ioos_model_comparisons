@@ -12,14 +12,16 @@ import xarray as xr
 import datetime as dt
 import os
 import glob
-import src.gliders as gld
-from src.gliders_plt import plot_transect, plot_transects
+import hurricanes.gliders as gld
+from hurricanes.plotting import plot_transect, plot_transects
+# from src.plotting import plot_transect, plot_transects
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 
 def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
-    url = '/Users/garzio/Documents/rucool/hurricane_glider_project/RTOFS/RTOFS_6hourly_North_Atlantic/'
+    # url = '/Users/garzio/Documents/rucool/hurricane_glider_project/RTOFS/RTOFS_6hourly_North_Atlantic/'
     # url = '/home/hurricaneadm/data/rtofs'  # on server
+    url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
 
     # initialize keyword arguments for glider functions
     gargs = dict()
@@ -98,7 +100,8 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         targs = {}
         targs['cmap'] = cmocean.cm.thermal
         targs['clab'] = 'Temperature ($^oC$)'
-        targs['title'] = f'RTOFS Temperature along {glider} track\nModel: {model_t0str} to {model_t1str}  ' \
+        targs['title'] = f'RTOFS Temperature along {glider} track\n'\
+                         f'Model: {model_t0str} to {model_t1str}\n'\
                          f'Glider: {gl_t0str} to {gl_t1str}'
         targs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_transect_temp-{gl_t0save}.png')
         targs['levels'] = color_lims['temp']
@@ -120,7 +123,8 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         sargs = {}
         sargs['cmap'] = cmocean.cm.haline
         sargs['clab'] = 'Salinity'
-        sargs['title'] = f'RTOFS Salinity along {glider} track\nModel: {model_t0str} to {model_t1str}  ' \
+        sargs['title'] = f'RTOFS Salinity along {glider} track\n' \
+                         f'Model: {model_t0str} to {model_t1str}\n' \
                          f'Glider: {gl_t0str} to {gl_t1str}'
         sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_transect_salt-{gl_t0save}.png')
         sargs['levels'] = color_lims['salt']
@@ -137,11 +141,21 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
 
 
 if __name__ == '__main__':
-    glider_deployments = ['ru30-20210503T1929']
-    sdir = '/Users/garzio/Documents/rucool/hurricane_glider_project/gliders'
-    glider_t0 = dt.datetime(2021, 5, 4, 3, 0)  # False
-    glider_t1 = dt.datetime(2021, 5, 10, 0, 0)
-    y_limits = [-100, 0]  # None
-    c_limits = dict(temp=dict(shallow=np.arange(9, 15, .5)),
-                    salt=dict(shallow=np.arange(31.6, 36.4, .2)))
+    sdir = '/Users/mikesmith/Documents/'
+    # glider_deployments = ['ng645-20210613T0000']
+    # glider_t0 = dt.datetime(2021, 8, 28, 0, 0)  # False
+    # glider_t1 = dt.datetime(2021, 8, 31, 0, 0)
+    # y_limits = [100, 0]  # None
+    # c_limits = dict(temp=dict(shallow=np.arange(20, 30, 1)),
+    #                 salt=dict(shallow=np.arange(34, 37, .25)))
+    # glider_deployments = ['ru29-20210908T1943']
+    glider_deployments = ['ru29-20210630T1343']
+    sdir = '/Users/mikesmith/Documents/'
+    glider_t0 = dt.datetime(2021, 6, 1, 0, 0)  # False
+    glider_t1 = dt.datetime(2021, 7, 10)
+    # glider_t1 = dt.datetime(2021, 9, 25, 12, 0)
+    y_limits = [1000, 0]  # None
+    c_limits = dict(temp=dict(shallow=np.arange(4, 30, 1)),
+                    salt=dict(shallow=np.arange(34.8, 37.4, .2)))
+    # c_limits = None
     main(glider_deployments, sdir, glider_t0, glider_t1, y_limits, c_limits)
