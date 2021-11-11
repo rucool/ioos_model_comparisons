@@ -14,11 +14,11 @@ import cmocean
 import matplotlib.patheffects as path_effects
 # from scripts.harvest.grab_cmems import copernicusmarine_datastore as grab_cmems
 
-# url = '/home/hurricaneadm/data/rtofs/'
-# save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to_model_comparisons/'
+url = '/home/hurricaneadm/data/rtofs/'
+save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to_model_comparisons/'
 
-url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
-save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/argo_profile_model_comparisons/'
+# url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
+# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/argo_profile_model_comparisons/'
 # user = 'user'
 # pw = 'password'
 
