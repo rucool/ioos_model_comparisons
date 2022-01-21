@@ -390,10 +390,10 @@ def plot_model_region(ds, region, t1,
     region_file_str = ('_').join(region_name.lower().split(' '))
     save_dir_region = os.path.join(save_dir, 'regions', region_file_str)
 
-    if not gliders:
+    if not isinstance(gliders, pd.DataFrame):
         gliders = pd.DataFrame()
     
-    if not argo:
+    if not isinstance(argo, pd.DataFrame):
         argo = pd.DataFrame()
 
     for k, v in limits.items():
