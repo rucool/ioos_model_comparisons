@@ -64,14 +64,20 @@ def calculate_transect(x1, y1, x2, y2, grid_spacing=None):
     try:
         # Slope
         m = (y1 - y2) / (x1 - x2)
-        # Intercept
-        b = y1 - m * x1
-        X = np.arange(x1, x2, grid_spacing)
-        Y = b + m * X
+        if np.abs(m) == 0:
+            # Horizontal (W->E) transect
+            X = np.arange(x2, x1, grid_spacing)
+            Y = np.full(X.shape, y1)
+        else:
+            # Intercept
+            b = y1 - m * x1
+            X = np.arange(x1, x2, grid_spacing)
+            Y = b + m * X
     except ZeroDivisionError:
+        # Vertical (S->N) transect
         Y = np.arange(y2, y1, grid_spacing)
         X = np.full(Y.shape, x1)
-
+    
     dist = np.sqrt((X - x1) ** 2 + (Y - y1) ** 2) * 111  # approx along transect distance in km
     return X, Y, dist
 

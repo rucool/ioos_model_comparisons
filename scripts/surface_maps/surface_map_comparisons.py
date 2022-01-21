@@ -28,7 +28,7 @@ search_hours = 24*5  #Hours back from timestamp to search for drifters/gliders
 
 gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 
-regions = limits_regions('rtofs', ['carib'])
+regions = limits_regions('gofs', ['usvi', 'mab', 'gom', 'carib', 'wind', 'sab'])
 
 # initialize keyword arguments for map plot
 kwargs = dict()
@@ -40,8 +40,7 @@ if bathymetry:
     bathy = xr.open_dataset(bathymetry)
 
 # Get today and yesterday dates
-# today = dt.date.today()
-today = dt.date(2021, 8, 29)
+today = dt.date.today()
 
 date_list = [today - dt.timedelta(days=x) for x in range(days+1)]
 rtofs_files = [glob(os.path.join(url, x.strftime('rtofs.%Y%m%d'), '*.nc')) for x in date_list]
@@ -80,8 +79,12 @@ else:
 for region in regions.items():
     extent = region[1]['lonlat']
     print(f'Region: {region[0]}, Extent: {extent}')
+    kwargs['colorbar'] = True
 
-    if bathy:
+    if region[1]['currents']['bool']:
+        kwargs['currents'] = region[1]['currents']
+
+    if bathymetry:
         kwargs['bathy'] = bathy.sel(
             lon=slice(extent[0] - 1, extent[1] + 1),
             lat=slice(extent[2] - 1, extent[3] + 1)
@@ -104,7 +107,8 @@ for region in regions.items():
     gofs_sub['lon'] = gofs_sub['lon'] - 360  # Convert model lon to glider lon
 
     for t in ranges:
-        search_window_t0 = (t - dt.timedelta(hours=search_hours)).strftime('%Y-%m-%d %H:%M:%S');
+        search_window_t0 = (t - dt.timedelta(hours=search_hours)).strftime('%Y-%m-%d %H:%M:%S')
+        kwargs['t0'] = search_window_t0
         search_window_t1 = t.strftime('%Y-%m-%d %H:%M:%S')
         if not argo_data.empty:
             argo_lon = argo_data['longitude (degrees_east)']
