@@ -9,7 +9,7 @@ def limits_regions(model=None, regions=None):
     """
 
     model = model or 'rtofs'
-    regions = regions or ['gom', 'sab', 'mab', 'carib', 'wind', 'nola', 'ng645', 'ng738']
+    regions = regions or ['gom', 'sab', 'mab', 'carib', 'wind', 'nola', 'ng645', 'ng738', 'usvi', 'yucatan']
 
     # Create new dictionary for selected model. Needs to be done because the variable names are different in each model
     # initialize empty dictionary for limits
@@ -19,10 +19,28 @@ def limits_regions(model=None, regions=None):
     # To add different depths for each variable, append to the specific variable list the following format:
     # dict(depth=n, limits=[min, max, stride])
 
+    if 'yucatan' in regions:
+        alias = limits['Yucatan'] = dict()
+
+        # Limits
+        extent = [-90, -82, 18, 24]
+        sea_water_temperature = [dict(depth=0, limits=[24.25, 28, .25]), dict(depth=200, limits=[14, 23, .5])]
+        salinity = [dict(depth=0, limits=[35.7, 36.2, .05])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        currents = dict(bool=True, coarsen=2)
+
+        # Update Dictionary with limits defined above
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity)
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
+
+        # GOFS has sea surface height
+        if model == 'gofs':
+            alias.update(sea_surface_height=sea_surface_height)
+
     if 'north_atlantic' in regions:
-        # Gulf of Mexico
-        limits['North Atlantic'] = dict()
-        nola = limits['North Atlantic']
+        alias = limits['North Atlantic'] = dict()
 
         # Limits
         extent = [-80, 0, 0, 50]
@@ -32,19 +50,17 @@ def limits_regions(model=None, regions=None):
         currents = dict(bool=False, coarsen=8)
 
         # Update Dictionary with limits defined above
-        nola.update(lonlat=extent)
-        nola.update(salinity=salinity)
-        nola.update(temperature=sea_water_temperature)
-        nola.update(currents=currents)
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity) 
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
-            nola.update(sea_surface_height=sea_surface_height)
+            alias.update(sea_surface_height=sea_surface_height)
 
     if 'nola' in regions:
-        # Gulf of Mexico
-        limits['Gulf of Mexico'] = dict()
-        nola = limits['Gulf of Mexico']
+        alias = limits['Gulf of Mexico/New Orleans'] = dict()
 
         # Limits
         extent = [-94, -84, 25.5, 31]
@@ -54,19 +70,17 @@ def limits_regions(model=None, regions=None):
         currents = dict(bool=False, coarsen=8)
 
         # Update Dictionary with limits defined above
-        nola.update(lonlat=extent)
-        nola.update(salinity=salinity)
-        nola.update(temperature=sea_water_temperature)
-        nola.update(currents=currents)
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity)
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
-            nola.update(sea_surface_height=sea_surface_height)
+            alias.update(sea_surface_height=sea_surface_height)
 
     if 'usvi' in regions:
-        # Gulf of Mexico
-        limits['Virgin Islands'] = dict()
-        vi = limits['Virgin Islands']
+        alias = limits['Virgin Islands'] = dict()
 
         # Limits
         extent = [-66.26, -62.61, 16.5, 19]
@@ -84,19 +98,17 @@ def limits_regions(model=None, regions=None):
                         )
 
         # Update Dictionary with limits defined above
-        vi.update(lonlat=extent)
-        vi.update(salinity=salinity)
-        vi.update(temperature=sea_water_temperature)
-        vi.update(currents=currents)
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity)
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
-            vi.update(sea_surface_height=sea_surface_height)
+            alias.update(sea_surface_height=sea_surface_height)
 
     if 'west_indies' in regions:
-        # Gulf of Mexico
-        limits['West Indies'] = dict()
-        wi = limits['West Indies']
+        alias = limits['West Indies'] = dict()
 
         # Limits
         extent = [-67, -61, 14, 19]
@@ -114,91 +126,84 @@ def limits_regions(model=None, regions=None):
                         )
 
         # Update Dictionary with limits defined above
-        wi.update(lonlat=extent)
-        wi.update(salinity=salinity)
-        wi.update(temperature=sea_water_temperature)
-        wi.update(currents=currents)
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity)
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
-            nola.update(sea_surface_height=sea_surface_height)
+            alias.update(sea_surface_height=sea_surface_height)
 
     if 'gom' in regions:
-        # Gulf of Mexico
-        limits['Gulf of Mexico'] = dict()
-        gom = limits['Gulf of Mexico']
+        alias = limits['Gulf of Mexico'] = dict()
 
         # Limits
-        gom_extent = [-100, -80, 18, 31]
-        gom_sea_water_temperature = [dict(depth=0, limits=[26, 31, .5]), dict(depth=200, limits=[12, 24, .5])]
-        gom_salinity = [dict(depth=0, limits=[34, 37, .25])]
-        gom_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
-        gom_currents = dict(bool=False, coarsen=8)
+        extent = [-100, -80, 18, 31]
+        sea_water_temperature = [dict(depth=0, limits=[26, 31, .5]), dict(depth=200, limits=[12, 24, .5])]
+        salinity = [dict(depth=0, limits=[34, 37, .25])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        currents = dict(bool=False, coarsen=8)
 
         # Update Dictionary with limits defined above
-        gom.update(lonlat=gom_extent)
-        gom.update(salinity=gom_salinity)
-        gom.update(temperature=gom_sea_water_temperature)
-        gom.update(currents=gom_currents)
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity)
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
-            gom.update(sea_surface_height=gom_sea_surface_height)
+            alias.update(sea_surface_height=sea_surface_height)
 
     if 'sab' in regions:
-        # South Atlantic Bight
-        limits['South Atlantic Bight'] = dict()
-        sab = limits['South Atlantic Bight']
+        alias = limits['South Atlantic Bight'] = dict()
 
         # Limits
-        sab_extent = [-82, -64, 25, 36]
-        sab_sea_water_temperature = [dict(depth=0, limits=[24, 30, .5])]
-        sab_salinity = [dict(depth=0, limits=[36, 37, .1])]
-        sab_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
-        sab_currents = dict(bool=True, coarsen=7)
+        extent = [-82, -64, 25, 36]
+        sea_water_temperature = [dict(depth=0, limits=[24, 30, .5])]
+        salinity = [dict(depth=0, limits=[36, 37, .1])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        currents = dict(bool=True, coarsen=7)
 
         # Update Dictionary with limits defined above
-        sab.update(lonlat=sab_extent)
-        sab.update(salinity=sab_salinity)
-        sab.update(temperature=sab_sea_water_temperature)
-        sab.update(currents=sab_currents)
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity)
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
-            sab.update(sea_surface_height=sab_sea_surface_height)
+            alias.update(sea_surface_height=sea_surface_height)
 
     if 'mab' in regions:
-        # Mid Atlantic Bight
-        limits['Mid Atlantic Bight'] = dict()
-        mab = limits['Mid Atlantic Bight']
+        alias = limits['Mid Atlantic Bight'] = dict()
 
         # Limits
-        mab_extent = [-77, -67, 35, 43]
-        mab_sea_water_temperature = [dict(depth=0, limits=[15, 29, .5]), dict(depth=100, limits=[10, 20, .5])]
-        mab_salinity = [dict(depth=0, limits=[31, 37, .25])]
-        mab_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
-        mab_currents = dict(bool=True, coarsen=6)
+        extent = [-77, -67, 35, 43]
+        sea_water_temperature = [dict(depth=0, limits=[15, 29, .5]), dict(depth=100, limits=[10, 20, .5])]
+        salinity = [dict(depth=0, limits=[31, 37, .25])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        currents = dict(bool=True, coarsen=6)
 
         # Update Dictionary with limits defined above
-        mab.update(lonlat=mab_extent)
-        mab.update(salinity=mab_salinity)
-        mab.update(temperature=mab_sea_water_temperature)
-        mab.update(currents=mab_currents)
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity)
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
-            mab.update(sea_surface_height=mab_sea_surface_height)
+            alias.update(sea_surface_height=sea_surface_height)
 
     if 'carib' in regions:
         # Caribbean
-        limits['Caribbean'] = dict()
-        carib = limits['Caribbean']
+        alias = limits['Caribbean'] = dict()
 
         # Limits
-        carib_extent = [-89, -55, 7, 23]
-        carib_sea_water_temperature = [dict(depth=0, limits=[26, 31.5, .5])]
-        carib_salinity = [dict(depth=0, limits=[34.6, 37, .1])]
-        carib_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        extent = [-89, -55, 7, 23]
+        sea_water_temperature = [dict(depth=0, limits=[26, 31.5, .5])]
+        salinity = [dict(depth=0, limits=[34.6, 37, .1])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
         currents = dict(bool=True,
                         coarsen=12,
                         scale=60,
@@ -208,41 +213,38 @@ def limits_regions(model=None, regions=None):
                         )
 
         # Update Dictionary with limits defined above
-        carib.update(lonlat=carib_extent)
-        carib.update(salinity=carib_salinity)
-        carib.update(temperature=carib_sea_water_temperature)
-        carib.update(currents=currents)
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity)
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
-            carib.update(sea_surface_height=carib_sea_surface_height)
+            alias.update(sea_surface_height=sea_surface_height)
 
     if 'wind' in regions:
         # Windward Islands
-        limits['Windward Islands'] = dict()
-        wind = limits['Windward Islands']
+        alias = limits['Windward Islands'] = dict()
 
         # Limits
-        wind_extent = [-68.2, -56.4, 9.25, 19.75]
-        wind_sea_water_temperature = [dict(depth=0, limits=[26, 30, .5])]
-        wind_salinity = [dict(depth=0, limits=[34.6, 37, .1])]
-        wind_sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
-        wind_currents = dict(bool=True, coarsen=6)
+        extent = [-68.2, -56.4, 9.25, 19.75]
+        sea_water_temperature = [dict(depth=0, limits=[26, 30, .5])]
+        salinity = [dict(depth=0, limits=[34.6, 37, .1])]
+        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
+        currents = dict(bool=True, coarsen=6)
 
         # Update Dictionary with limits defined above
-        wind.update(lonlat=wind_extent)
-        wind.update(salinity=wind_salinity)
-        wind.update(temperature=wind_sea_water_temperature)
-        wind.update(currents=wind_currents)
+        alias.update(lonlat=extent)
+        alias.update(salinity=salinity)
+        alias.update(temperature=sea_water_temperature)
+        alias.update(currents=currents)
 
         # GOFS has sea surface height
         if model == 'gofs':
-            wind.update(sea_surface_height=wind_sea_surface_height)
+            alias.update(sea_surface_height=sea_surface_height)
 
     if 'ng645' in regions:
-        # ng645 Islands
-        limits['ng645'] = dict()
-        alias = limits['ng645']
+        alias = limits['ng645'] = dict()
 
         # Limits
         extent = [-83.5, -81.5, 23.1, 25]
@@ -264,7 +266,6 @@ def limits_regions(model=None, regions=None):
             alias.update(sea_surface_height=sea_surface_height)
     
     if 'ng738' in regions:
-        # ng645 Islands
         alias = limits['ng738'] = dict()
 
         # Limits
@@ -291,6 +292,54 @@ def transects():
     # transect coordinates and variable limits
     # mesoscale features (mostly brought in by altimetry)
     transects = dict(
+        virgin_islands_1=dict(
+            xaxis='latitude',
+            region='Virgin Islands',
+            extent=[-64-45/60, 18+15/60, -64-45/60, 17+45/60],
+            limits=dict(
+                temperature=dict(
+                    deep=np.arange(13, 27.5),
+                    shallow=np.arange(13, 27.5),
+                    isobath=[26]
+                ),
+                salinity=dict(
+                    deep=np.arange(35.5, 36.2, 0.1),
+                    shallow=np.arange(35.5, 36.2, 0.1)
+                    ),
+                u=dict(
+                    deep=np.arange(-.3, .4, 0.05),
+                    shallow=np.arange(-3, .4, 0.05)
+                    ),
+                v=dict(
+                    deep=np.arange(-.3, .4, 0.05),
+                    shallow=np.arange(-.3, .4, 0.05)
+                    )
+                )
+        ),
+        # virgin_islands_2=dict(
+        #     xaxis='latitude',
+        #     region='Virgin Islands',
+        #     extent=[-64-15/60, 18+15/60, -64-15/60, 17+45/60],
+        #     limits=dict(
+        #         temperature=dict(
+        #             deep=np.arange(13, 27.5),
+        #             shallow=np.arange(13, 27.5),
+        #             isobath=[26]
+        #         ),
+        #         salinity=dict(
+        #             deep=np.arange(35.5, 36.2, 0.1),
+        #             shallow=np.arange(35.5, 36.2, 0.1)
+        #             ),
+        #         u=dict(
+        #             deep=np.arange(-.3, .3, 0.1),
+        #             shallow=np.arange(-3, .3, 0.1)
+        #             ),
+        #         v=dict(
+        #             deep=np.arange(-3, .3, 0.1),
+        #             shallow=np.arange(-3, .3, 0.1)
+        #             )
+        #         )
+        # ),
         # ng645=dict(
         #     xaxis='latitude',
         #     region='ng645',
@@ -339,30 +388,30 @@ def transects():
         #             )
         #         )
         # ),
-        ng738_sargasso_northsouth=dict(
-            xaxis='latitude',
-            region='ng738',
-            extent=[-70-15/60, 36+30/60, -70-15/60, 34+30/60],
-            limits=dict(
-                temperature=dict(
-                    deep=np.arange(13, 23),
-                    shallow=np.arange(13, 23),
-                    isobath=[26]
-                ),
-                salinity=dict(
-                    deep=np.arange(36, 36.6, 0.1),
-                    shallow=np.arange(36, 36.6, 0.1)
-                    ),
-                u=dict(
-                    deep=np.arange(-1, 1.1, 0.1),
-                    shallow=np.arange(-1, 1.1, 0.1)
-                    ),
-                v=dict(
-                    deep=np.arange(-1, 1.1, 0.1),
-                    shallow=np.arange(-1, 1.1, 0.1)
-                    )
-                )
-        ),
+        # ng738_sargasso_northsouth=dict(
+        #     xaxis='latitude',
+        #     region='ng738',
+        #     extent=[-70-15/60, 36+30/60, -70-15/60, 34+30/60],
+        #     limits=dict(
+        #         temperature=dict(
+        #             deep=np.arange(13, 23),
+        #             shallow=np.arange(13, 23),
+        #             isobath=[26]
+        #         ),
+        #         salinity=dict(
+        #             deep=np.arange(36, 36.6, 0.1),
+        #             shallow=np.arange(36, 36.6, 0.1)
+        #             ),
+        #         u=dict(
+        #             deep=np.arange(-1, 1.1, 0.1),
+        #             shallow=np.arange(-1, 1.1, 0.1)
+        #             ),
+        #         v=dict(
+        #             deep=np.arange(-1, 1.1, 0.1),
+        #             shallow=np.arange(-1, 1.1, 0.1)
+        #             )
+        #         )
+        # ),
         # grace_path_carib=dict(
         #     xaxis='longitude',
         #     region='Gulf of Mexico',
