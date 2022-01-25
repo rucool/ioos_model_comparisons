@@ -29,7 +29,7 @@ gliders = True
 dpi = 150
 search_hours = 24*5
 
-regions = limits_regions('gofs', ['usvi', 'mab', 'gom', 'carib', 'wind', 'sab'])
+regions = limits_regions('gofs', ['yucatan', 'usvi', 'mab', 'gom', 'carib', 'wind', 'sab'])
 
 # initialize keyword arguments for map plot
 kwargs = dict()

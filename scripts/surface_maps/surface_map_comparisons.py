@@ -28,7 +28,7 @@ search_hours = 24*5  #Hours back from timestamp to search for drifters/gliders
 
 gofs_url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 
-regions = limits_regions('gofs', ['usvi', 'mab', 'gom', 'carib', 'wind', 'sab'])
+regions = limits_regions('gofs', ['yucatan', 'usvi', 'mab', 'gom', 'carib', 'wind', 'sab'])
 
 # initialize keyword arguments for map plot
 kwargs = dict()

@@ -31,7 +31,8 @@ gliders = True
 dpi = 150
 search_hours = 24*5  #Hours back from timestamp to search for drifters/gliders=
 
-regions = limits_regions('rtofs', ['usvi', 'mab', 'gom', 'carib', 'wind', 'sab'])
+regions = limits_regions('rtofs', ['yucatan', 'usvi', 'mab', 'gom', 'carib', 'wind', 'sab'])
+
 
 # initialize keyword arguments for map plot
 kwargs = dict()
