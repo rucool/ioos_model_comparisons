@@ -1,21 +1,20 @@
-name: hurricane
+name: hurricanes
 channels:
   - conda-forge
   - defaults
 dependencies:
+  - python=3.10
   - xarray
   - netcdf4
   - beautifulsoup4
   - cmocean
   - erddapy
-  - python=3.7
   - cartopy
   - matplotlib
   - dask
-  - dash
   - pip
   - ipython
-  - tqdm
   - oceans
-  - motuclient
   - geopandas
+  - bottleneck
+  - lxml
