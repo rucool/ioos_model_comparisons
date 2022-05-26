@@ -12,7 +12,7 @@ import scipy.stats as stats
 from hurricanes.plotting import plot_region, region_subplot
 import cmocean
 import matplotlib.patheffects as path_effects
-# from scripts.harvest.grab_cmems import copernicusmarine_datastore as grab_cmems
+from scripts.harvest.grab_cmems import copernicusmarine_datastore as grab_cmems
 
 url = '/home/hurricaneadm/data/rtofs/'
 save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to_model_comparisons/'

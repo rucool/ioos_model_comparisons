@@ -7,7 +7,7 @@ Wrapper script for model-glider comparisons: glider track, surface maps, and tra
 """
 import datetime as dt
 import numpy as np
-import scripts.surface_maps as surface_maps
+import scripts.models as models
 import scripts.transects as transects
 
 glider_deployments = ['ru30-20210503T1929']
@@ -27,12 +27,12 @@ c_limits = dict(temp=dict(shallow=np.arange(9, 16, .5)),
 # c_limits = None
 
 # make a map of the glider track
-surface_maps.glider_track.main(glider_deployments, sdir, bathy, land_color, glider_t0, glider_t1, curr_location)
+models.glider_track.main(glider_deployments, sdir, bathy, land_color, glider_t0, glider_t1, curr_location)
 
 # create surface maps of GOFS and RTOFS temperature and salinity overlaid with the glider track and optional transect
-surface_maps.gofs_glider_surface_maps.main(glider_deployments, sdir, bathy, model_t0, model_t1, glider_t0, glider_t1,
+models.gofs_glider_surface_maps.main(glider_deployments, sdir, bathy, model_t0, model_t1, glider_t0, glider_t1,
                                            line_transect, curr_location)
-surface_maps.rtofs_glider_surface_maps.main(glider_deployments, sdir, bathy, model_t0, model_t1, glider_t0, glider_t1,
+models.rtofs_glider_surface_maps.main(glider_deployments, sdir, bathy, model_t0, model_t1, glider_t0, glider_t1,
                                             line_transect, curr_location)
 
 # create transects of glider, GOFS, and RTOFS temperature and salinity

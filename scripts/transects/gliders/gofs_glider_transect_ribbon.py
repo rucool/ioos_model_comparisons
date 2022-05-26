@@ -108,16 +108,16 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
 
 if __name__ == '__main__':
     sdir = '/Users/mikesmith/Documents/'
-    # glider_deployments = ['ng645-20210613T0000']
-    # glider_t0 = dt.datetime(2021, 8, 28, 0, 0)  # False
-    # glider_t1 = dt.datetime(2021, 8, 31, 0, 0)
-    # y_limits = [100, 0]  # None
-    # c_limits = dict(temp=dict(shallow=np.arange(20, 30, 1)),
-    #                 salt=dict(shallow=np.arange(34, 37, .25)))
-    glider_deployments = ['ru33-20211001T1841']
-    glider_t0 = dt.datetime(2021, 10, 1, 0, 0)  # False
-    glider_t1 = dt.datetime(2021, 10, 11, 0, 0)
-    y_limits = [45, 0]  # None
-    c_limits = dict(temp=dict(shallow=np.arange(11, 22, 1)),
-                    salt=dict(shallow=np.arange(32, 34, .1)))
+    glider_deployments = ['ng645-20210613T0000']
+    # glider_t1 = dt.datetime.utcnow()
+    # glider_t0 = glider_t1 - dt.timedelta(days=5)  # False
+    y_limits = [100, 0]  # None
+    c_limits = dict(temp=dict(shallow=np.arange(20, 30, 1)),
+                    salt=dict(shallow=np.arange(34, 37, .25)))
+    # glider_deployments = ['maracoos_02-20210716T1814']
+    glider_t0 = dt.datetime(2021, 8, 28, 0, 0)  # False
+    glider_t1 = dt.datetime(2021, 8, 31, 0, 0)
+    # y_limits = [45, 0]  # None
+    # c_limits = dict(temp=dict(shallow=np.arange(4, 28, 1)),
+                    # salt=dict(shallow=np.arange(30, 34.5, .1)))
     main(glider_deployments, sdir, glider_t0, glider_t1, y_limits, c_limits)

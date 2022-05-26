@@ -1,5 +1,6 @@
 import os
 from glob import glob
+from unicodedata import name
 import geopandas
 import pandas as pd
 import lxml.html
@@ -62,10 +63,28 @@ def progress_hook(out):
 
     return it
 
-
 code = "al092021"
-extent = [-93, -87, 26, 31]
-projection = ccrs.PlateCarree()
+name = 'Ida'
+t0 = pd.Timestamp(2021, 8, 28, 0, 0, 0)
+t1 = pd.Timestamp(2021, 8, 31)
+
+# code = "al092020"
+# name = 'Isaias'
+# t0 = pd.Timestamp(2020, 8, 3, 0, 0, 0)
+# t1 = pd.Timestamp(2020, 8, 5)
+
+# code = "al092011"
+# name = 'Irene'
+# t0 = pd.Timestamp(2011, 8, 27, 0, 0, 0)
+# t1 = pd.Timestamp(2011, 8, 29)
+
+# code = "al182012"
+# name = 'Sandy'
+# t0 = pd.Timestamp(2012, 10, 29, 0, 0, 0)
+# t1 = pd.Timestamp(2012, 11, 5)
+
+extent = [-80, -60, 32, 45]
+projection = ccrs.Mercator()
 
 sos_name = "waves"
 
@@ -85,22 +104,33 @@ base = os.path.abspath(os.path.join(os.path.curdir, "data", hurricane))
 if not os.path.exists(base):
     os.makedirs(base)
 
-# for fname in fnames:
-#     url = "{}/{}".format(nhc, fname)
-#     path = os.path.join(base, fname)
-#     download(url, path)
+for fname in fnames:
+    url = "{}/{}".format(nhc, fname)
+    path = os.path.join(base, fname)
+    download(url, path)
 
 cones, points = [], []
 for fname in sorted(glob(os.path.join(base, "{}_*.zip".format(hurricane)))):
     number = os.path.splitext(os.path.split(fname)[-1])[0].split("_")[-1]
-    pgn = geopandas.read_file(
+    try:
+        pgn = geopandas.read_file(
+            "/{}.{}_5day_pgn.shp".format(code, number), vfs="zip://{}".format(fname)
+        )
+    except:
+        pgn = geopandas.read_file(
         "/{}-{}_5day_pgn.shp".format(code, number), vfs="zip://{}".format(fname)
     )
+
     cones.append(pgn)
 
-    pts = geopandas.read_file(
-        "/{}-{}_5day_pts.shp".format(code, number), vfs="zip://{}".format(fname)
-    )
+    try:
+        pts = geopandas.read_file(
+            "/{}.{}_5day_pts.shp".format(code, number), vfs="zip://{}".format(fname)
+        )
+    except:
+        pts = geopandas.read_file(
+            "/{}-{}_5day_pts.shp".format(code, number), vfs="zip://{}".format(fname)
+        )
     # Only the first "obsevartion."
     points.append(pts.iloc[0])
 
@@ -128,6 +158,7 @@ time_convert = []
 lat = []
 lon = []
 strength = []
+max_wind = []
 
 fig, ax = plt.subplots(
                 figsize=(11, 8),
@@ -144,31 +175,35 @@ for point in points:
     elif 'EDT' in point['FLDATELBL']:
         tdt = parser.parse(point['FLDATELBL'].replace('EDT', '-04:00'))
         cdt = tdt.astimezone(timezone('UTC'))
+    elif 'AST' in point['FLDATELBL']:
+        tdt = parser.parse(point['FLDATELBL'].replace('AST', '-04:00'))
+        cdt = tdt.astimezone(timezone('UTC'))
 
     time_orig.append(tdt)
     time_convert.append(cdt)
     strength.append(point["TCDVLP"])
     lat.append(point["LAT"])
     lon.append(point["LON"])
-    plt.plot(point['LON'], point["LAT"], color=colors[point["TCDVLP"]], transform=projection, zorder=20)
+    max_wind.append(point['MAXWIND'])
+    plt.plot(point['LON'], point["LAT"], color=colors[point["TCDVLP"]], transform=ccrs.PlateCarree(), zorder=20)
 
-test = pd.DataFrame({'time_orig': time_orig, 'time_convert': time_convert, 'lon': lon, 'lat': lat, 'strength': strength})
+test = pd.DataFrame({'time_orig': time_orig, 'time_convert': time_convert, 'lon': lon, 'lat': lat, 'strength': strength, 'intensity': max_wind})
 # fig, ax = plt.subplots()
-t0 = pd.Timestamp(2021, 8, 28, 18, 0, 0)
-t1 = pd.Timestamp(2021, 8, 30)
-gliders = active_gliders(extent, t0, t1)
 
-ax.plot(test.lon, test.lat, 'k-', linewidth=1, transform=projection, zorder=20)
-ax.scatter(test.lon, test.lat, c=test['strength'].map(colors), s=test['strength'].map(size)*4, transform=projection, zorder=20)
+
+ax.plot(test.lon, test.lat, 'k-', linewidth=1, transform=ccrs.PlateCarree(), zorder=20)
+ax.scatter(test.lon, test.lat, c=test['strength'].map(colors), s=test['strength'].map(size)*4, transform=ccrs.PlateCarree(), zorder=20)
 
 test.set_index('time_convert', inplace=True)
 test = test[t0:t1]
 test.reset_index(inplace=True)
 
-for t in test.iterrows():
-    ax.text(t[1].lon-2, t[1].lat-.05, t[1].time_convert.strftime('%Y-%m-%dT%H:%M:%SZ'), fontsize=10, fontweight='bold', transform=projection, zorder=20)
+# for t in test.iterrows():
+    # ax.text(t[1].lon-2, t[1].lat-.05, t[1].time_convert.strftime('%Y-%m-%dT%H:%M:%SZ'), fontsize=10, fontweight='bold', transform=projection, zorder=20)
 
-map_add_gliders(ax, gliders, transform=projection)
+# gliders = active_gliders(extent, t0, t1)
+# map_add_gliders(ax, gliders, transform=projection)
+
 map_add_legend(ax)
 
 # Plot title
@@ -176,14 +211,30 @@ map_add_legend(ax)
 # map_add_bathymetry(ax, bathy, transform)
 map_add_ticks(ax, extent)
 
-for cone in cones:
-    ax.add_geometries(cone.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='k')
+# for cone in cones:
+    # ax.add_geometries(cone.geometry, crs=ccrs.PlateCarree(), facecolor='none', edgecolor='k')
 # from matplotlib.path import Path
 
 # Path.clip_to_bbox(extent)
 ax.set_xlabel('Longitude', fontsize=14)
 ax.set_ylabel('Latitude', fontsize=14)
 
-ax.set_title('Hurricane Ida Path\n2021-08-27 to 2021-08-30', fontsize=18, fontweight='bold')
-plt.savefig('/Users/mikesmith/Documents/ida-path.png', bbox_inches='tight', pad_inches=0.1, dpi=300)
+ax.set_title(f'Hurricane {name} Path\n {t0.strftime("%Y-%m-%d")} to {t1.strftime("%Y-%m-%d")}', fontsize=18, fontweight='bold')
+plt.savefig(f'/Users/mikesmith/Documents/{name}-path.png', bbox_inches='tight', pad_inches=0.1, dpi=300)
 # plt.show()
+plt.close()
+
+
+
+fig, ax = plt.subplots(
+                figsize=(10, 4),
+            )
+
+plt.plot(time_convert, max_wind, 'k-o')
+ax.set_title(f'Hurricane {name} - Wind Intensities\n {t0.strftime("%Y-%m-%d")} to {t1.strftime("%Y-%m-%d")}', fontsize=18, fontweight='bold')
+ax.set_xlabel('Date/Time (GMT)', fontsize=14)
+ax.set_ylabel('Max Wind', fontsize=14)
+ax.grid()
+plt.savefig(f'/Users/mikesmith/Documents/{name}-intensities.png', bbox_inches='tight', pad_inches=0.1, dpi=300)
+plt.close()
+

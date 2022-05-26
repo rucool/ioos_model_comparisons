@@ -13,7 +13,7 @@ import datetime as dt
 import os
 import glob
 import hurricanes.gliders as gld
-from hurricanes.plotting import plot_transect, plot_transects
+from hurricanes.gliders_plt import plot_transect, plot_transects
 # from src.plotting import plot_transect, plot_transects
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
@@ -42,11 +42,12 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
 
         # Subset time range (add a little extra to the glider time range)
         mt0 = gl_t0 - dt.timedelta(hours=2)
-        mt1 = gl_t1 + dt.timedelta(hours=12)
+        mt1 = gl_t1 + dt.timedelta(hours=72)
 
         model_dates = [x.strftime('rtofs.%Y%m%d') for x in pd.date_range(mt0, mt1)]
         rtofs_files = [glob.glob(os.path.join(url, x, '*.nc')) for x in model_dates]
         rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
+        
         # make sure the file times are within the specified times
         model_time = np.array([], dtype='datetime64[ns]')
         rfiles = []
@@ -60,7 +61,8 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
             else:
                 td = 0
             mt = dt.datetime.strptime('T'.join((ymd, hr)), '%Y%m%dT%H') + dt.timedelta(days=td)
-            if np.logical_and(mt >= mt0, mt <= gl_t1 + dt.timedelta(hours=1)):
+
+            if np.logical_and(mt >= mt0, mt <= gl_t1 + dt.timedelta(hours=2)):
                 rfiles.append(rf)
                 model_time = np.append(model_time, pd.to_datetime(mt))
 
@@ -85,16 +87,24 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         # get temperature and salinity data along the glider track (space and time)
         mtemp = np.full([len(ds.depth), len(model_time)], np.nan)
         msalt = np.full([len(ds.depth), len(model_time)], np.nan)
+        mu = np.full([len(ds.depth), len(model_time)], np.nan)
+        mv = np.full([len(ds.depth), len(model_time)], np.nan)
+
         for i, f in enumerate(rfiles):
             print(f)
-            with xr.open_dataset(f) as ds:
-                ds = ds.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth'})
-                ds = ds.sel(depth=slice(0, 1000))
-                mtemp[:, i] = ds['temperature'][0, :, latIndex[i], lonIndex[i]].values
-                msalt[:, i] = ds['salinity'][0, :, latIndex[i], lonIndex[i]].values
+            with xr.open_dataset(f) as tds:
+                tds = tds.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth'})
+                tds = tds.sel(depth=slice(0, 1000))
+                mtemp[:, i] = tds['temperature'][0, :, latIndex[i], lonIndex[i]].values
+                msalt[:, i] = tds['salinity'][0, :, latIndex[i], lonIndex[i]].values
+                mu[:, i] = tds['u'][0, :, latIndex[i], lonIndex[i]].values
+                mv[:, i] = tds['v'][0, :, latIndex[i], lonIndex[i]].values
 
-        # get the temperature transect from the glider
+        # get the variable transects from the glider
         gl_tm, gl_lon, gl_lat, gl_depth, gl_temp = gld.grid_glider_data(glider_df, 'temperature', 0.5)
+        gl_tm, gl_lon, gl_lat, gl_depth, gl_salt = gld.grid_glider_data(glider_df, 'salinity', 0.5)
+        # gl_tm, gl_lon, gl_lat, gl_depth, gl_u = gld.grid_glider_data(glider_df, 'u', 0.5)
+        # gl_tm, gl_lon, gl_lat, gl_depth, gl_v = gld.grid_glider_data(glider_df, 'v', 0.5)
 
         # plot temperature by time (glider time/location) - model only
         targs = {}
@@ -116,9 +126,6 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         targs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_glider_transect_temp-{gl_t0save}.png')
         plot_transects(gl_tm, gl_depth, gl_temp, model_time, ds.depth.values, mtemp, **targs)
 
-        # get the salinity transect
-        gl_tm, gl_lon, gl_lat, gl_depth, gl_salt = gld.grid_glider_data(glider_df, 'salinity', 0.5)
-
         # plot salinity by time - model only
         sargs = {}
         sargs['cmap'] = cmocean.cm.haline
@@ -139,23 +146,85 @@ def main(gliders, save_dir, g_t0, g_t1, ylims, color_lims):
         sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_glider_transect_salt-{gl_t0save}.png')
         plot_transects(gl_tm, gl_depth, gl_salt, model_time, ds.depth.values, msalt, **sargs)
 
+        # plot u by time - model only
+        sargs = {}
+        sargs['cmap'] = cmocean.cm.balance
+        sargs['clab'] = 'U'
+        sargs['title'] = f'RTOFS U Velocity along {glider} track\nModel: {model_t0str} to {model_t1str}  ' \
+                            f'Glider: {gl_t0str} to {gl_t1str}'
+        sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_transect_u-{gl_t0save}.png')
+        sargs['levels'] = color_lims['u']
+        sargs['ylims'] = ylims
+        sargs['xlab'] = 'Time'
+        plot_transect(model_time, ds.depth.values, mu, **sargs)
+
+        # # plot u by time (glider time/location) - model and glider
+        # del sargs['title']
+        # sargs['title0'] = f'{glider_name} transect {gl_t0str} to {gl_t1str}'
+        # sargs['title1'] = f'GOFS U Velocity: {model_t0str} to {model_t1str}'
+        # sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_glider_transect_u-{gl_t0save}.png')
+        # plot_transects(gl_tm, gl_depth, gl_u, ds.time.values, ds.depth.values, mu, **sargs)
+
+        # plot u by time - model only
+        sargs = {}
+        sargs['cmap'] = cmocean.cm.balance
+        sargs['clab'] = 'V'
+        sargs['title'] = f'RTOFS V Velocity along {glider} track\nModel: {model_t0str} to {model_t1str}  ' \
+                            f'Glider: {gl_t0str} to {gl_t1str}'
+        sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_transect_v-{gl_t0save}.png')
+        sargs['levels'] = color_lims['v']
+        sargs['ylims'] = ylims
+        sargs['xlab'] = 'Time'
+        plot_transect(model_time, ds.depth.values, mv, **sargs)
+
+        # # plot u by time (glider time/location) - model and glider
+        # del sargs['title']
+        # sargs['title0'] = f'{glider_name} transect {gl_t0str} to {gl_t1str}'
+        # sargs['title1'] = f'GOFS V Velocity: {model_t0str} to {model_t1str}'
+        # sargs['save_file'] = os.path.join(sdir_glider, f'{glider_name}_rtofs_glider_transect_v-{gl_t0save}.png')
+        # plot_transects(gl_tm, gl_depth, gl_v, ds.time.values, ds.depth.values, mv, **sargs)
+
+
+# if __name__ == '__main__':
+#     sdir = '/Users/mikesmith/Documents/'
+#     # glider_deployments = ['ng645-20210613T0000']
+#     # glider_t0 = dt.datetime(2021, 8, 28, 0, 0)  # False
+#     # glider_t1 = dt.datetime(2021, 8, 31, 0, 0)
+#     # y_limits = [100, 0]  # None
+#     # c_limits = dict(temp=dict(shallow=np.arange(20, 30, 1)),
+#     #                 salt=dict(shallow=np.arange(34, 37, .25)))
+#     # glider_deployments = ['ru29-20210908T1943']
+#     sdir = '/Users/mikesmith/Documents/'
+#     glider_deployments = ['maracoos_02-20210716T1814']
+#     glider_t0 = dt.datetime(2021, 7, 16, 0, 0)  # False
+#     glider_t1 = dt.datetime(2021, 7, 24, 0, 0)
+#     # glider_t1 = dt.datetime(2021, 9, 25, 12, 0)
+#     y_limits = [90, 0]  # None
+#     c_limits = dict(temp=dict(shallow=np.arange(11, 26, 1)),
+#                     salt=dict(shallow=np.arange(31.5, 36, .25)))
+#     # c_limits = None
+#     main(glider_deployments, sdir, glider_t0, glider_t1, y_limits, c_limits)
 
 if __name__ == '__main__':
     sdir = '/Users/mikesmith/Documents/'
-    # glider_deployments = ['ng645-20210613T0000']
-    # glider_t0 = dt.datetime(2021, 8, 28, 0, 0)  # False
-    # glider_t1 = dt.datetime(2021, 8, 31, 0, 0)
-    # y_limits = [100, 0]  # None
-    # c_limits = dict(temp=dict(shallow=np.arange(20, 30, 1)),
-    #                 salt=dict(shallow=np.arange(34, 37, .25)))
-    # glider_deployments = ['ru29-20210908T1943']
-    glider_deployments = ['ru29-20210630T1343']
-    sdir = '/Users/mikesmith/Documents/'
-    glider_t0 = dt.datetime(2021, 6, 1, 0, 0)  # False
-    glider_t1 = dt.datetime(2021, 7, 10)
-    # glider_t1 = dt.datetime(2021, 9, 25, 12, 0)
+    glider_deployments = ['ru29-20200908T1623']
+    # glider_t1 = dt.datetime.utcnow()
+    # glider_t0 = glider_t1 - dt.timedelta(days=5)  # False
     y_limits = [1000, 0]  # None
-    c_limits = dict(temp=dict(shallow=np.arange(4, 30, 1)),
-                    salt=dict(shallow=np.arange(34.8, 37.4, .2)))
-    # c_limits = None
+    # c_limits = dict(temp=dict(shallow=np.arange(26, 31, .5)),
+    #                 salt=dict(shallow=np.arange(34.75, 37, .25)),
+    #                 u=dict(shallow=np.arange(-.3, .4, 0.05)),
+    #                 v=dict(shallow=np.arange(-.3, .4, 0.05))
+    #                 )
+    c_limits = dict(temp=dict(shallow=np.arange(4, 31, 1)),
+                salt=dict(shallow=np.arange(34.75, 37, .25)),
+                u=dict(shallow=np.arange(-.3, .4, 0.05)),
+                v=dict(shallow=np.arange(-.3, .4, 0.05))
+                )
+    # glider_deployments = ['maracoos_02-20210716T1814']
+    glider_t0 = dt.datetime(2020, 10, 15, 9, 7)  # False
+    glider_t1 = dt.datetime(2020, 10, 16, 22, 55)
+    # y_limits = [45, 0]  # None
+    # c_limits = dict(temp=dict(shallow=np.arange(4, 28, 1)),
+                    # salt=dict(shallow=np.arange(30, 34.5, .1)))
     main(glider_deployments, sdir, glider_t0, glider_t1, y_limits, c_limits)

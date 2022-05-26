@@ -17,3 +17,14 @@ data/rtofs/rtofs.20210319/.nfs000000000000b1f200010ce5
 *.zip
 *.DS_Store
 *.xml
+apps/.ipynb_checkpoints/Untitled-checkpoint.ipynb
+apps/.ipynb_checkpoints/roms_profile-checkpoint.ipynb
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
+.ipynb_checkpoints/Untitled1-checkpoint.ipynb
+.ipynb_checkpoints/Untitled-checkpoint.ipynb
+.ipynb_checkpoints/profiles-checkpoint.ipynb
+.ipynb_checkpoints/plot_quiver-checkpoint.ipynb
+.ipynb_checkpoints/contour-checkpoint.ipynb
+scratches/apps/.ipynb_checkpoints/Untitled-checkpoint.ipynb

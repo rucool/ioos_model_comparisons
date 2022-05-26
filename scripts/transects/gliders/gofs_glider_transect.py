@@ -6,16 +6,18 @@ Last modified: Lori Garzio on 5/11/2021
 Create transects of GOFS and user-specified glider(s) temperature and salinity. Creates one plot for each model time
 and variable for a specified time range.
 """
+import datetime as dt
+import os
+
 import cmocean
+import hurricanes.gliders as gld
+import hurricanes.storms as storms
 import numpy as np
 import pandas as pd
 import xarray as xr
-import datetime as dt
-import os
 from hurricanes.calc import calculate_transect
-import hurricanes.storms as storms
-import hurricanes.gliders as gld
 from hurricanes.gliders_plt import plot_transect, plot_transects
+
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 
