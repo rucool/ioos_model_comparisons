@@ -1,19 +1,43 @@
 import numpy as np
-from scipy import spatial
-import xarray as xr
 import pandas as pd
+import xarray as xr
 
+def lon180to360(array):
+    array = np.array(array)
+    return np.mod(array, 360)
 
-def depth_interpolate(df, depth_var='depth', depth_min=None, depth_max=None, stride=1, method='linear'):
+def lon360to180(array):
+    array = np.array(array)
+    return np.mod(array+180, 360)-180
+
+def find_nearest(array, value):
     """
+    Find the index of closest value in array
 
-    :param df: depth profile in the form of a pandas dataframe
-    :param depth_var: the name of the depth variable in the dataframe
-    :param depth_min: the shallowest bin depth
-    :param depth_max: the deepest bin depth
-    :param stride: the amount of space between each bin
-    :param method: interpolation type: defaults to linear.https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.interpolate.html
-    :return: pandas dataframe where data has been interpolated to specific depths
+    Args:
+        array (list or np.array): _description_
+        value (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    idx = (np.abs(array-value)).argmin()
+    return array.flat[idx], idx
+
+
+def depth_interpolate(df, depth_var='depth', depth_min=None, depth_max=None, stride=1, method='linear', index=None):
+    """_summary_
+
+    Args:
+        df (pd.DataFrame): Depth profile in the form of a pandas dataframe
+        depth_var (str, optional): Name of the depth variable in the dataframe. Defaults to 'depth'.
+        depth_min (_type_, optional): Shallowest bin depth. Defaults to None.
+        depth_max (_type_, optional): Deepest bin depth. Defaults to None.
+        stride (int, optional): Amount of space between bins. Defaults to 1.
+        method (str, optional): Interpolation type. Defaults to 'linear'.
+
+    Returns:
+        pd.DataFrame: dataframe with depth interpolated
     """
     depth_min = depth_min or round(df[depth_var].min())
     depth_max = depth_max or round(df[depth_var].max())
@@ -27,6 +51,9 @@ def depth_interpolate(df, depth_var='depth', depth_min=None, depth_max=None, str
     temp = temp.drop('time', axis=1).interpolate(method=method, limit_direction='both')  # drop time and interpolate new depth indexes
     temp = temp.reindex(index=bins)  # only want to see new_index data
     temp = temp.reset_index()  # reset index so you can access the depth variable
+
+    if index:
+        temp = temp.set_index(index)
 
     return temp
 
@@ -82,35 +109,6 @@ def calculate_transect(x1, y1, x2, y2, grid_spacing=None):
     return X, Y, dist
 
 
-def convert_ll_to_model_ll(X, Y, model=None):
-    """
-    Convert from lat
-    :param X:
-    :param Y:
-    :return:
-    """
-
-    model = model.lower() or 'rtofs'
-
-    if model.lower() == 'gofs':
-        try:
-            lon = np.empty((len(X),))
-            lon[:] = np.nan
-        except TypeError:
-            lon = [X]
-
-        for i, ii in enumerate(X):
-            if ii < 0:
-                lon[i] = 360 + ii
-            else:
-                lon[i] = ii
-        lat = Y
-    else:
-        lon = X
-        lat = Y
-    return lon, lat
-
-
 # decimal degrees to degree-minute-second converter
 def dd2dms(vals):
     n = np.empty(np.shape(vals))
@@ -138,68 +136,3 @@ def interpolate(xval, df, xcol, ycol):
     :return:
     """
     return np.interp([xval], df[xcol], df[ycol])
-
-
-class KDTreeIndex():
-    """ A KD-tree implementation for fast point lookup on a 2D grid
-
-    Keyword arguments:
-    dataset -- a xarray DataArray containing lat/lon coordinates
-               (named 'lat' and 'lon' respectively)
-
-    """
-
-    def transform_coordinates(self, coords):
-        """ Transform coordinates from geodetic to cartesian
-
-        Keyword arguments:
-        coords - a set of lan/lon coordinates (e.g. a tuple or
-                 an array of tuples)
-        """
-        # WGS 84 reference coordinate system parameters
-        A = 6378.137  # major axis [km]
-        E2 = 6.69437999014e-3  # eccentricity squared
-
-        coords = np.asarray(coords).astype(np.float)
-
-        # is coords a tuple? Convert it to an one-element array of tuples
-        if coords.ndim == 1:
-            coords = np.array([coords])
-
-        # convert to radiants
-        lat_rad = np.radians(coords[:, 0])
-        lon_rad = np.radians(coords[:, 1])
-
-        # convert to cartesian coordinates
-        r_n = A / (np.sqrt(1 - E2 * (np.sin(lat_rad) ** 2)))
-        x = r_n * np.cos(lat_rad) * np.cos(lon_rad)
-        y = r_n * np.cos(lat_rad) * np.sin(lon_rad)
-        z = r_n * (1 - E2) * np.sin(lat_rad)
-
-        return np.column_stack((x, y, z))
-
-    def __init__(self, dataset):
-        # store original dataset shape
-        self.shape = dataset.shape
-
-        # reshape and stack coordinates
-        coords = np.column_stack((dataset.lat.values.ravel(),
-                                  dataset.lon.values.ravel()))
-
-        # construct KD-tree
-        self.tree = spatial.cKDTree(self.transform_coordinates(coords))
-
-    def query(self, point):
-        """ Query the kd-tree for nearest neighbour.
-
-        Keyword arguments:
-        point -- a (lat, lon) tuple or array of tuples
-        """
-        _, index = self.tree.query(self.transform_coordinates(point))
-
-        # regrid to 2D grid
-        index = np.unravel_index(index, self.shape)
-
-        # return DataArray indexers
-        return xr.DataArray(index[0], dims='location'), \
-               xr.DataArray(index[1], dims='location')

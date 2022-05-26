@@ -1,15 +1,31 @@
 from erddapy import ERDDAP
 import datetime as dt
 import pandas as pd
-from requests.exceptions import HTTPError
+from requests.exceptions import HTTPError as rHTTPError
+# urllib.error.HTTPError
+from urllib.error import HTTPError as uHTTPError
 from collections import namedtuple
+from joblib import Parallel, delayed
+import multiprocessing
+from pprint import pprint
 
 Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
 time_formatter = '%Y-%m-%dT%H:%M:%SZ'
 
+rename_gliders = {}
+# rename_gliders["time (UTC)"] = "time"
+rename_gliders["longitude"] = "lon"
+rename_gliders["latitude"] = "lat"
 
-def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
+rename_argo = {}
+rename_argo["platform_number"] = "argo"
+rename_argo["time (UTC)"] = "time"
+rename_argo["longitude (degrees_east)"] = "lon"
+rename_argo["latitude (degrees_north)"] = "lat"
+
+
+def get_argo_floats_by_time(bbox=None, time_start=None, time_end=dt.date.today(), floats=None, add_vars=None):
     """
 
     :param lon_lims: list containing westernmost longitude and easternmost latitude
@@ -20,7 +36,6 @@ def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
     """
 
     bbox = bbox or [-100, -45, 5, 46]
-    time_end = time_end or dt.date.today()
     time_start = time_start or (time_end - dt.timedelta(days=1))
     floats = floats or False
 
@@ -37,21 +52,21 @@ def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
 
     if floats:
         constraints['platform_number='] = floats
-
+        
     variables = [
         'platform_number',
         'time',
-        'pres',
         'longitude',
         'latitude',
-        'temp',
-        'psal',
     ]
+
+    if add_vars:
+        variables = variables + add_vars
 
     e = ERDDAP(
         server='IFREMER',
         protocol='tabledap',
-        response='nc'
+        response='csv'
     )
 
     e.dataset_id = 'ArgoFloats'
@@ -60,26 +75,29 @@ def active_argo_floats(bbox=None, time_start=None, time_end=None, floats=None):
 
     try:
         df = e.to_pandas(
-            parse_dates=['time (UTC)'],
-            skiprows=(1,)  # units information can be dropped.
-        ).dropna()
-    except HTTPError:
+            index_col="time (UTC)",
+            parse_dates=True,
+        ).dropna().tz_localize(None)
+        df = df.reset_index().rename(rename_argo, axis=1)
+        df = df.set_index(["argo", "time"]).sort_index()
+    except rHTTPError:
         df = pd.DataFrame()
-
     return df
 
 
-def active_gliders(bbox=None, time_start=None, time_end=dt.date.today(), glider_id=None):
+def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None, parallel=False):
+    variables = variables or ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity']
     bbox = bbox or [-100, -40, 18, 60]
-    time_start = time_start or (time_end - dt.timedelta(days=1))
-    t0 = time_start.strftime('%Y-%m-%dT%H:%M:%SZ')
-    t1 = time_end.strftime('%Y-%m-%dT%H:%M:%SZ')
-    glider_id = glider_id or None
+    t0 = t0 or (t1 - dt.timedelta(days=1))
 
+    # Convert dates to strings
+    t0 = t0.strftime('%Y-%m-%dT%H:%M:%SZ')
+    t1 = t1.strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    # Initialize GliderDAC Object
     e = ERDDAP(server='NGDAC')
 
     # Grab every dataset available
-    # datasets = pd.read_csv(e.get_search_url(response='csv', search_for='all'))
 
     # Search constraints
     kw = dict()
@@ -92,79 +110,140 @@ def active_gliders(bbox=None, time_start=None, time_end=dt.date.today(), glider_
         kw['min_lat'] = bbox[2]
         kw['max_lat'] = bbox[3]
 
-    if glider_id:
-        search = glider_id
-    else:
-        search = None
-
-    search_url = e.get_search_url(search_for=search, response='csv', **kw)
+    search_url = e.get_search_url(search_for=None, response='csv', **kw)
 
     try:
         # Grab the results
         search = pd.read_csv(search_url)
-    except:
+    except uHTTPError:
         # return empty dataframe if there are no results
         return pd.DataFrame()
 
     # Extract the IDs
     gliders = search['Dataset ID'].values
 
-    msg = 'Found {} Glider Datasets:\n\n{}'.format
-    print(msg(len(gliders), '\n'.join(gliders)))
+    msg = f"Found {len(gliders)} Glider Datasets: "
+    pprint(msg + ', '.join(gliders.tolist()))
 
     # Setting constraints
     constraints = {
             'time>=': t0,
             'time<=': t1,
-            'longitude>=': bbox[0],
-            'longitude<=': bbox[1],
-            'latitude>=': bbox[2],
-            'latitude<=': bbox[3],
+            # 'longitude>=': bbox[0],
+            # 'longitude<=': bbox[1],
+            # 'latitude>=': bbox[2],
+            # 'latitude<=': bbox[3],
             }
+    
 
-    variables = [
-            'depth',
-            'latitude',
-            'longitude',
-            'time',
-            'temperature',
-            'salinity',
-            ]
-
-    e = ERDDAP(
-            server='NGDAC',
-            protocol='tabledap',
-            response='nc'
-    )
-
-    glider_dfs = []
-
-    for id in gliders:
-        # print('Reading ' + id)
-        e.dataset_id = id
+    def request_multi(dataset_id, protocol="tabledap"): # variables=None):
+        # variables = variables or ['depth', 'latitude', 'longitude']
         e.constraints = constraints
-        e.variables = variables
-
-        # checking data frame is not empty
+        e.protocol = protocol
+        e.variables = ['time', 'latitude', 'longitude']
+        e.dataset_id = dataset_id
+        
+        # Drop units in the first line and Nans
         try:
             df = e.to_pandas(
-                index_col='time (UTC)',
+                response="csv", 
+                index_col="time",
                 parse_dates=True,
-                skiprows=(1,)  # units information can be dropped.
-            ).dropna()
-        except:
-            continue
-        df = df.reset_index()
-        df['dataset_id'] = id
-        df = df.set_index(['dataset_id', 'time (UTC)'])
-        glider_dfs.append(df)
+                skiprows=(1,)
+                ).dropna().tz_localize(None)
+        except rHTTPError:
+            df = pd.DataFrame()
+        return (dataset_id, df)
+
+    # If we want to take advantage of parallel processing,
+    # parellel = True as an optional argument input.
+    if parallel:
+        num_cores = multiprocessing.cpu_count()
+        downloads = Parallel(n_jobs=num_cores)(
+            delayed(request_multi)(dataset_id) for dataset_id in gliders
+        )
+        dfs = {glider: df for (glider, df) in downloads}
+    else:
+        dfs = {glider: df for (glider, df) in [request_multi(id) for id in gliders]}
 
     try:
-        ndf = pd.concat(glider_dfs)
+        df = pd.concat(dfs)
+        df.index.names = ["glider", "time"]
+        df = df.sort_index().rename(rename_gliders, axis=1)
     except ValueError:
-        return pd.DataFrame()
+        df = pd.DataFrame()
+    return df
 
-    return ndf
+
+def get_glider_by_id(dataset_id=None, bbox=None, start=None, end=None, vars=None):
+    """_summary_
+
+    Args:
+        dataset_id (_type_, optional): _description_. Defaults to None.
+        bbox (_type_, optional): _description_. Defaults to None.
+        start (_type_, optional): _description_. Defaults to None.
+        end (_type_, optional): _description_. Defaults to None.
+        vars (_type_, optional): _description_. Defaults to None.
+
+    Raises:
+        TypeError: _description_
+
+    Returns:
+        _type_: _description_
+    """
+    if dataset_id is None:
+        raise TypeError('glider_id must be a string containing a dataset id from https://gliders.ioos.us/')
+    
+
+    variables = [
+        "time",
+        "longitude",
+        "latitude",
+        "pressure",
+        "depth",
+        "temperature",
+        "salinity",
+        "conductivity",
+        "density"
+        ]
+      
+    e = ERDDAP(
+        server='NGDAC',
+        protocol="tabledap")
+
+    constraints = {}
+
+    if bbox:
+        constraints['longitude>='] =  bbox[0]
+        constraints['longitude<='] = bbox[1]
+        constraints['latitude>='] = bbox[2]
+        constraints['latitude<='] = bbox[3]
+
+    if start:
+        constraints["time>="] =  start
+        constraints["time<="] =  end
+        
+    
+    if constraints: 
+        e.constraints = constraints
+    
+    if vars:
+        variables = variables + vars
+        
+    # print('Reading ' + id)
+    e.dataset_id = dataset_id
+    e.variables = variables
+    
+    # checking data frame is not empty
+    try:
+        df = e.to_pandas(
+            index_col='time (UTC)',
+            parse_dates=True,
+            skiprows=(1,)  # units information can be dropped.
+        ).dropna().tz_localize(None)
+    except rHTTPError:
+        print("Please enter a valid dataset id")
+    return df
 
 
 def active_drifters(bbox=None, time_start=None, time_end=None):
@@ -272,7 +351,42 @@ def get_ndbc(bbox=None, time_start=None, time_end=None, buoy=None):
             parse_dates=['time (UTC)'],
             skiprows=(1,)  # units information can be dropped.
         ).dropna()
-    except HTTPError:
+    except rHTTPError:
         df = pd.DataFrame()
 
     return df
+
+
+def get_bathymetry(bbox=None):
+    """
+    Function to select bathymetry within a bounding box.
+    This function pulls GEBCO 2014 bathy data from hfr.marine.rutgers.edu 
+
+    Args:
+        bbox (list, optional): Cartopy bounding box. Defaults to None.
+
+    Returns:
+        xarray.Dataset: xarray Dataset containing bathymetry data
+    """
+    bbox = bbox or [-100, -45, 5, 46]
+
+    lons = bbox[:2]
+    lats = bbox[2:]
+
+    e = ERDDAP(
+        server="https://hfr.marine.rutgers.edu/erddap/",
+        protocol="griddap"
+    )
+
+    e.dataset_id = "bathymetry_gebco_2014_grid"
+
+    e.griddap_initialize()
+
+    # Modify constraints
+    e.constraints["latitude<="] = max(lats)
+    e.constraints["latitude>="] = min(lats)
+    e.constraints["longitude>="] = max(lons)
+    e.constraints["longitude<="] = min(lons)
+
+    # return xarray dataset
+    return e.to_xarray()

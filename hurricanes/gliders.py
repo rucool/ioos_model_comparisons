@@ -214,7 +214,7 @@ def glider_dataset(gliderid, time_start=None, time_end=None, variables=None, fil
     print('Retrieving glider dataset: {}'.format(gliderid))
     time_start = time_start or None
     time_end = time_end or None
-    variables = variables or [
+    variables = [
         'depth',
         'latitude',
         'longitude',
@@ -222,7 +222,9 @@ def glider_dataset(gliderid, time_start=None, time_end=None, variables=None, fil
         'temperature',
         'salinity',
         'density',
-        'profile_id'
+        'profile_id',
+        # 'measured_water_vx',
+        # 'measured_water_vy'
     ]
     filetype = filetype or 'nc'
 
