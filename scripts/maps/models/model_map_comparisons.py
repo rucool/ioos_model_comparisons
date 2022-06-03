@@ -7,11 +7,14 @@ from hurricanes.calc import lon180to360, lon360to180
 from hurricanes.models import gofs, rtofs
 from hurricanes.platforms import (get_active_gliders, get_argo_floats_by_time,
                                   get_bathymetry)
-from hurricanes.plotting import plot_model_region_comparison
+from hurricanes.plotting import (plot_model_region_comparison, 
+                                 plot_model_region_comparison_streamplot)
 from hurricanes.regions import region_config
+import matplotlib
+matplotlib.use('agg')
 
 # Set path to save plots
-path_save = (configs.path_plots / "map_comparisons")
+path_save = (configs.path_plots / "maps" / "comparisons")
 
 # initialize keyword arguments for map plotz
 kwargs = dict()
@@ -23,6 +26,11 @@ kwargs['dpi'] = configs.dpi
 today = dt.date.today()
 tomorrow = today + dt.timedelta(days=1)
 past = today - dt.timedelta(days=configs.days)
+# today = dt.date(2022, 5, 31)
+# tomorrow = today 
+# past = today - dt.timedelta(days=1)
+
+# Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
 
 # Create dates that we want to plot
@@ -71,11 +79,14 @@ for item in configs.regions:
     if region['currents']['bool']:
         kwargs['currents'] = region['currents']
 
-    if bathy_data:
+    try:
         kwargs['bathy'] = bathy_data.sel(
             longitude=slice(extent[0] - 1, extent[1] + 1),
             latitude=slice(extent[2] - 1, extent[3] + 1)
         )
+    except NameError:
+        pass
+            
     extent = np.add(extent, [-1, 1, -1, 1]).tolist()
 
     # Load RTOFS DataSet
@@ -148,6 +159,7 @@ for item in configs.regions:
 
         try:
             plot_model_region_comparison(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
+            # plot_model_region_comparison_streamplot(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
         except KeyError as e:
             print(e)
             continue

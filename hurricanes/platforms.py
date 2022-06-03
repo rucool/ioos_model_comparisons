@@ -25,20 +25,24 @@ rename_argo["longitude (degrees_east)"] = "lon"
 rename_argo["latitude (degrees_north)"] = "lat"
 
 
-def get_argo_floats_by_time(bbox=None, time_start=None, time_end=dt.date.today(), floats=None, add_vars=None):
-    """
+def get_argo_floats_by_time(bbox=(-100, -45, 5, 46),
+                            time_start=None, time_end=dt.date.today(),
+                            floats=None, variables=None):
+    """_summary_
 
-    :param lon_lims: list containing westernmost longitude and easternmost latitude
-    :param lat_lims: list containing southernmost latitude and northernmost longitude
-    :param time_start: time to start looking for floats
-    :param time_end: time to end looking for floats
-    :return:
-    """
+    Args:
+        bbox (_type_, optional): _description_. Defaults to None.
+        time_start (_type_, optional): Start time. Defaults to None.
+        time_end (_type_, optional): End time. Defaults to dt.date.today().
+        floats (_type_, optional): _description_. Defaults to None.
+        add_vars (_type_, optional): _description_. Defaults to None.
 
-    bbox = bbox or [-100, -45, 5, 46]
+    Returns:
+        _type_: _description_
+    """
     time_start = time_start or (time_end - dt.timedelta(days=1))
-    floats = floats or False
-
+    variables = variables or ['platform_number', 'time', 'longitude', 'latitude']
+    
     constraints = {
         'time>=': str(time_start),
         'time<=': str(time_end),
@@ -52,16 +56,6 @@ def get_argo_floats_by_time(bbox=None, time_start=None, time_end=dt.date.today()
 
     if floats:
         constraints['platform_number='] = floats
-        
-    variables = [
-        'platform_number',
-        'time',
-        'longitude',
-        'latitude',
-    ]
-
-    if add_vars:
-        variables = variables + add_vars
 
     e = ERDDAP(
         server='IFREMER',
@@ -86,7 +80,7 @@ def get_argo_floats_by_time(bbox=None, time_start=None, time_end=dt.date.today()
 
 
 def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None, parallel=False):
-    variables = variables or ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity']
+    variables = variables or ['time', 'latitude', 'longitude']
     bbox = bbox or [-100, -40, 18, 60]
     t0 = t0 or (t1 - dt.timedelta(days=1))
 
@@ -140,7 +134,8 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None, p
         # variables = variables or ['depth', 'latitude', 'longitude']
         e.constraints = constraints
         e.protocol = protocol
-        e.variables = ['time', 'latitude', 'longitude']
+        # e.variables = ['time', 'latitude', 'longitude']
+        e.variables = variables
         e.dataset_id = dataset_id
         
         # Drop units in the first line and Nans
