@@ -377,13 +377,13 @@ def region_config(regions=None, model=None):
         name = 'Amazon Plume'
         extent = [-70, -43, -5, 20]
         sea_water_temperature = [
-            # dict(depth=0),
-            # dict(depth=150),
+            dict(depth=0),
+            dict(depth=150),
             # dict(depth=200)
             ]
         salinity = [
             dict(depth=0, limits=[33.8, 37.1, .1]),
-            # dict(depth=150),
+            dict(depth=150),
             # dict(depth=200)
             ]
         sea_surface_height = [
