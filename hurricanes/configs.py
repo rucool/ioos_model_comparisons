@@ -23,7 +23,6 @@ path_data = current_dir.with_name('data') # data path relative to the toolbox
 # Configurations for contour maps 
 # (surface_map_comparisons.py, surface_map_rtofs.py, and surface_map_gofs.py
 regions = ['gom', 'caribbean', 'yucatan', 'mab', 'sab', 'windward', 'usvi', 'prvi']
-regions = ['caribbean']
 days = 2
 
 # Assets
