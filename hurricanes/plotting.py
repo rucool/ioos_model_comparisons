@@ -398,7 +398,7 @@ def map_create(extent,
                ticks=True,
                labels=False,
                features=True, edgecolor="black", landcolor="tan",
-               ax=None, figsize=(11,8)):
+               ax=None, figsize=(11,8), fig_init=False):
     """Create a cartopy map within a certain extent. 
 
     Args:

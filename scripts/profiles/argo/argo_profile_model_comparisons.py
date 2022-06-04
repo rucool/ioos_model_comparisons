@@ -1,31 +1,27 @@
-import xarray as xr
-import os
-from glob import glob
-from hurricanes.limits import limits_regions
 import datetime as dt
-import numpy as np
-from hurricanes.platforms import active_argo_floats
-import pandas as pd
-import matplotlib.pyplot as plt
-import cartopy.crs as ccrs
-import scipy.stats as stats
-from hurricanes.plotting import plot_region, region_subplot
-import cmocean
+import os
+
+import hurricanes.configs as configs
 import matplotlib.patheffects as path_effects
-from scripts.harvest.grab_cmems import copernicusmarine_datastore as grab_cmems
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scipy.stats as stats
+import seawater
+import xarray as xr
+from hurricanes.calc import depth_interpolate, lon180to360, lon360to180
+from hurricanes.models import gofs, rtofs
+from hurricanes.platforms import get_argo_floats_by_time
+from hurricanes.plotting import map_create
+from hurricanes.regions import region_config
 
-url = '/home/hurricaneadm/data/rtofs/'
-save_dir = '/www/web/rucool/hurricane/model_comparisons/realtime/argo_profile_to_model_comparisons/'
+save_dir = configs.path_plots / 'profiles' / 'argo'
 
-# url = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
-# save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/argo_profile_model_comparisons/'
-# user = 'user'
-# pw = 'password'
-
-days = 8
-dpi = 150
-
-regions = limits_regions('rtofs', ['mab', 'gom', 'carib', 'wind', 'sab'])
+# Configs
+# argos = ["4902350", "4903250", "6902854", "4903224", "4903227"]
+days = configs.days
+dpi = configs.dpi
+vars = 'platform_number', 'time', 'longitude', 'latitude', 'pres', 'temp', 'psal'
 
 # initialize keyword arguments for map plot
 kwargs = dict()
@@ -33,21 +29,18 @@ kwargs['model'] = 'rtofs'
 kwargs['save_dir'] = save_dir
 kwargs['dpi'] = dpi
 
+# Load models
+rds = rtofs().sel(depth=slice(0, 400))
+gds = gofs(rename=True).sel(depth=slice(0, 400))
+# cmems = cmems()
+
 # Get today and yesterday dates
 date_list = [dt.date.today() - dt.timedelta(days=x+1) for x in range(days)]
 date_list.insert(0, dt.date.today())
-rtofs_files = [glob(os.path.join(url, x.strftime('rtofs.%Y%m%d'), '*.nc')) for x in date_list]
-rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
-rtofs = xr.open_mfdataset(rtofs_files)
-rtofs = rtofs.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth'})
-rtofs = rtofs.sel(depth=slice(0, 400))
-
-gofs = xr.open_dataset('https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0', drop_variables='tau')
-gofs = gofs.rename({'surf_el': 'sea_surface_height', 'water_temp': 'temperature', 'water_u': 'u', 'water_v': 'v'})
 
 now = pd.Timestamp.utcnow()
-t0 = pd.to_datetime(now - pd.Timedelta(days, 'd'))
-t1 = pd.to_datetime(now)
+t0 = pd.to_datetime(now - pd.Timedelta(days, 'd')).tz_localize(None)
+t1 = pd.to_datetime(now).tz_localize(None)
 
 # cmems_salinity = grab_cmems('global-analysis-forecast-phy-001-024-3dinst-so', user, pw)
 # cmems_temp = grab_cmems('global-analysis-forecast-phy-001-024-3dinst-thetao', user, pw)
@@ -55,165 +48,234 @@ t1 = pd.to_datetime(now)
 # cmems = cmems.sel(depth=slice(0, 400), time=slice(t0, t1),)
 
 # Loop through regions
-for region, values in regions.items():
-    extent = values['lonlat']
-    print(f'Region: {region}, Extent: {extent}')
+for item in configs.regions:
+    region = region_config(item)
+    extent = region['extent']
+    print(f'Region: {region["name"]}, Extent: {extent}')
 
-    temp_save_dir = os.path.join(save_dir, '_'.join(region.split(' ')).lower())
+    temp_save_dir = save_dir / '_'.join(region['name'].split(' ')).lower()
     os.makedirs(temp_save_dir, exist_ok=True)
 
-    floats = active_argo_floats(extent, t0, t1)
+    # Download argo floats from ifremer erddap server
+    floats = get_argo_floats_by_time(extent, t0, t1, variables=vars)
 
-    temp_df = floats.loc[floats.groupby('platform_number')['time (UTC)'].idxmax()]
+    if floats.empty:
+        print(f"No Argo floats found in {region['name']}")
+        continue
 
-    region_limits = regions[region]
+    # Iterate through argo float profiles
+    for gname, df in floats.reset_index().groupby(['argo', 'time']):
+        wmo = gname[0] # wmo id from gname
+        ctime = gname[1] # time from gname
+        tstr = ctime.strftime("%Y-%m-%d %H:%M:%S") # create time string
+        save_str = f'{wmo}-profile-{ctime.strftime("%Y-%m-%dT%H%M%SZ")}.png'
+        full_file = temp_save_dir / save_str
 
-    vargs = {}
-    vargs['vmin'] = values['temperature'][0]['limits'][0]
-    vargs['vmax'] = values['temperature'][0]['limits'][1]
-    vargs['transform'] = ccrs.PlateCarree()
-    vargs['cmap'] = cmocean.cm.thermal
-    vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], values['temperature'][0]['limits'][2])
-    vargs['argo'] = temp_df
+        if full_file.is_file():
+            print(f"{full_file} already exists. Skipping.")
+            continue
 
-    try:
-        vargs.pop('vmin'), vargs.pop('vmax')
-    except KeyError:
-        pass
-
-    save_file = os.path.join(save_dir, "_".join(region.split(" ")).lower() ,f'argo_floats-{"_".join(region.split(" ")).lower()}-{t0.strftime("%Y-%m-%dT%H%M%SZ")}-to-{t1.strftime("%Y-%m-%dT%H%M%SZ")}')
-    plot_region(rtofs['temperature'].isel(depth=0, time=0),
-                extent,
-                f'Argo Floats\n Active: {t0.strftime("%Y-%m-%dT%H:%M:%SZ")} to {t1.strftime("%Y-%m-%dT%H:%M:%SZ")}',
-                save_file,
-                **vargs
+        # Calculate depth from pressure and lat
+        df = df.assign(
+            depth=seawater.eos80.dpth(
+                df['pres (decibar)'],
+                df['lat']
                 )
+        )
 
-    for float in floats.platform_number.unique():
+        # Filter out the dataframe
+        salinity_mask = np.abs(stats.zscore(df['psal (PSU)'])) < 3
+        depth_mask = df['depth'] <= 400
+        df = df[salinity_mask & depth_mask]
 
-        temp = floats[floats['platform_number'] == float]
+        # Calculate density. Use .assign to avoid SettingWithCopyWarning
+        df = df.assign(
+            density=seawater.eos80.dens(
+                df['psal (PSU)'], 
+                df['temp (degree_Celsius)'], 
+                df['pres (decibar)']
+                )
+            )
 
-        for t_float in temp['time (UTC)'].unique():
-            temp_float_time = temp[temp['time (UTC)'] == t_float]
-            filtered = temp_float_time[(np.abs(stats.zscore(temp_float_time['psal (PSU)'])) < 3)]  # filter salinity
-            filtered = filtered[filtered['pres (decibar)'] <= 400]
+        # Interpolate argo profile to configuration depths
+        df = depth_interpolate(df, 
+                               depth_var='depth', 
+                               depth_min=configs.min_depth,
+                               depth_max=configs.max_depth,
+                               stride=configs.stride)
 
-            # temp = temp.sort_values(by=['pres (decibar)'])
-            x = filtered['longitude (degrees_east)'].unique()[-1]
-            y = filtered['latitude (degrees_north)'].unique()[-1]
+        # Grab lon and lat of argo profile
+        lon, lat = df['lon'].unique()[-1], df['lat'].unique()[-1]
 
-            # Conversion from longitude to GOFS convention
-            if x < 0:
-                x_gofs = 360 + x
-            else:
-                x_gofs = x
+        # %%
+        # For each model, select nearest time to argo time
+        # Interpolate to the argo float location and depths
+        
+        # Calculate depths to interpolate 
+        depths_interp = np.arange(
+            configs.min_depth, 
+            configs.max_depth+configs.stride, 
+            configs.stride)
 
-            gofs_temp = gofs.sel(
-                time=t_float,
-                lon=x_gofs,
-                lat=y,
-                method='nearest')
-            gofs_temp = gofs_temp.sel(depth=slice(0, 400))
-            gofs_temp = gofs_temp.squeeze()
+        # GOFS
+        gdsp = gds.sel(time=ctime, method='nearest')
+        gdsi = gdsp.interp(
+            lon=lon180to360(lon), # Convert longitude to 360 convention
+            lat=lat,
+            depth=xr.DataArray(depths_interp, dims='depth')
+            )
+        # Convert the lon back to a 180 degree lon
+        gdsi['lon'] = lon360to180(gdsi['lon'])
 
-            # interpolating transect X and Y to lat and lon
-            rtofslonIndex = np.round(np.interp(x, rtofs.lon.data[0, :], np.arange(0, len(rtofs.lon.data[0, :])))).astype(int)
-            rtofslatIndex = np.round(np.interp(y, rtofs.lat.data[:, 0], np.arange(0, len(rtofs.lat.data[:, 0])))).astype(int)
+        # Calculate density for gofs profile
+        gdsi["pressure"] = xr.apply_ufunc(seawater.eos80.pres, gdsi.depth, gdsi.lat)
+        gdsi["density"] = xr.apply_ufunc(seawater.eos80.dens, gdsi.salinity, gdsi.temperature, gdsi.pressure)
 
-            rtofs_sub = rtofs.sel(
-                time=t_float,
-                X=rtofslonIndex,
-                Y=rtofslatIndex,
-                method='nearest',
-            ).squeeze()
-            rtofs_sub.load()
+        # RTOFS
+        # Setting RTOFS lon and lat to their own variables speeds up the script
+        rlon = rds.lon.data[0, :]
+        rlat = rds.lat.data[:, 0]
+        rx = rds.x.data
+        ry = rds.y.data
 
-            # cmems_sub = cmems.sel(longitude=x, latitude=y, time=t_float, method='nearest')
+        # interpolating lon and lat to x and y index of the rtofs grid
+        rlonI = np.interp(lon, rlon, rx)
+        rlatI = np.interp(lat, rlat, ry)
 
-            fig = plt.figure(figsize=(14, 8))
-            plt.rcParams['figure.constrained_layout.use'] = True
-            grid = plt.GridSpec(6, 10, hspace=0.2, wspace=0.2, figure=fig)
-            ax1 = plt.subplot(grid[:, :3])  # Temperature
-            ax2 = plt.subplot(grid[:, 4:7])  # Salinity
-            ax3 = plt.subplot(grid[0, 7:])  # Plot Title
-            ax4 = plt.subplot(grid[2:4, 7:], projection=vargs['transform'])  # Map
-            ax5 = plt.subplot(grid[5, 7:])  # Legend for profile plots
+        rdsp = rds.sel(time=ctime, method='nearest')
+        rdsi = rdsp.interp(
+            x=rlonI,
+            y=rlatI,
+            depth=xr.DataArray(depths_interp, dims='depth')
+        )
+        # Calculate density for rtofs profile
+        rdsi['pressure'] = xr.apply_ufunc(seawater.eos80.pres, rdsi.depth, rdsi.lat)
+        rdsi['density'] = xr.apply_ufunc(seawater.eos80.dens, rdsi.salinity, rdsi.temperature, rdsi.pressure)
 
-            gofs_lon = str(round(gofs_temp.lon.data - 360, 2))
-            gofs_lat = str(round(gofs_temp.lat.data - 0, 2))
-            rtofs_lon = str(round(np.float64(rtofs_sub.lon.data), 2))
-            rtofs_lat = str(round(np.float64(rtofs_sub.lat.data), 2))
+        # # cmems_sub = cmems.sel(longitude=x, latitude=y, time=t_float, method='nearest')
+        # grid = """
+        # TTSSDDGG
+        # TTSSDDMM
+        # TTSSDDLL
+        # """
+        # # try:
+        # #     figsize = region['figure']['figsize']
+        # # except KeyError:
+        # figsize = (7,4)
 
-            # Temperature
-            ax1.plot(filtered['temp (degree_Celsius)'], filtered['pres (decibar)'],
-                       'b-o',
-                       label=f'{float} [{str(round(x, 2))}, {str(round(y, 2))}]')
-            ax1.plot(gofs_temp['temperature'].squeeze(), gofs_temp['depth'].squeeze(),
-                       'r-o',
-                       label=f'GOFS [{ gofs_lon }, { gofs_lat }]')
-            ax1.plot(rtofs_sub['temperature'].squeeze(), rtofs_sub['depth'].squeeze(),
-                       'g-o',
-                       label=f'RTOFS [{ rtofs_lon }, { rtofs_lat }]')
-            # ax1.plot(cmems_sub['thetao'].squeeze(), cmems_sub['depth'].squeeze(),
-            #            'm-o',
-            #            label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
+        # fig, _ = plt.subplot_mosaic(
+        #     grid,
+        #     figsize=figsize,
+        #     layout="constrained",
+        #     gridspec_kw={
+        #         # set the height ratios between the rows
+        #         # "height_ratios": [4, 1],
+        #         # set the width ratios between the columns
+        #         # # "width_ratios": [1],
+        #         },
+        #     )
 
-            ax1.set_ylim([400, 1])
-            ax1.grid(True, linestyle='--', linewidth=.5)
-            ax1.tick_params(axis='both', labelsize=13)
-            ax1.set_xlabel('Temperature (˚C)', fontsize=14)
-            ax1.set_ylabel('Depth (m)', fontsize=14)
+        # fig = plt.figure(figsize=(14, 8))
+        # plt.rcParams['figure.constrained_layout.use'] = True
+        # grid = plt.GridSpec(6, 10, hspace=0.2, wspace=0.2, figure=fig)
+        # ax1 = plt.subplot(grid[:, :3])  # Temperature
+        # ax2 = plt.subplot(grid[:, 4:7], sharey=ax1)  # Salinity
+        # ax3 = plt.subplots(grid[:, :], sharey=)
+        # ax3 = plt.subplot(grid[0, 7:])  # Plot Title
+        # ax4 = plt.subplot(grid[2:4, 7:], projection=projection['map'])  # Map
+        # ax5 = plt.subplot(grid[5, 7:])  # Legend for profile plots
 
-            # Salinity
-            ax2.plot(filtered['psal (PSU)'], filtered['pres (decibar)'],
-                       'b-o',
-                       label=f'{float} [{str(round(x, 2))}, {str(round(y, 2))}]')
-            ax2.plot(gofs_temp['salinity'].squeeze(), gofs_temp['depth'].squeeze(),
-                       'r-o',
-                       label=f'GOFS [{ gofs_lon }, { gofs_lat }]')
-            ax2.plot(rtofs_sub['salinity'].squeeze(), rtofs_sub['depth'].squeeze(),
-                       'g-o',
-                       label=f'RTOFS [{ rtofs_lon }, { rtofs_lat }]')
-            # ax2.plot(cmems_sub['so'].squeeze(), cmems_sub['depth'].squeeze(),
-            #            'm-o',
-            #            label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
-            ax2.set_ylim([400, 1])
-            ax2.grid(True, linestyle='--', linewidth=.5)
-            ax2.tick_params(axis='both', labelsize=13)
-            ax2.set_xlabel('Salinity (psu)', fontsize=14)
-            ax2.set_ylabel('Depth (m)', fontsize=14)
+        fig = plt.figure(constrained_layout=True, figsize=(16, 6))
+        widths = [1, 1, 1, 1.5]
+        heights = [1, 2, 1]
 
-            text = ax3.text(-0.125, 1.0, f'Argo #{float} Profile Comparisons\n'
-                         f'ARGO: { t_float.strftime("%Y-%m-%d %H:%M:%SZ") }\n'
-                         f'RTOFS: {pd.to_datetime(rtofs_sub.time.data)}\n'
-                         f'GOFS: {pd.to_datetime(gofs_temp.time.data)}',
-                            ha='left', va='top', size=18, fontweight='bold')
+        gs = fig.add_gridspec(3, 4, width_ratios=widths,
+                                height_ratios=heights)
 
-            text.set_path_effects([path_effects.Normal()])
-            ax3.set_axis_off()
+        ax1 = fig.add_subplot(gs[:, 0]) # Temperature
+        ax2 = fig.add_subplot(gs[:, 1], sharey=ax1)  # Salinity
+        plt.setp(ax2.get_yticklabels(), visible=False)
+        ax3 = fig.add_subplot(gs[:, 2], sharey=ax1) # Density
+        plt.setp(ax3.get_yticklabels(), visible=False)
+        ax4 = fig.add_subplot(gs[0, -1]) # Title
+        ax5 = fig.add_subplot(gs[1, -1], projection=configs.projection['map']) # Map
+        ax6 = fig.add_subplot(gs[2, -1]) # Legend
 
-            dx = dy = 2.25  # Area around the point of interest.
-            ax4 = region_subplot(fig, ax4, extent,
-                                 transform=vargs['transform'],
-                                 argo=filtered,
-                                 ticks=None,
-                                 colorbar=False)
+        alon = round(lon, 2)
+        alat = round(lat, 2)
+        glon = gdsi.lon.data.round(2)
+        glat = gdsi.lat.data.round(2)
+        rlon = rdsi.lon.data.round(2)
+        rlat = rdsi.lat.data.round(2)
+        alabel = f'{wmo} [{alon}, {alat}]'
+        glabel = f'GOFS [{ glon }, { glat }]'
+        rlabel = f'RTOFS [{ rlon }, { rlat }]'
 
-            h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
+        # Temperature 
+        ax1.plot(df['temp (degree_Celsius)'], df['depth'], 'b-o', label=alabel)
+        ax1.plot(gdsi['temperature'], gdsi['depth'], 'g-o', label=glabel)
+        ax1.plot(rdsi['temperature'], rdsi['depth'], 'r-o', label=rlabel)
+        # ax1.plot(cmems_sub['thetao'].squeeze(), cmems_sub['depth'].squeeze(),
+        #            'm-o',
+        #            label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
 
-            ax5.legend(h, l, ncol=1, loc='center', fontsize=12)
-            ax5.set_axis_off()
+        ax1.set_ylim([400, 0])
+        ax1.grid(True, linestyle='--', linewidth=.5)
+        ax1.tick_params(axis='both', labelsize=13)
+        ax1.set_xlabel('Temperature (˚C)', fontsize=14, fontweight='bold')
+        ax1.set_ylabel('Depth (m)', fontsize=14, fontweight='bold')
 
-            from hurricanes.plotting import map_add_ticks
-            map_add_ticks(ax4, extent, fontsize=10)
+        # Salinity
+        ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
+        ax2.plot(gdsi['salinity'], gdsi['depth'],'g-o', label=glabel)
+        ax2.plot(rdsi['salinity'], rdsi['depth'], 'r-o', label=rlabel)
+        # ax2.plot(cmems_sub['so'].squeeze(), cmems_sub['depth'].squeeze(),
+        #            'm-o',
+        #            label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
 
-            # t_str = t_float.strftime('%Y-%m-%d %H:%M:%SZ')
+        ax2.set_ylim([400, 0])
+        ax2.grid(True, linestyle='--', linewidth=.5)
+        ax2.tick_params(axis='both', labelsize=13)
+        ax2.set_xlabel('Salinity (psu)', fontsize=14, fontweight='bold')
+        # ax2.set_ylabel('Depth (m)', fontsize=14)
 
-            save_str = f'{t_float.strftime("%Y-%m-%dT%H%M%SZ")}-argo_{float}-model-comparison.png'
-            full_file = os.path.join(temp_save_dir, save_str)
+        # Density
+        ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
+        ax3.plot(gdsi['density'], gdsi['depth'],'g-o', label=glabel)
+        ax3.plot(rdsi['density'], rdsi['depth'], 'r-o', label=rlabel)
+        # ax2.plot(cmems_sub['so'].squeeze(), cmems_sub['depth'].squeeze(),
+        #            'm-o',
+        #            label=f'CMEMS [{ cmems_sub.longitude.data.round(2) }, { cmems_sub.latitude.data.round(2) }]')
 
-            plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
-            plt.close()
+        ax3.set_ylim([400, 0])
+        ax3.grid(True, linestyle='--', linewidth=.5)
+        ax3.tick_params(axis='both', labelsize=13)
+        ax3.set_xlabel('Density', fontsize=14, fontweight='bold')
+        # ax3.set_ylabel('Depth (m)', fontsize=14)
 
-gofs.close()
-rtofs.close()
+        text = ax4.text(0.125, 1.0, 
+                        f'Argo #{wmo}\n'
+                        f'ARGO:  { tstr }\n'
+                        f'RTOFS: {pd.to_datetime(rdsi.time.data)}\n'
+                        f'GOFS:  {pd.to_datetime(gdsi.time.data)}',
+                        ha='left', va='top', size=15, fontweight='bold')
+
+        text.set_path_effects([path_effects.Normal()])
+        ax4.set_axis_off()
+
+        map_create(extent, ax=ax5, ticks=False)
+        ax5.plot(lon, lat, 'ro', transform=configs.projection['data'])
+
+        h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
+
+        ax6.legend(h, l, ncol=1, loc='center', fontsize=12)
+        ax6.set_axis_off()
+        
+        plt.figtext(0.15, 0.001, f'Depths interpolated to every {configs.stride}m', ha="center", fontsize=10, fontstyle='italic')
+
+
+        fig.tight_layout()
+        fig.subplots_adjust(top=0.9) 
+
+        plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        plt.close()

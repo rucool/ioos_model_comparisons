@@ -23,7 +23,7 @@ path_data = current_dir.with_name('data') # data path relative to the toolbox
 # Configurations for contour maps 
 # (surface_map_comparisons.py, surface_map_rtofs.py, and surface_map_gofs.py
 regions = ['gom', 'caribbean', 'yucatan', 'mab', 'sab', 'windward', 'usvi', 'prvi']
-
+regions = ['caribbean']
 days = 2
 
 # Assets
@@ -38,3 +38,8 @@ projection = dict(
     map=ccrs.Mercator(), # the projection that you want the map to be in
     data=ccrs.PlateCarree() # the projection that the data is. 
     )
+
+# ARGO Profiles
+min_depth = 0 # Surface
+max_depth = 400 # 400m
+stride = 10 # 1m
