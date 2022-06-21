@@ -658,7 +658,7 @@ def plot_model_region_comparison(ds1, ds2, region,
 
     # Create subdirectory for region
     region_file_str = ('_').join(region_name.lower().split(' '))
-    path_save_region = path_save / 'regions' / region_file_str
+    path_save_region = path_save / region_file_str
     
     # # Create a map figure and serialize it if one doesn't already exist
     # region_name = "_".join(region["name"].split(' ')).lower()
