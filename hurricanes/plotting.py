@@ -39,6 +39,11 @@ except Exception:
     from urllib import urlopen, urlretrieve
 
 
+proj = dict(
+    map=ccrs.Mercator(), # the projection that you want the map to be in
+    data=ccrs.PlateCarree() # the projection that the data is. 
+    )
+
 def export_fig(path, fname, script=None, dpi=150):
     """
     Helper function to save a figure with some nice formatting.
@@ -177,12 +182,12 @@ def  get_ticks(bounds, dirs, otherbounds):
     return minor_ticks, major_ticks, major_tick_labels
 
 
-def map_add_argo(ax, df, transform):
+def map_add_argo(ax, df, transform=proj['data']):
     tdf = df.reset_index()
     most_recent = tdf.loc[tdf.groupby('argo')['time'].idxmax()]
 
     if most_recent.shape[0] > 50:
-        custom_cmap = 'black'
+        custom_cmap = matplotlib.colors.ListedColormap('red', N=most_recent.shape[0])
         marker = cycle(['o'])
     else:
         custom_cmap = categorical_cmap(10, 5, cmap="tab10")
@@ -201,20 +206,23 @@ def map_add_argo(ax, df, transform):
         n = n + 1
 
 
-def map_add_all_argo(ax, df, transform):
+def map_add_all_argo(ax, df, transform=proj['data']):
     grouped = df.groupby(['longitude (degrees_east)', 'latitude (degrees_north)'])
     for i, x in grouped:
         ax.plot(i[0], i[1], marker='o', markersize=7, markeredgecolor='black', color='green', transform=transform)
 
 
-def map_add_bathymetry(ax, lon, lat, elevation, levels=(-1000), zorder=5):
+def map_add_bathymetry(ax, lon, lat, elevation, levels=(-1000), zorder=5,
+                       transform=proj['data']):
     # lon = ds.variables['longitude'][:]
     # lat = ds.variables['latitude'][:]
     # elevation = ds.variables['elevation'][:]
-
-    h = ax.contour(lon, lat, elevation, levels, 
+    lons, lats = np.meshgrid(lon, lat)
+    h = ax.contour(lons, lats, elevation, levels, 
                     linewidths=.75, alpha=.5, colors='k', 
-                    transform=ccrs.PlateCarree(), zorder=zorder)
+                    transform=transform, 
+                    # transform_first=True, # This might speed it up
+                    zorder=zorder)
     ax.clabel(h, levels, inline=True, fontsize=6, fmt=fmt)
     return ax
 
@@ -222,7 +230,7 @@ def map_add_bathymetry(ax, lon, lat, elevation, levels=(-1000), zorder=5):
 def map_add_currents(ax, ds, coarsen=None, ptype="quiver",
                     scale=90, headwidth=2.75, headlength=2.75, headaxislength=2.5,
                     density=2, linewidth=.75, color='black',
-                    transform=ccrs.PlateCarree()):
+                    transform=proj['data']):
     """
     Add currents to map
 
@@ -297,6 +305,15 @@ def map_add_currents(ax, ds, coarsen=None, ptype="quiver",
 
 
 def map_add_features(ax, extent, edgecolor="black", landcolor="tan", zorder=0):
+    """_summary_
+
+    Args:
+        ax (_type_): _description_
+        extent (_type_): _description_
+        edgecolor (str, optional): _description_. Defaults to "black".
+        landcolor (str, optional): _description_. Defaults to "tan".
+        zorder (int, optional): _description_. Defaults to 0.
+    """
 
     state_lines = cfeature.NaturalEarthFeature(
         category='cultural',
@@ -309,22 +326,23 @@ def map_add_features(ax, extent, edgecolor="black", landcolor="tan", zorder=0):
 
     # Axes properties and features
     ax.set_extent(extent)
-    ax.add_feature(cfeature.OCEAN, zorder=zorder)
+    # ax.add_feature(cfeature.OCEAN, zorder=zorder) #cfeature.OCEAN has a major performance hit
+    ax.set_facecolor(cfeature.COLORS['water']) # way faster than adding the ocean feature above
     ax.add_feature(LAND, 
                    edgecolor=edgecolor, 
                    facecolor=landcolor,
                    zorder=zorder+10)
     ax.add_feature(cfeature.RIVERS, zorder=zorder+10.2)
-    ax.add_feature(cfeature.LAKES, zorder=zorder+10.2)
+    ax.add_feature(cfeature.LAKES, zorder=zorder+10.2, alpha=0.5)
     ax.add_feature(state_lines, edgecolor=edgecolor, zorder=zorder+10.3)
-    ax.add_feature(cfeature.BORDERS, zorder=zorder+10.3)
+    ax.add_feature(cfeature.BORDERS, linestyle='--', zorder=zorder+10.3)
 
 
-def map_add_gliders(ax, df, transform, color='white'):
+def map_add_gliders(ax, df, transform=proj['data'], color='white'):
     for g, new_df in df.groupby(level=0):
         q = new_df.iloc[-1]
         ax.plot(new_df['lon'], new_df['lat'], color=color,
-                linewidth=1.5, transform=ccrs.PlateCarree(), zorder=10000)
+                linewidth=1.5, transform=transform, zorder=10000)
         ax.plot(q['lon'], q['lat'], marker='^', markeredgecolor='black',
                 markersize=8.5, label=g, transform=transform, zorder=10000)
         # map_add_legend(ax)
@@ -337,19 +355,19 @@ def map_add_legend(ax):
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
 
-def map_add_ticks(ax, extent, fontsize=13):
+def map_add_ticks(ax, extent, fontsize=13, transform=proj['data']):
     xl = [extent[0], extent[1]]
     yl = [extent[2], extent[3]]
 
     tick0x, tick1, ticklab = get_ticks(xl, 'we', yl)
-    ax.set_xticks(tick0x, minor=True, crs=ccrs.PlateCarree())
-    ax.set_xticks(tick1, crs=ccrs.PlateCarree())
+    ax.set_xticks(tick0x, minor=True, crs=transform)
+    ax.set_xticks(tick1, crs=transform)
     ax.set_xticklabels(ticklab, fontsize=fontsize)
 
     # get and add latitude ticks/labels
     tick0y, tick1, ticklab = get_ticks(yl, 'sn', xl)
-    ax.set_yticks(tick0y, minor=True, crs=ccrs.PlateCarree())
-    ax.set_yticks(tick1, crs=ccrs.PlateCarree())
+    ax.set_yticks(tick0y, minor=True, crs=transform)
+    ax.set_yticks(tick1, crs=transform)
     ax.set_yticklabels(ticklab, fontsize=fontsize)
 
     # gl = ax.gridlines(draw_labels=False, linewidth=.5, color='gray', alpha=0.75, linestyle='--', crs=ccrs.PlateCarree())
@@ -377,8 +395,8 @@ def map_add_ticks(ax, extent, fontsize=13):
     return ax
 
 
-def map_add_transects(ax, transects, projection):
-    ax.plot(transects['lon'], transects['lat'], 'r-', transform=projection)
+def map_add_transects(ax, transects, transform=proj['data']):
+    ax.plot(transects['lon'], transects['lat'], 'r-', transform=transform)
 
 
 def map_load(figdir):
@@ -393,7 +411,7 @@ def map_save(fig, figdir):
 
       
 def map_create(extent, 
-               proj=ccrs.Mercator(),
+               proj=proj['map'],
                labelsize=14,
                ticks=True,
                labels=False,
@@ -457,8 +475,12 @@ def plot_model_region(ds, region,
                       bathy=None,
                       argo=None,
                       gliders=None,
-                      currents=None,
-                      transform=None,
+                      currents=dict(bool=False),
+                      transform=dict(
+                          map=proj['map'],
+                          data=proj['data']
+                          ),
+                      legend=True,
                       model='rtofs',
                       path_save=os.getcwd(),
                       dpi=150,
@@ -471,9 +493,6 @@ def plot_model_region(ds, region,
     :param kwargs:
     :return:
     """
-    transform = transform or dict(map=ccrs.Mercator(), data=ccrs.PlateCarree())
-    currents = currents or dict(bool=False)
-
     region_name = region["name"]
     extent = region["extent"]
     time = pd.to_datetime(ds.time.values)
@@ -582,19 +601,20 @@ def plot_model_region(ds, region,
 
             ax.set_title(title, fontsize=16, fontweight='bold')
 
-            h, l = ax.get_legend_handles_labels()  # get labels and handles from ax1
+            if legend:
+                h, l = ax.get_legend_handles_labels()  # get labels and handles from ax1
 
-            if (len(h) > 0) & (len(l) > 0):
-                # Shrink current axis's height by 10% on the bottom
-                box = ax.get_position()
-                ax.set_position([box.x0, box.y0 + box.height * 0.1,
-                                box.width, box.height * 0.9])
+                if (len(h) > 0) & (len(l) > 0):
+                    # Shrink current axis's height by 10% on the bottom
+                    box = ax.get_position()
+                    ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                                    box.width, box.height * 0.9])
 
-                # Put a legend below current axis
-                ax.legend(h, l, loc='upper center', bbox_to_anchor=(0.5, -0.05),
-                        fancybox=True, shadow=True, ncol=5)
-                legstr = f'Glider/Argo Search Window: {str(t0)} to {str(time)}'
-                plt.figtext(0.5, -0.07, legstr, ha="center", fontsize=10, fontweight='bold')
+                    # Put a legend below current axis
+                    ax.legend(h, l, loc='upper center', bbox_to_anchor=(0.5, -0.05),
+                            fancybox=True, shadow=True, ncol=5)
+                    legstr = f'Glider/Argo Search Window: {str(t0)} to {str(time)}'
+                    plt.figtext(0.5, -0.07, legstr, ha="center", fontsize=10, fontweight='bold')
 
             fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             
@@ -617,13 +637,14 @@ def remove_quiver_handles(ax):
             art.remove()      
 
 
-def plot_model_region_comparison(rtofs, gofs, region,
+def plot_model_region_comparison(ds1, ds2, region,
                                  bathy=None,
                                  argo=None,
                                  gliders=None,
                                  currents=None,
-                                 transform=dict(map=ccrs.Mercator(), 
-                                                data=ccrs.PlateCarree()
+                                 eez=False,
+                                 transform=dict(map=proj['map'], 
+                                                data=proj['data']
                                                 ),
                                  path_save=os.getcwd(),
                                  dpi=150,
@@ -631,7 +652,7 @@ def plot_model_region_comparison(rtofs, gofs, region,
                                  colorbar=True,
                                  overwrite=False):
     
-    time = pd.to_datetime(rtofs.time.data)
+    time = pd.to_datetime(ds1.time.data)
     region_name = region["name"]
     extent = region['extent']
 
@@ -666,7 +687,7 @@ def plot_model_region_comparison(rtofs, gofs, region,
         figsize=figsize,
         layout="constrained",
         subplot_kw={
-            'projection': ccrs.Mercator()
+            'projection': transform['map']
             },
         gridspec_kw={
             # set the height ratios between the rows
@@ -676,9 +697,9 @@ def plot_model_region_comparison(rtofs, gofs, region,
             },
         )
     axs = fig.axes
-    ax1 = axs[0] # rtofs
-    ax2 = axs[1] # gofs
-    ax3 = axs[2] # legend for argo/gliders
+    ax1 = axs[0] # Model 1
+    ax2 = axs[1] # Model 2
+    ax3 = axs[2] # Legend for argo/gliders
             
     # Make the map pretty
     map_add_features(ax1, extent)# zorder=0)
@@ -727,8 +748,8 @@ def plot_model_region_comparison(rtofs, gofs, region,
     plot_regional_assets(ax2, **rargs)
 
     # Label the subplots
-    ax1.set_title("RTOFS", fontsize=22, fontweight="bold")
-    ax2.set_title("GOFS", fontsize=22, fontweight="bold")
+    ax1.set_title(ds1.model, fontsize=22, fontweight="bold")
+    ax2.set_title(ds2.model, fontsize=22, fontweight="bold")
     
     # Deal with the third axes
     h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
@@ -749,15 +770,16 @@ def plot_model_region_comparison(rtofs, gofs, region,
 
         for item in v:
             depth = item['depth']
-            rsub = rtofs[k].sel(depth=depth)
-            gsub = gofs[k].sel(depth=depth)
+            rsub = ds1[k].sel(depth=depth)
+            gsub = ds2[k].sel(depth=depth, method='nearest')
             
             # Create subdirectory for depth under variable subdirectory
             save_dir_final = path_save_region / f"{k}_{depth}m" / time.strftime('%Y/%m')
             os.makedirs(save_dir_final, exist_ok=True)
 
             # Create a file name to save the plot as
-            sname = f'{k}-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
+            # sname = f'{ds1.model}_vs_{ds2.model}_{k}-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
+            sname = f'{time.strftime("%Y-%m-%dT%H%M%SZ")}_{k}_{ds1.model.lower()}-vs-{ds2.model.lower()}'
             save_file = save_dir_final / f"{sname}.png"
 
             if save_file.is_file():
@@ -777,7 +799,8 @@ def plot_model_region_comparison(rtofs, gofs, region,
             # Create dictionary for variable argument inputs for contourf
             vargs = {}
             vargs['transform'] = transform['data']
-            vargs['cmap'] = cmaps(rtofs[k].name)
+            vargs['transform_first'] = True
+            vargs['cmap'] = cmaps(ds1[k].name)
             vargs['extend'] = "both"
 
             if 'limits' in item:
@@ -786,8 +809,20 @@ def plot_model_region_comparison(rtofs, gofs, region,
                 vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
         
             # Filled contour for each model variable
-            h1 = ax1.contourf(rsub['lon'], rsub['lat'], rsub.squeeze(), **vargs)
-            h2 = ax2.contourf(gsub['lon'], gsub['lat'], gsub.squeeze(), **vargs)
+            if (rsub['lon'].ndim == 1) & rsub['lat'].ndim == 1:
+                rlons, rlats = np.meshgrid(rsub['lon'], rsub['lat'])
+            else:
+                rlons = rsub['lon']
+                rlats = rsub['lat']
+            h1 = ax1.contourf(rlons, rlats, rsub.squeeze(), **vargs)
+
+            # Check if ndims are 1, transform_first requires 2d array
+            if (gsub['lon'].ndim == 1) & gsub['lat'].ndim == 1:
+                glons, glats = np.meshgrid(gsub['lon'], gsub['lat'])
+            else:
+                glons = gsub['lon']
+                glats = gsub['lat']
+            h2 = ax2.contourf(glons, glats, gsub.squeeze(), **vargs)
 
             if colorbar:
                 cb = fig.colorbar(h2, ax=axs[:2], location='bottom', aspect=80)
@@ -795,10 +830,16 @@ def plot_model_region_comparison(rtofs, gofs, region,
                 cb.set_label(f'{k.title()} ({rsub.units})', fontsize=12, fontweight="bold")
 
             # Add EEZ
-            # # eez = '/Users/mikesmith/Documents/github/rucool/Daily_glider_models_comparisons/World_EEZ_v11_20191118/eez_boundaries_v11.shp'
-            # # shape_feature = cfeature.ShapelyFeature(Reader(eez).geometries(), ccrs.PlateCarree(), edgecolor='red', facecolor='none')
-            # # ax1.add_feature(shape_feature, zorder=1)
-            # # ax2.add_feature(shape_feature, zorder=1)
+            if eez:
+                eez = '/Users/mikesmith/Documents/github/rucool/Daily_glider_models_comparisons/World_EEZ_v11_20191118/eez_boundaries_v11.shp'
+                shape_feature = cfeature.ShapelyFeature(
+                    Reader(eez).geometries(), 
+                    proj['data'],
+                    edgecolor='red', 
+                    facecolor='none'
+                    )
+                ax1.add_feature(shape_feature, zorder=1)
+                ax2.add_feature(shape_feature, zorder=1)
             
             # Plot size adjustments
             # fig.tight_layout()
@@ -972,8 +1013,8 @@ def plot_model_region_comparison_streamplot(rtofs, gofs, region,
                                             argo=None,
                                             gliders=None,
                                             currents=None,
-                                            transform=dict(map=ccrs.Mercator(), 
-                                                           data=ccrs.PlateCarree()
+                                            transform=dict(map=proj['map'], 
+                                                           data=proj['data']
                                                            ),
                                             path_save=os.getcwd(),
                                             dpi=150,
@@ -1002,7 +1043,7 @@ def plot_model_region_comparison_streamplot(rtofs, gofs, region,
         figsize=figsize,
         layout="constrained",
         subplot_kw={
-            'projection': ccrs.Mercator()
+            'projection': proj['map']
             },
         gridspec_kw={
             # set the height ratios between the rows

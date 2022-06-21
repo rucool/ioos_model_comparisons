@@ -9,3 +9,5 @@ scipy
 beautifulsoup4
 pydap
 lxml
+tqdm
+pydap

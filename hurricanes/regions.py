@@ -1,6 +1,6 @@
 from collections import OrderedDict
 
-    
+
 def region_config(regions=None, model=None):
     """
     return extent and other variable limits of certain regions 
@@ -45,7 +45,44 @@ def region_config(regions=None, model=None):
         figure = dict(
             legend = dict(columns=5),
             # figsize
-            )  
+            ) 
+
+    key = "hurricane"
+    if key in regions:
+        # Caribbean Limits
+        name = "Hurricane Alley"
+        extent = [-89, -12, 0, 20]
+        sea_water_temperature = [
+            # dict(depth=0, limits=[20 , 29.25, .25]),
+            # dict(depth=150, limits=[17, 24.5, .5]),
+            # dict(depth=200, limits=[14, 22, .5])
+            ]
+        salinity = [
+            # dict(depth=0, limits=[34.6, 37.2, .1]),
+            dict(depth=150, limits=[35.7, 36.4, .05]),
+            # dict(depth=200, limits=[35.5, 37, .1])
+            ]
+        sea_surface_height = [
+            dict(depth=0, limits=[-.6, .7, .1])
+            ]
+        currents = dict(
+            bool=True,
+            depths = [0, 150, 200],
+            coarsen=dict(rtofs=11, gofs=12),
+            kwargs=dict(
+                ptype="streamplot",
+                color="black", 
+                density=4,
+                linewidth=.5
+                # scale=60,
+                # headwidth=4,
+                # headlength=4,
+                # headaxislength=3.5
+                )
+            )
+        figure = dict(
+            legend = dict(columns=9),
+            )
 
     key = "yucatan"
     if key in regions:

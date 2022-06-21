@@ -32,7 +32,7 @@ gliders = True
 bathy = True
 
 # Plot configurations
-dpi = 150
+dpi = 125
 projection = dict(
     map=ccrs.Mercator(), # the projection that you want the map to be in
     data=ccrs.PlateCarree() # the projection that the data is. 
@@ -42,3 +42,15 @@ projection = dict(
 min_depth = 0 # Surface
 max_depth = 400 # 400m
 stride = 10 # 1m
+
+
+# Glider Profiles
+extent_gliders = [-98, -55, 5, 32]
+variables_gliders = [
+    'depth',
+    'latitude',
+    'longitude',
+    'time',
+    'temperature',
+    'salinity'
+]

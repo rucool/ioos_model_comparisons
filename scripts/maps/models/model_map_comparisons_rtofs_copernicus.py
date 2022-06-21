@@ -3,32 +3,33 @@ import datetime as dt
 import hurricanes.configs as configs
 import numpy as np
 import pandas as pd
-from hurricanes.calc import lon180to360, lon360to180
-from hurricanes.models import gofs, rtofs
+# from hurricanes.calc import lon180to360, lon360to180
+from hurricanes.models import rtofs, copernicus
 from hurricanes.platforms import (get_active_gliders, get_argo_floats_by_time,
                                   get_bathymetry)
-from hurricanes.plotting import (plot_model_region_comparison, 
-                                 plot_model_region_comparison_streamplot)
+from hurricanes.plotting import (plot_model_region_comparison,)
+                                #  plot_model_region_comparison_streamplot)
 from hurricanes.regions import region_config
 import matplotlib
+import time
+
+startTime = time.time()
 matplotlib.use('agg')
 
 # Set path to save plots
-path_save = (configs.path_plots / "maps" / "comparisons")
+path_save = (configs.path_plots / "maps")
 
 # initialize keyword arguments for map plotz
 kwargs = dict()
 kwargs['transform'] = configs.projection
 kwargs['path_save'] = path_save
 kwargs['dpi'] = configs.dpi
+kwargs['overwrite'] = False
 
 # Get today and yesterday dates
 today = dt.date.today()
 tomorrow = today + dt.timedelta(days=1)
 past = today - dt.timedelta(days=configs.days)
-# today = dt.date(2022, 5, 31)
-# tomorrow = today 
-# past = today - dt.timedelta(days=1)
 
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
@@ -46,6 +47,7 @@ extent_df = pd.DataFrame(
     np.array(extent_list),
     columns=['lonmin', 'lonmax', 'latmin', 'latmax']
     )
+
 global_extent = [
     extent_df.lonmin.min(),
     extent_df.lonmax.max(),
@@ -117,18 +119,13 @@ for item in configs.regions:
         y=slice(extent_ind[2], extent_ind[3])
         ).set_coords(['u', 'v'])
 
-    # Load GOFS DataSet
-    gds = gofs(rename=True)
-    
-    # subset dataset to the proper extents for each region
-    lon360 = lon180to360(extent[:2]) # convert from 360 to 180 lon
-    gds_sub = gds.sel(
-        lon=slice(lon360[0], lon360[1]),
+    # Load Copernicus
+    cds = copernicus(rename=True)
+    cds_sub = cds.sel(
+        lon=slice(extent[0], extent[1]),
         lat=slice(extent[2], extent[3])
     ).set_coords(['u', 'v'])
     
-    # Convert from 0,360 lon to -180,180
-    gds_sub['lon'] = lon360to180(gds_sub['lon'])
     for t in date_list:
         search_window_t0 = (t - dt.timedelta(hours=configs.search_hours)).strftime(tstr)
         kwargs['t0'] = search_window_t0
@@ -158,8 +155,10 @@ for item in configs.regions:
             kwargs['gliders'] = glider_region
 
         try:
-            plot_model_region_comparison(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
-            # plot_model_region_comparison_streamplot(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
+            plot_model_region_comparison(rds_sub.sel(time=t), cds_sub.sel(time=t), region, **kwargs)
+        #     # plot_model_region_comparison_streamplot(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
         except KeyError as e:
             print(e)
             continue
+executionTime = (time.time() - startTime)
+print('Execution time in seconds: ' + str(executionTime))

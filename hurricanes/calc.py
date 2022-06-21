@@ -1,6 +1,39 @@
 import numpy as np
 import pandas as pd
-import xarray as xr
+
+
+def difference(array1, array2):
+    """
+    Calculate the difference between two equal arrays. 
+    
+    Bias is the difference between the mean of these estimates and the actual value.
+
+    Args:
+        array1 (_type_): Array 1
+        array2 (_type_): Array 2
+
+    Returns:
+        tuple: difference, bias, rms error
+    """
+    diff = array1 - array2
+
+    bias = np.round(np.sum(diff).values / diff.shape, 3)
+    rms = np.round(rmse(diff), 3)
+    return (diff, bias[0], rms.values)
+
+    
+def rmse(array):
+    """
+    Calculate root mean square error
+
+    Args:
+        array (array): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    return np.sqrt(np.mean(array**2))
+
 
 def lon180to360(array):
     array = np.array(array)
@@ -39,6 +72,9 @@ def depth_interpolate(df, depth_var='depth', depth_min=None, depth_max=None, str
     Returns:
         pd.DataFrame: dataframe with depth interpolated
     """
+    if df.empty:
+        print("Dataframe empty. Returning to original function")
+        return
     depth_min = depth_min or round(df[depth_var].min())
     depth_max = depth_max or round(df[depth_var].max())
 
