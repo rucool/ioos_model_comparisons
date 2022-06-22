@@ -164,21 +164,21 @@ for item in configs.regions:
         cdsi['pressure'] = xr.apply_ufunc(seawater.eos80.pres, cdsi.depth, cdsi.lat)
         cdsi['density'] = xr.apply_ufunc(seawater.eos80.dens, cdsi.salinity, cdsi.temperature, cdsi.pressure)
 
-        # fig = plt.figure(constrained_layout=True, figsize=(16, 6))
-        # widths = [1, 1, 1, 1.5]
-        # heights = [1, 2, 1]
+        fig = plt.figure(constrained_layout=True, figsize=(16, 6))
+        widths = [1, 1, 1, 1.5]
+        heights = [1, 2, 1]
 
-        # gs = fig.add_gridspec(3, 4, width_ratios=widths,
-        #                         height_ratios=heights)
+        gs = fig.add_gridspec(3, 4, width_ratios=widths,
+                                height_ratios=heights)
 
-        # ax1 = fig.add_subplot(gs[:, 0]) # Temperature
-        # ax2 = fig.add_subplot(gs[:, 1], sharey=ax1)  # Salinity
-        # plt.setp(ax2.get_yticklabels(), visible=False)
-        # ax3 = fig.add_subplot(gs[:, 2], sharey=ax1) # Density
-        # plt.setp(ax3.get_yticklabels(), visible=False)
-        # ax4 = fig.add_subplot(gs[0, -1]) # Title
-        # ax5 = fig.add_subplot(gs[1, -1], projection=configs.projection['map']) # Map
-        # ax6 = fig.add_subplot(gs[2, -1]) # Legend
+        ax1 = fig.add_subplot(gs[:, 0]) # Temperature
+        ax2 = fig.add_subplot(gs[:, 1], sharey=ax1)  # Salinity
+        plt.setp(ax2.get_yticklabels(), visible=False)
+        ax3 = fig.add_subplot(gs[:, 2], sharey=ax1) # Density
+        plt.setp(ax3.get_yticklabels(), visible=False)
+        ax4 = fig.add_subplot(gs[0, -1]) # Title
+        ax5 = fig.add_subplot(gs[1, -1], projection=configs.projection['map']) # Map
+        ax6 = fig.add_subplot(gs[2, -1]) # Legend
 
         alon = round(lon, 2)
         alat = round(lat, 2)
@@ -195,72 +195,72 @@ for item in configs.regions:
         rlabel = f'RTOFS [{ rlon }, { rlat }]'
         clabel = f"Copernicus [{ clon }, { clat }]"
 
-        # # Temperature 
-        # ax1.plot(df['temp (degree_Celsius)'], df['depth'], 'b-o', label=alabel)
-        # ax1.plot(gdsi['temperature'], gdsi['depth'], 'g-o', label=glabel)
-        # ax1.plot(rdsi['temperature'], rdsi['depth'], 'r-o', label=rlabel)
-        # ax1.plot(cdsi['temperature'], cdsi['depth'], 'm-o', label=clabel)
+        # Temperature 
+        ax1.plot(df['temp (degree_Celsius)'], df['depth'], 'b-o', label=alabel)
+        ax1.plot(gdsi['temperature'], gdsi['depth'], 'g-o', label=glabel)
+        ax1.plot(rdsi['temperature'], rdsi['depth'], 'r-o', label=rlabel)
+        ax1.plot(cdsi['temperature'], cdsi['depth'], 'm-o', label=clabel)
 
-        # ax1.set_ylim([400, 0])
-        # ax1.grid(True, linestyle='--', linewidth=.5)
-        # ax1.tick_params(axis='both', labelsize=13)
-        # ax1.set_xlabel('Temperature (˚C)', fontsize=14, fontweight='bold')
-        # ax1.set_ylabel('Depth (m)', fontsize=14, fontweight='bold')
+        ax1.set_ylim([400, 0])
+        ax1.grid(True, linestyle='--', linewidth=.5)
+        ax1.tick_params(axis='both', labelsize=13)
+        ax1.set_xlabel('Temperature (˚C)', fontsize=14, fontweight='bold')
+        ax1.set_ylabel('Depth (m)', fontsize=14, fontweight='bold')
 
-        # # Salinity
-        # ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
-        # ax2.plot(gdsi['salinity'], gdsi['depth'],'g-o', label=glabel)
-        # ax2.plot(rdsi['salinity'], rdsi['depth'], 'r-o', label=rlabel)
-        # ax2.plot(cdsi['salinity'], cdsi['depth'],  'm-o', label=clabel)
+        # Salinity
+        ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
+        ax2.plot(gdsi['salinity'], gdsi['depth'],'g-o', label=glabel)
+        ax2.plot(rdsi['salinity'], rdsi['depth'], 'r-o', label=rlabel)
+        ax2.plot(cdsi['salinity'], cdsi['depth'],  'm-o', label=clabel)
 
-        # ax2.set_ylim([400, 0])
-        # ax2.grid(True, linestyle='--', linewidth=.5)
-        # ax2.tick_params(axis='both', labelsize=13)
-        # ax2.set_xlabel('Salinity (psu)', fontsize=14, fontweight='bold')
-        # # ax2.set_ylabel('Depth (m)', fontsize=14)
+        ax2.set_ylim([400, 0])
+        ax2.grid(True, linestyle='--', linewidth=.5)
+        ax2.tick_params(axis='both', labelsize=13)
+        ax2.set_xlabel('Salinity (psu)', fontsize=14, fontweight='bold')
+        # ax2.set_ylabel('Depth (m)', fontsize=14)
 
-        # # Density
-        # ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
-        # ax3.plot(gdsi['density'], gdsi['depth'],'g-o', label=glabel)
-        # ax3.plot(rdsi['density'], rdsi['depth'], 'r-o', label=rlabel)
-        # ax3.plot(cdsi['density'], cdsi['depth'], 'm-o', label=clabel)
+        # Density
+        ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
+        ax3.plot(gdsi['density'], gdsi['depth'],'g-o', label=glabel)
+        ax3.plot(rdsi['density'], rdsi['depth'], 'r-o', label=rlabel)
+        ax3.plot(cdsi['density'], cdsi['depth'], 'm-o', label=clabel)
 
-        # ax3.set_ylim([400, 0])
-        # ax3.grid(True, linestyle='--', linewidth=.5)
-        # ax3.tick_params(axis='both', labelsize=13)
-        # ax3.set_xlabel('Density', fontsize=14, fontweight='bold')
-        # # ax3.set_ylabel('Depth (m)', fontsize=14)
+        ax3.set_ylim([400, 0])
+        ax3.grid(True, linestyle='--', linewidth=.5)
+        ax3.tick_params(axis='both', labelsize=13)
+        ax3.set_xlabel('Density', fontsize=14, fontweight='bold')
+        # ax3.set_ylabel('Depth (m)', fontsize=14)
 
-        # text = ax4.text(0.125, 1.0, 
-        #                 f'Argo #{wmo}\n'
-        #                 f'ARGO:  { tstr }\n'
-        #                 f'RTOFS: {pd.to_datetime(rdsi.time.data)}\n'
-        #                 f'GOFS : {pd.to_datetime(gdsi.time.data)}\n'
-        #                 f'CMEMS: {pd.to_datetime(cdsi.time.data)}',
-        #                 ha='left', va='top', size=15, fontweight='bold')
+        text = ax4.text(0.125, 1.0, 
+                        f'Argo #{wmo}\n'
+                        f'ARGO:  { tstr }\n'
+                        f'RTOFS: {pd.to_datetime(rdsi.time.data)}\n'
+                        f'GOFS : {pd.to_datetime(gdsi.time.data)}\n'
+                        f'CMEMS: {pd.to_datetime(cdsi.time.data)}',
+                        ha='left', va='top', size=15, fontweight='bold')
 
-        # text.set_path_effects([path_effects.Normal()])
-        # ax4.set_axis_off()
+        text.set_path_effects([path_effects.Normal()])
+        ax4.set_axis_off()
 
-        # map_create(extent, ax=ax5, ticks=False)
-        # ax5.plot(lon, lat, 'ro', transform=configs.projection['data'])
+        map_create(extent, ax=ax5, ticks=False)
+        ax5.plot(lon, lat, 'ro', transform=configs.projection['data'])
 
-        # h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
+        h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
 
-        # ax6.legend(h, l, ncol=1, loc='center', fontsize=12)
-        # ax6.set_axis_off()
+        ax6.legend(h, l, ncol=1, loc='center', fontsize=12)
+        ax6.set_axis_off()
         
-        # plt.figtext(0.15, 0.001, f'Depths interpolated to every {configs.stride}m', ha="center", fontsize=10, fontstyle='italic')
+        plt.figtext(0.15, 0.001, f'Depths interpolated to every {configs.stride}m', ha="center", fontsize=10, fontstyle='italic')
 
 
-        # fig.tight_layout()
-        # fig.subplots_adjust(top=0.9) 
+        fig.tight_layout()
+        fig.subplots_adjust(top=0.9) 
 
-        # plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
-        # plt.close()
+        plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        plt.close()
 
 
-# Stats 
+        # Stats 
         fig = plt.figure(constrained_layout=True, figsize=(16, 6))
         widths = [1, 1, 1, 1.5]
         heights = [1, 2, 1]
