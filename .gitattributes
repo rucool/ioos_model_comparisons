@@ -1,2 +1,14 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+data/eez/eez_boundaries_v11.cpg filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_v11.cpg filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_v11.dbf filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_v11.prj filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_v11.shp filter=lfs diff=lfs merge=lfs -text
+data/eez/LICENSE_EEZ_v11.txt filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_boundaries_v11.prj filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_boundaries_v11.shp filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_boundaries_v11.shx filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_v11.qpj filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_v11.shx filter=lfs diff=lfs merge=lfs -text
+data/eez/eez_boundaries_v11.dbf filter=lfs diff=lfs merge=lfs -text
