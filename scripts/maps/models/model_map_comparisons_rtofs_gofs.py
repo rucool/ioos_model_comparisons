@@ -69,7 +69,6 @@ if configs.bathy:
 
 # Loop through regions
 for item in configs.regions:
-# for item in ['mab']:
     region = region_config(item)
     extent = region['extent']
     print(f'Region: {region["name"]}, Extent: {extent}')
@@ -77,6 +76,9 @@ for item in configs.regions:
     # Create a map figure and serialize it if one doesn't already exist
     region_name = "_".join(region["name"].split(' ')).lower()
     kwargs['colorbar'] = True
+
+    if 'eez' in region.keys():
+        kwargs["eez"] = region["eez"]
 
     if region['currents']['bool']:
         kwargs['currents'] = region['currents']

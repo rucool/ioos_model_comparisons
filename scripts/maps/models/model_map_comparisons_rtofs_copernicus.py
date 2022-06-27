@@ -77,6 +77,9 @@ for item in configs.regions:
     # Create a map figure and serialize it if one doesn't already exist
     region_name = "_".join(region["name"].split(' ')).lower()
     kwargs['colorbar'] = True
+    
+    if 'eez' in region.keys():
+        kwargs["eez"] = region["eez"]
 
     if region['currents']['bool']:
         kwargs['currents'] = region['currents']

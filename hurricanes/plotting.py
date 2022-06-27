@@ -304,6 +304,17 @@ def map_add_currents(ax, ds, coarsen=None, ptype="quiver",
     return q
 
 
+def map_add_eez(ax, zorder=1):
+    eez = 'data/eez/eez_boundaries_v11.shp'
+    shape_feature = cfeature.ShapelyFeature(
+        Reader(eez).geometries(), 
+        proj['data'],
+        edgecolor='black', 
+        facecolor='none'
+        )
+    ax.add_feature(shape_feature, zorder=zorder)
+    
+
 def map_add_features(ax, extent, edgecolor="black", landcolor="tan", zorder=0):
     """_summary_
 
@@ -653,12 +664,12 @@ def plot_model_region_comparison(ds1, ds2, region,
                                  overwrite=False):
     
     time = pd.to_datetime(ds1.time.data)
-    region_name = region["name"]
+    # region_name = region["name"]
     extent = region['extent']
 
     # Create subdirectory for region
-    region_file_str = ('_').join(region_name.lower().split(' '))
-    path_save_region = path_save / region_file_str
+    # region_file_str = ('_').join(region_name.lower().split(' '))
+    path_save_region = path_save / region['folder']
     
     # # Create a map figure and serialize it if one doesn't already exist
     # region_name = "_".join(region["name"].split(' ')).lower()
@@ -831,15 +842,8 @@ def plot_model_region_comparison(ds1, ds2, region,
 
             # Add EEZ
             if eez:
-                eez = '/Users/mikesmith/Documents/github/rucool/Daily_glider_models_comparisons/World_EEZ_v11_20191118/eez_boundaries_v11.shp'
-                shape_feature = cfeature.ShapelyFeature(
-                    Reader(eez).geometries(), 
-                    proj['data'],
-                    edgecolor='red', 
-                    facecolor='none'
-                    )
-                ax1.add_feature(shape_feature, zorder=1)
-                ax2.add_feature(shape_feature, zorder=1)
+                map_add_eez(ax1, zorder=1)
+                map_add_eez(ax2, zorder=1)
             
             # Plot size adjustments
             # fig.tight_layout()

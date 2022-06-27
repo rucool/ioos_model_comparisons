@@ -21,8 +21,7 @@ elif platform == "darwin":
 path_data = current_dir.with_name('data') # data path relative to the toolbox 
 
 # Configurations for contour maps 
-# (surface_map_comparisons.py, surface_map_rtofs.py, and surface_map_gofs.py
-regions = ['gom', 'caribbean', 'yucatan', 'mab', 'sab', 'windward', 'usvi']# 'amazon']
+regions = ["yucatan", "mab", "sab", "leeward", "windward", "gom", "caribbean"]
 days = 2
 
 # Assets
@@ -42,7 +41,6 @@ projection = dict(
 min_depth = 0 # Surface
 max_depth = 400 # 400m
 stride = 10 # 1m
-
 
 # Glider Profiles
 extent_gliders = [-98, -55, 5, 32]

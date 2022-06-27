@@ -21,44 +21,22 @@ def region_config(regions=None, model=None):
     # To add different depths for each variable, append to the specific variable list the following format:
     # dict(depth=n, limits=[min, max, stride])  
 
-    key = "ng645"
-    if key in regions:
-        # Yucatan/Caribbean
-        name = "ng645-20211010T0000"
-        extent = [-92, -76, 22, 34]
-        sea_water_temperature = [dict(depth=0, limits=[24.25, 28, .25]), dict(depth=200, limits=[14, 23, .5])]
-        salinity = [dict(depth=0, limits=[35.7, 36.2, .05])]
-        sea_surface_height = [dict(depth=0, limits=[-.6, .7, .1])]
-        currents = dict(
-            bool=True,
-            depths = [0, 150, 200],
-            coarsen=dict(rtofs=2, gofs=3),
-            kwargs=dict(
-                ptype="streamplot",
-                color="black"
-                # scale=60,
-                # headwidth=3,
-                # headlength=3,
-                # headaxislength=2.5
-                )
-            )   
-        figure = dict(
-            legend = dict(columns=5),
-            # figsize
-            ) 
+    # Defaults
+    eez = False
 
     key = "hurricane"
     if key in regions:
         # Caribbean Limits
         name = "Hurricane Alley"
+        folder = "hurricane_alley"
         extent = [-89, -12, 0, 20]
         sea_water_temperature = [
-            # dict(depth=0, limits=[20 , 29.25, .25]),
-            # dict(depth=150, limits=[17, 24.5, .5]),
+            dict(depth=0, limits=[20 , 29.25, .25]),
+            dict(depth=150, limits=[17, 24.5, .5]),
             # dict(depth=200, limits=[14, 22, .5])
             ]
         salinity = [
-            # dict(depth=0, limits=[34.6, 37.2, .1]),
+            dict(depth=0, limits=[34.6, 37.2, .1]),
             dict(depth=150, limits=[35.7, 36.4, .05]),
             # dict(depth=200, limits=[35.5, 37, .1])
             ]
@@ -88,6 +66,7 @@ def region_config(regions=None, model=None):
     if key in regions:
         # Yucatan Limits
         name = "Yucatan"
+        folder = "yucatan"
         extent = [-90, -78, 18, 26]
         sea_water_temperature = [
             dict(depth=0, limits=[24, 29.5, .5]),
@@ -115,24 +94,26 @@ def region_config(regions=None, model=None):
                 # headaxislength=2.5
                 )
             )
+        eez = True
         figure = dict(
             legend = dict(columns=9),
             )
 
-    key = "prvi"
+    key = "leeward"
     if key in regions:
         # USVI Limits
-        name = "Puerto Rico and Virgin Islands"
-        extent = [-72, -64, 15, 20]
+        name = "Caribbean: Leeward Islands"
+        folder = "caribbean-leeward"
+        extent = [-68.5, -61, 15, 19]
         sea_water_temperature = [
             dict(depth=0, limits=[26.5, 28.75, .25]),
-            dict(depth=150, limits=[19.5, 24, .5]),
-            dict(depth=200, liimits=[16.5, 21.75, .25])
+            # dict(depth=150, limits=[19.5, 24, .5]),
+            # dict(depth=200, liimits=[16.5, 21.75, .25])
             ]
         salinity = [
             dict(depth=0, limits=[35.5, 36.3, .1]),
-            dict(depth=150, limits=[35.6, 37.3, .1]),
-            dict(depth=200, limits=[35.6, 37, .1])
+            # dict(depth=150, limits=[35.6, 37.3, .1]),
+            # dict(depth=200, limits=[35.6, 37, .1])
             ]
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
@@ -150,6 +131,7 @@ def region_config(regions=None, model=None):
                 # headaxislength=2.5
                 )
             )
+        eez = True
         figure = dict(
             legend = dict(columns=9),
             # figsize
@@ -159,6 +141,7 @@ def region_config(regions=None, model=None):
     if key in regions:
         # USVI Limits
         name = "Virgin Islands"
+        folder = "virgin_islands"
         extent = [-66.26, -62.61, 16.5, 19]
         sea_water_temperature = [
             dict(depth=0, limits=[26.6, 28.1, .1]),
@@ -191,44 +174,12 @@ def region_config(regions=None, model=None):
             # figsize
             )
 
-    key = "west_indies"
-    if key in regions:
-        # West Indies
-        name = "West Indies"
-        extent = [-67, -61, 14, 19]
-        sea_water_temperature = [
-            dict(depth=0, limits=[27.5, 29.5, .25]),
-            dict(depth=150),
-            ]
-        salinity = [
-            dict(depth=0, limits=[34, 36.5, .25 ]),
-            dict(depth=150),
-            ]
-        sea_surface_height = [
-            dict(depth=0, limits=[-.6, .7, .1])
-            ]
-        currents = dict(
-            bool=True,
-            depths = [0, 150, 200],
-            coarsen=dict(rtofs=2, gofs=3),
-            kwargs=dict(
-                ptype="streamplot",
-                color="black"
-                # scale=40,
-                # headwidth=5,
-                # headlength=5,
-                # headaxislength=4.5
-                )
-            )
-        figure = dict(
-            legend = dict(columns=9),
-            # figsize
-            )
 
     key = "gom"
     if key in regions:
         # Gulf of Mexico Limits
         name = "Gulf of Mexico"
+        folder = "gulf_of_mexico"
         extent = [-99, -79, 18, 31]
         sea_water_temperature = [
             dict(depth=0, limits=[26, 30, .25]),
@@ -265,6 +216,7 @@ def region_config(regions=None, model=None):
     if key in regions:
         # South Atlantic Bight Limits
         name = "South Atlantic Bight"
+        folder = "south_atlantic_bight"
         extent = [-82, -64, 25, 36]
         sea_water_temperature = [
             dict(depth=0, limits=[22, 29, .5]),
@@ -301,6 +253,7 @@ def region_config(regions=None, model=None):
     if key in regions:
         # Mid Atlantic Bight Limits
         name = 'Mid Atlantic Bight'
+        folder = "mid_atlantic_bight"
         extent = [-77, -67, 35, 43]
         sea_water_temperature = [
             dict(depth=0, limits=[10, 25.5, .5]),
@@ -338,7 +291,8 @@ def region_config(regions=None, model=None):
     key = "caribbean"
     if key in regions:
         # Caribbean Limits
-        name = "Caribbean Sea"
+        name = "Caribbean"
+        folder = "caribbean"
         extent = [-89, -58, 7, 23]
         sea_water_temperature = [
             dict(depth=0, limits=[26, 29.25, .25]),
@@ -366,6 +320,7 @@ def region_config(regions=None, model=None):
                 # headaxislength=3.5
                 )
             )
+        eez = True
         figure = dict(
             legend = dict(columns=9),
             figsize = (16,7)
@@ -374,7 +329,8 @@ def region_config(regions=None, model=None):
     key = "windward"
     if key in regions:
         # Windward Islands imits
-        name = 'Windward Islands'
+        name = 'Caribbean: Windward Islands'
+        folder = "caribbean-windward"
         extent = [-68.2, -56.4, 9.25, 19.75]
         sea_water_temperature = [
             dict(depth=0, limits=[25.25, 28.25, .25]),
@@ -404,7 +360,7 @@ def region_config(regions=None, model=None):
                 )
             )
         figure = dict(
-            legend = dict(columns=9),
+            legend = dict(columns=5),
             figsize = (13, 9)
             )
         
@@ -412,7 +368,8 @@ def region_config(regions=None, model=None):
     if key in regions:
         # Amazon Plume limits
         name = 'Amazon Plume'
-        extent = [-70, -43, -5, 20]
+        folder = "amazon_plume"
+        extent = [-70, -43, 0, 20]
         sea_water_temperature = [
             dict(depth=0),
             dict(depth=150),
@@ -452,10 +409,12 @@ def region_config(regions=None, model=None):
     
     # Update Dictionary with limits defined above
     limits.update(name=name)
+    limits.update(folder=folder)
     limits.update(extent=extent)
     limits.update(currents=currents)
     limits.update(figure=figure)
     limits.update(sea_surface_height=sea_surface_height)
+    limits.update(eez=eez)
     limits.update(variables=vars)
     return limits
 
