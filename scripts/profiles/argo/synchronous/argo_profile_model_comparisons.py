@@ -10,7 +10,7 @@ import scipy.stats as stats
 import seawater
 import xarray as xr
 from hurricanes.calc import depth_interpolate, lon180to360, lon360to180, difference
-from hurricanes.models import gofs, rtofs, copernicus
+from hurricanes.models import gofs, rtofs, cmems
 from hurricanes.platforms import get_argo_floats_by_time
 from hurricanes.plotting import map_create
 from hurricanes.regions import region_config
@@ -19,7 +19,8 @@ save_dir = configs.path_plots / 'profiles' / 'argo'
 
 # Configs
 # argos = ["4902350", "4903250", "6902854", "4903224", "4903227"]
-days = 3
+# argos = [4903227]
+days = 5
 dpi = configs.dpi
 depths = slice(0, 400)
 vars = 'platform_number', 'time', 'longitude', 'latitude', 'pres', 'temp', 'psal'
@@ -33,7 +34,7 @@ kwargs['dpi'] = dpi
 # Load models
 rds = rtofs().sel(depth=depths)
 gds = gofs(rename=True).sel(depth=depths)
-cds = copernicus(rename=True).sel(depth=depths)
+cds = cmems(rename=True).sel(depth=depths)
 
 # Create list of yesterday and todays dates
 date_list = [dt.date.today() - dt.timedelta(days=x+1) for x in range(days)]
@@ -63,6 +64,7 @@ for item in configs.regions:
     for gname, df in floats.reset_index().groupby(['argo', 'time']):
         wmo = gname[0] # wmo id from gname
         ctime = gname[1] # time from gname
+        
         tstr = ctime.strftime("%Y-%m-%d %H:%M:%S") # create time string
         save_str = f'{wmo}-profile-{ctime.strftime("%Y-%m-%dT%H%M%SZ")}.png'
         full_file = temp_save_dir / save_str

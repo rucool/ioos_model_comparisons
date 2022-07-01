@@ -1,10 +1,6 @@
-import copy
 import os
 import pickle
-import sys
 import warnings
-from collections import namedtuple
-from glob import glob
 from itertools import cycle
 
 import cartopy.crs as ccrs
@@ -12,32 +8,18 @@ import cartopy.feature as cfeature
 import cmocean
 import matplotlib.colors
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 from cartopy.io.shapereader import Reader
-from cartopy.mpl.gridliner import LATITUDE_FORMATTER, LONGITUDE_FORMATTER
-from dateutil import parser
-from matplotlib import cm
-from matplotlib import colors as c
-# Normalize data with a set center.
-from matplotlib.colors import (LinearSegmentedColormap, ListedColormap,
-                               TwoSlopeNorm)
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.colors import TwoSlopeNorm
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from oceans.ocfis import spdir2uv, uv2spdir
-from pytz import timezone
-
+from mpl_toolkits.axes_grid1.inset_locator import InsetPosition
+from shapely.geometry.polygon import LinearRing
 from hurricanes.calc import dd2dms
 
 # Suppresing warnings for a "pretty output."
 warnings.simplefilter("ignore")
-
-try:
-    from urllib.request import urlopen, urlretrieve
-except Exception:
-    from urllib import urlopen, urlretrieve
-
 
 proj = dict(
     map=ccrs.Mercator(), # the projection that you want the map to be in
@@ -304,15 +286,19 @@ def map_add_currents(ax, ds, coarsen=None, ptype="quiver",
     return q
 
 
-def map_add_eez(ax, zorder=1):
-    eez = 'data/eez/eez_boundaries_v11.shp'
+def map_add_eez(ax, zorder=1, color='black'):
+    # eez = 'data/eez/eez_boundaries_v11.shp'
+    eez = '/home/hurricaneadm/data/eez/eez_boundaries_v11.shp'
     shape_feature = cfeature.ShapelyFeature(
         Reader(eez).geometries(), 
         proj['data'],
-        edgecolor='black', 
+        linestyle='-.',
+        linewidth=0.5,
+        edgecolor=color, 
         facecolor='none'
         )
-    ax.add_feature(shape_feature, zorder=zorder)
+    h = ax.add_feature(shape_feature, zorder=zorder)
+    return h
     
 
 def map_add_features(ax, extent, edgecolor="black", landcolor="tan", zorder=0):
@@ -358,6 +344,39 @@ def map_add_gliders(ax, df, transform=proj['data'], color='white'):
                 markersize=8.5, label=g, transform=transform, zorder=10000)
         # map_add_legend(ax)
 
+
+def map_add_inset(ax, x=.8, y=.3, size=.5, extent=None):
+    """_summary_
+
+    Args:
+        ax (_type_): _description_
+        x (float, optional): inset x location relative to main plot (ax) in normalized units. Defaults to .8.
+        y (float, optional): inset y location relative to main plot (ax) in normalized units. Defaults to .3.
+        size (float, optional): _description_. Defaults to 0.5.
+
+    Returns:
+        _type_: _description_
+    """
+    # Inset Axis
+    axin = plt.axes([0, 0, 1, 1], projection=ccrs.Mercator())
+    position = [x - size / 2, y - size / 2, size, size]
+    ip = InsetPosition(ax, position)
+    axin.set_axes_locator(ip)
+
+    if extent:
+        lonmin, lonmax, latmin, latmax = extent
+
+        nvert = 100
+        lons = np.r_[np.linspace(lonmin, lonmin, nvert),
+                    np.linspace(lonmin, lonmax, nvert),
+                    np.linspace(lonmax, lonmax, nvert)].tolist()
+        lats = np.r_[np.linspace(latmin, latmax, nvert),
+                    np.linspace(latmax, latmax, nvert),
+                    np.linspace(latmax, latmin, nvert)].tolist()
+        
+        ring = LinearRing(list(zip(lons, lats)))
+        axin.add_geometries([ring], ccrs.PlateCarree(), facecolor='none', edgecolor='red', linewidth=0.75)
+    return axin
 
 def map_add_legend(ax):
     # Shrink current axis by 20%
@@ -458,14 +477,6 @@ def map_create(extent,
             "landcolor": landcolor,
             }
         map_add_features(ax, extent, **fargs)
-
-    # # Add bathymetry
-    # if bathy:
-    #     bargs = {
-    #         "isobaths": isobaths,
-    #         "zorder": 1.5      
-    #     }
-    #     map_add_bathymetry(ax, bathy, proj, **bargs)
 
     # Add ticks
     if ticks:
@@ -790,7 +801,7 @@ def plot_model_region_comparison(ds1, ds2, region,
 
             # Create a file name to save the plot as
             # sname = f'{ds1.model}_vs_{ds2.model}_{k}-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
-            sname = f'{time.strftime("%Y-%m-%dT%H%M%SZ")}_{k}_{ds1.model.lower()}-vs-{ds2.model.lower()}'
+            sname = f'{"-".join(region["folder"].split("_"))}_{time.strftime("%Y-%m-%dT%H%M%SZ")}_{k}-{depth}m_{ds1.model.lower()}-vs-{ds2.model.lower()}'
             save_file = save_dir_final / f"{sname}.png"
 
             if save_file.is_file():
@@ -842,8 +853,8 @@ def plot_model_region_comparison(ds1, ds2, region,
 
             # Add EEZ
             if eez:
-                map_add_eez(ax1, zorder=1)
-                map_add_eez(ax2, zorder=1)
+                eez1 = map_add_eez(ax1, zorder=1)
+                eez2 = map_add_eez(ax2, zorder=1)
             
             # Plot size adjustments
             # fig.tight_layout()
@@ -862,8 +873,14 @@ def plot_model_region_comparison(ds1, ds2, region,
                 coarsen = currents['coarsen']
                 q1 = map_add_currents(ax1, rsub, coarsen=coarsen['rtofs'], **currents['kwargs'])
                 q2 = map_add_currents(ax2, gsub, coarsen=coarsen["gofs"], **currents['kwargs'])
+
+                if eez:
+                    eez1._kwargs['edgecolor']= 'red'                
+                    eez2._kwargs['edgecolor']= 'red'
+                
                 fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
                 q1.lines.remove(), q2.lines.remove()
+                # eez1.remove(), eez2.remove()
                 remove_quiver_handles(ax1), remove_quiver_handles(ax2)
 
             # Delete contour handles and remove colorbar axes to use figure

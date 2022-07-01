@@ -86,9 +86,9 @@ for f in floats:
                 t0 = dt.datetime(*[int(x) for x in t_float.strftime('%Y-%m-%d').split('-')])
 
                 # Get today and yesterday dates
-pre = [t0 - dt.timedelta(days=x+1) for x in range(days_pre_surfacing)]
-post = [t0 + dt.timedelta(days=x+1) for x in range(days_post_surfacing + 1)]
-temp_date_list = pre + [t0] + post
+                pre = [t0 - dt.timedelta(days=x+1) for x in range(days_pre_surfacing)]
+                post = [t0 + dt.timedelta(days=x+1) for x in range(days_post_surfacing + 1)]
+                temp_date_list = pre + [t0] + post
 
                 ranges = pd.date_range(temp_date_list[0], temp_date_list[-1], freq='6H', closed='right')
 

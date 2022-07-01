@@ -7,31 +7,26 @@ from hurricanes.calc import lon180to360, lon360to180
 from hurricanes.models import gofs, rtofs
 from hurricanes.platforms import (get_active_gliders, get_argo_floats_by_time,
                                   get_bathymetry)
-from hurricanes.plotting import (plot_model_region_comparison,)
-                                #  plot_model_region_comparison_streamplot)
+from hurricanes.plotting import plot_model_region_comparison
 from hurricanes.regions import region_config
 import matplotlib
-import time
+import xarray as xr
 
-startTime = time.time()
 matplotlib.use('agg')
 
 # Set path to save plots
-path_save = (configs.path_plots / "maps")
+path_save = (configs.path_plots / "maps" / "rtofs_comparisons")
 
 # initialize keyword arguments for map plotz
 kwargs = dict()
 kwargs['transform'] = configs.projection
 kwargs['path_save'] = path_save
 kwargs['dpi'] = configs.dpi
-kwargs['overwrite'] = False
 
 # Get today and yesterday dates
 today = dt.date.today()
 tomorrow = today + dt.timedelta(days=1)
-past = today - dt.timedelta(days=configs.days)
-
-# Formatter for time
+past = today - dt.timedelta(days=3)
 tstr = '%Y-%m-%d %H:%M:%S'
 
 # Create dates that we want to plot
@@ -67,6 +62,15 @@ else:
 if configs.bathy:
     bathy_data = get_bathymetry(global_extent)
 
+# Load RTOFS DataSet
+# ds1 = xr.open_mfdataset('/Users/mikesmith/Documents/rtofs/prod/*/*.nc')
+# ds2 = xr.open_mfdataset('/Users/mikesmith/Documents/rtofs/v2.2/*/*.nc')
+# ds1 = ds1.rename({"MT": 'time', "Depth": "depth", "Y": "y", "X": "x", "Latitude": "lat", "Longitude": "lon"})
+# ds2 = ds2.rename({"MT": 'time', "Depth": "depth", "Y": "y", "X": "x", "Latitude": "lat", "Longitude": "lon"})
+ds1 = rtofs()
+ds2 = xr.open_mfdataset('/Users/mikesmith/Documents/data/rtofs/2.2/rtofs.20220621/*.nc')
+ds2 = ds2.rename({"MT": 'time', "Depth": "depth", "Y": "y", "X": "x", "Latitude": "lat", "Longitude": "lon"})
+
 # Loop through regions
 for item in configs.regions:
     region = region_config(item)
@@ -77,30 +81,21 @@ for item in configs.regions:
     region_name = "_".join(region["name"].split(' ')).lower()
     kwargs['colorbar'] = True
 
-    if 'eez' in region.keys():
-        kwargs["eez"] = region["eez"]
-
     if region['currents']['bool']:
         kwargs['currents'] = region['currents']
 
-    try:
+    if bathy_data:
         kwargs['bathy'] = bathy_data.sel(
             longitude=slice(extent[0] - 1, extent[1] + 1),
             latitude=slice(extent[2] - 1, extent[3] + 1)
         )
-    except NameError:
-        pass
-            
     extent = np.add(extent, [-1, 1, -1, 1]).tolist()
-
-    # Load RTOFS DataSet
-    rds = rtofs() 
     
     # Save rtofs lon and lat as variables to speed up indexing calculation
-    grid_lons = rds.lon.values[0,:]
-    grid_lats = rds.lat.values[:,0]
-    grid_x = rds.x.values
-    grid_y = rds.y.values
+    grid_lons = ds1.lon.values[0,:]
+    grid_lats = ds1.lat.values[:,0]
+    grid_x = ds1.x.values
+    grid_y = ds1.y.values
 
     # Find x, y indexes of the area we want to subset
     lons_ind = np.interp(extent[:2], grid_lons, grid_x)
@@ -116,25 +111,19 @@ for item in configs.regions:
         ]
 
     # Use .isel selector on x/y since we know indexes that we want to slice
-    rds_sub = rds.isel(
+    ds1_sub = ds1.isel(
         x=slice(extent_ind[0], extent_ind[1]), 
         y=slice(extent_ind[2], extent_ind[3])
         ).set_coords(['u', 'v'])
+    ds1_sub.attrs['model'] = 'RTOFS 2.0'
 
-    # Load GOFS DataSet
-    gds = gofs(rename=True)
-    
-    # subset dataset to the proper extents for each region
-    lon360 = lon180to360(extent[:2]) # convert from 360 to 180 lon
-    gds_sub = gds.sel(
-        lon=slice(lon360[0], lon360[1]),
-        lat=slice(extent[2], extent[3])
-    ).set_coords(['u', 'v'])
-    
-    # Convert from 0,360 lon to -180,180
-    gds_sub['lon'] = lon360to180(gds_sub['lon'])
-
-    # Iterate through dates 
+    # Load RTOFS2.2 DataSet
+    ds2_sub = ds2.isel(
+        x=slice(extent_ind[0], extent_ind[1]), 
+        y=slice(extent_ind[2], extent_ind[3])
+        ).set_coords(['u', 'v'])
+    ds2_sub.attrs['model'] = 'RTOFS 2.2'
+   
     for t in date_list:
         search_window_t0 = (t - dt.timedelta(hours=configs.search_hours)).strftime(tstr)
         kwargs['t0'] = search_window_t0
@@ -162,12 +151,9 @@ for item in configs.regions:
                 (glider_region.index.get_level_values('time') < search_window_t1)
                 ]
             kwargs['gliders'] = glider_region
+
         try:
-            plot_model_region_comparison(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
-        #     # plot_model_region_comparison_streamplot(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
+            plot_model_region_comparison(ds1_sub.sel(time=t), ds2_sub.sel(time=t), region, **kwargs)
         except KeyError as e:
             print(e)
             continue
-
-executionTime = (time.time() - startTime)
-print('Execution time in seconds: ' + str(executionTime))

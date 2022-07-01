@@ -38,7 +38,8 @@ def gofs(rename=False):
             )
     return ds
 
-def copernicus(rename=False):
+
+def cmems(rename=False):
     username = 'maristizabalvar'
     password = 'MariaCMEMS2018'
     dataset = 'global-analysis-forecast-phy-001-024'
@@ -57,7 +58,7 @@ def copernicus(rename=False):
 
     # Downloading and reading Copernicus grid
     ds = xr.open_dataset(data_store, drop_variables='tau')
-    ds.attrs['model'] = 'Copernicus'
+    ds.attrs['model'] = 'CMEMS'
 
     if rename:
         ds = ds.rename(

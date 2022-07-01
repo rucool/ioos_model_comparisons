@@ -21,8 +21,8 @@ elif platform == "darwin":
 path_data = current_dir.with_name('data') # data path relative to the toolbox 
 
 # Configurations for contour maps 
-regions = ["yucatan", "mab", "sab", "leeward", "windward", "gom", "caribbean"]
-days = 2
+regions = ["west_florida_shelf", "yucatan", "mab", "sab", "leeward", "windward", "gom", "caribbean"]
+days = 4
 
 # Assets
 search_hours = 24*5 # hours to search for argo/gliders prior to plot time

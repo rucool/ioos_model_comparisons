@@ -3,8 +3,8 @@ import datetime as dt
 import hurricanes.configs as configs
 import numpy as np
 import pandas as pd
-# from hurricanes.calc import lon180to360, lon360to180
-from hurricanes.models import rtofs, copernicus
+from hurricanes.calc import lon180to360, lon360to180
+from hurricanes.models import gofs, rtofs
 from hurricanes.platforms import (get_active_gliders, get_argo_floats_by_time,
                                   get_bathymetry)
 from hurricanes.plotting import (plot_model_region_comparison,)
@@ -26,6 +26,7 @@ kwargs['path_save'] = path_save
 kwargs['dpi'] = configs.dpi
 kwargs['overwrite'] = False
 
+# configs.days = 2
 # Get today and yesterday dates
 today = dt.date.today()
 tomorrow = today + dt.timedelta(days=1)
@@ -47,7 +48,6 @@ extent_df = pd.DataFrame(
     np.array(extent_list),
     columns=['lonmin', 'lonmax', 'latmin', 'latmax']
     )
-
 global_extent = [
     extent_df.lonmin.min(),
     extent_df.lonmax.max(),
@@ -68,8 +68,21 @@ else:
 if configs.bathy:
     bathy_data = get_bathymetry(global_extent)
 
+# Load RTOFS DataSet
+rds = rtofs() 
+
+# Save rtofs lon and lat as variables to speed up indexing calculation
+grid_lons = rds.lon.values[0,:]
+grid_lats = rds.lat.values[:,0]
+grid_x = rds.x.values
+grid_y = rds.y.values
+
+# Load GOFS DataSet
+gds = gofs(rename=True)
+
 # Loop through regions
-for item in configs.regions:
+# for item in configs.regions:
+for item in ['west_florida_shelf']:
     region = region_config(item)
     extent = region['extent']
     print(f'Region: {region["name"]}, Extent: {extent}')
@@ -77,7 +90,7 @@ for item in configs.regions:
     # Create a map figure and serialize it if one doesn't already exist
     region_name = "_".join(region["name"].split(' ')).lower()
     kwargs['colorbar'] = True
-    
+
     if 'eez' in region.keys():
         kwargs["eez"] = region["eez"]
 
@@ -93,15 +106,6 @@ for item in configs.regions:
         pass
             
     extent = np.add(extent, [-1, 1, -1, 1]).tolist()
-
-    # Load RTOFS DataSet
-    rds = rtofs() 
-    
-    # Save rtofs lon and lat as variables to speed up indexing calculation
-    grid_lons = rds.lon.values[0,:]
-    grid_lats = rds.lat.values[:,0]
-    grid_x = rds.x.values
-    grid_y = rds.y.values
 
     # Find x, y indexes of the area we want to subset
     lons_ind = np.interp(extent[:2], grid_lons, grid_x)
@@ -121,14 +125,18 @@ for item in configs.regions:
         x=slice(extent_ind[0], extent_ind[1]), 
         y=slice(extent_ind[2], extent_ind[3])
         ).set_coords(['u', 'v'])
-
-    # Load Copernicus
-    cds = copernicus(rename=True)
-    cds_sub = cds.sel(
-        lon=slice(extent[0], extent[1]),
+    
+    # subset dataset to the proper extents for each region
+    lon360 = lon180to360(extent[:2]) # convert from 360 to 180 lon
+    gds_sub = gds.sel(
+        lon=slice(lon360[0], lon360[1]),
         lat=slice(extent[2], extent[3])
     ).set_coords(['u', 'v'])
     
+    # Convert from 0,360 lon to -180,180
+    gds_sub['lon'] = lon360to180(gds_sub['lon'])
+
+    # Iterate through dates 
     for t in date_list:
         search_window_t0 = (t - dt.timedelta(hours=configs.search_hours)).strftime(tstr)
         kwargs['t0'] = search_window_t0
@@ -156,12 +164,12 @@ for item in configs.regions:
                 (glider_region.index.get_level_values('time') < search_window_t1)
                 ]
             kwargs['gliders'] = glider_region
-
         try:
-            plot_model_region_comparison(rds_sub.sel(time=t), cds_sub.sel(time=t), region, **kwargs)
+            plot_model_region_comparison(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
         #     # plot_model_region_comparison_streamplot(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
         except KeyError as e:
             print(e)
             continue
+
 executionTime = (time.time() - startTime)
 print('Execution time in seconds: ' + str(executionTime))
