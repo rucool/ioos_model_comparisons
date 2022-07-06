@@ -4,10 +4,12 @@ import pandas as pd
 from requests.exceptions import HTTPError as rHTTPError
 # urllib.error.HTTPError
 from urllib.error import HTTPError as uHTTPError
+from urllib.error import URLError
 from collections import namedtuple
 from joblib import Parallel, delayed
 import multiprocessing
 from pprint import pprint
+import inspect
 
 Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
@@ -109,7 +111,12 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None, p
     try:
         # Grab the results
         search = pd.read_csv(search_url)
-    except uHTTPError:
+    except uHTTPError as error:
+        print(f"{inspect.currentframe().f_code.co_name} - Error: {error}")
+        # return empty dataframe if there are no results
+        return pd.DataFrame()
+    except URLError as e:
+        print(f"{inspect.currentframe().f_code.co_name} - Error: {error}")
         # return empty dataframe if there are no results
         return pd.DataFrame()
 

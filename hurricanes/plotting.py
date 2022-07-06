@@ -791,6 +791,7 @@ def plot_model_region_comparison(ds1, ds2, region,
         var_str = ' '.join(k.split('_')).title()
 
         for item in v:
+            print(f"Plotting {k} @ {item['depth']}")
             depth = item['depth']
             rsub = ds1[k].sel(depth=depth)
             gsub = ds2[k].sel(depth=depth, method='nearest')
@@ -875,8 +876,8 @@ def plot_model_region_comparison(ds1, ds2, region,
                 q2 = map_add_currents(ax2, gsub, coarsen=coarsen["gofs"], **currents['kwargs'])
 
                 if eez:
-                    eez1._kwargs['edgecolor']= 'red'                
-                    eez2._kwargs['edgecolor']= 'red'
+                    eez1._kwargs['edgecolor']= 'white'                
+                    eez2._kwargs['edgecolor']= 'white'
                 
                 fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
                 q1.lines.remove(), q2.lines.remove()

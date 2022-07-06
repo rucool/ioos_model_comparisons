@@ -3,8 +3,7 @@ import datetime as dt
 import hurricanes.configs as configs
 import numpy as np
 import pandas as pd
-from hurricanes.calc import lon180to360, lon360to180
-from hurricanes.models import rtofs, cmems, gofs
+from hurricanes.models import rtofs, cmems
 from hurricanes.platforms import (get_active_gliders, get_argo_floats_by_time,
                                   get_bathymetry)
 from hurricanes.plotting import (plot_model_region_comparison,)
@@ -77,9 +76,6 @@ grid_lats = rds.lat.values[:,0]
 grid_x = rds.x.values
 grid_y = rds.y.values
 
-# Load GOFS DataSet
-# gds = gofs(rename=True)
-
 # Load Copernicus
 cds = cmems(rename=True)
     
@@ -143,16 +139,6 @@ for t in date_list:
             y=slice(extent_ind[2], extent_ind[3])
             ).set_coords(['u', 'v'])
 
-        # # subset dataset to the proper extents for each region
-        # lon360 = lon180to360(extent[:2]) # convert from 360 to 180 lon
-        # gds_sub = gds.sel(
-        #     lon=slice(lon360[0], lon360[1]),
-        #     lat=slice(extent[2], extent[3])
-        # ).set_coords(['u', 'v'])
-        
-        # # Convert from 0,360 lon to -180,180
-        # gds_sub['lon'] = lon360to180(gds_sub['lon'])
-
         cds_sub = cdt.sel(
             lon=slice(extent[0], extent[1]),
             lat=slice(extent[2], extent[3])
@@ -183,7 +169,6 @@ for t in date_list:
 
         try:
             plot_model_region_comparison(rds_sub, cds_sub, region, **kwargs)
-            
         #     # plot_model_region_comparison_streamplot(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
         except KeyError as e:
             print(e)

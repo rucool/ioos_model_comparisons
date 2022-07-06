@@ -21,7 +21,16 @@ elif platform == "darwin":
 path_data = current_dir.with_name('data') # data path relative to the toolbox 
 
 # Configurations for contour maps 
-regions = ["west_florida_shelf", "yucatan", "mab", "sab", "leeward", "windward", "gom", "caribbean"]
+regions = [
+    "west_florida_shelf", 
+    "yucatan", 
+    "mab",
+    "sab", 
+    "leeward", 
+    "windward",
+    "gom",
+    "caribbean"
+    ]
 days = 4
 
 # Assets

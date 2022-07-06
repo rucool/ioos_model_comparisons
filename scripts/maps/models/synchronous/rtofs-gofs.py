@@ -26,7 +26,6 @@ kwargs['path_save'] = path_save
 kwargs['dpi'] = configs.dpi
 kwargs['overwrite'] = False
 
-# configs.days = 2
 # Get today and yesterday dates
 today = dt.date.today()
 tomorrow = today + dt.timedelta(days=1)
@@ -48,6 +47,7 @@ extent_df = pd.DataFrame(
     np.array(extent_list),
     columns=['lonmin', 'lonmax', 'latmin', 'latmax']
     )
+
 global_extent = [
     extent_df.lonmin.min(),
     extent_df.lonmax.max(),
@@ -80,68 +80,77 @@ grid_y = rds.y.values
 # Load GOFS DataSet
 gds = gofs(rename=True)
 
-# Loop through regions
-# for item in configs.regions:
-for item in ['west_florida_shelf']:
-    region = region_config(item)
-    extent = region['extent']
-    print(f'Region: {region["name"]}, Extent: {extent}')
-
-    # Create a map figure and serialize it if one doesn't already exist
-    region_name = "_".join(region["name"].split(' ')).lower()
-    kwargs['colorbar'] = True
-
-    if 'eez' in region.keys():
-        kwargs["eez"] = region["eez"]
-
-    if region['currents']['bool']:
-        kwargs['currents'] = region['currents']
-
+# Loop through times
+for t in date_list:
     try:
-        kwargs['bathy'] = bathy_data.sel(
-            longitude=slice(extent[0] - 1, extent[1] + 1),
-            latitude=slice(extent[2] - 1, extent[3] + 1)
-        )
-    except NameError:
-        pass
-            
-    extent = np.add(extent, [-1, 1, -1, 1]).tolist()
-
-    # Find x, y indexes of the area we want to subset
-    lons_ind = np.interp(extent[:2], grid_lons, grid_x)
-    lats_ind = np.interp(extent[2:], grid_lats, grid_y)
-
-    # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice 
-    # in order to widen the area of the extent slightly.
-    extent_ind = [
-        np.floor(lons_ind[0]).astype(int),
-        np.ceil(lons_ind[1]).astype(int),
-        np.floor(lats_ind[0]).astype(int),
-        np.ceil(lats_ind[1]).astype(int)
-        ]
-
-    # Use .isel selector on x/y since we know indexes that we want to slice
-    rds_sub = rds.isel(
-        x=slice(extent_ind[0], extent_ind[1]), 
-        y=slice(extent_ind[2], extent_ind[3])
-        ).set_coords(['u', 'v'])
+        rdt = rds.sel(time=t)
+    except KeyError as error:
+        print(f"{error}")
+        continue
     
-    # subset dataset to the proper extents for each region
-    lon360 = lon180to360(extent[:2]) # convert from 360 to 180 lon
-    gds_sub = gds.sel(
-        lon=slice(lon360[0], lon360[1]),
-        lat=slice(extent[2], extent[3])
-    ).set_coords(['u', 'v'])
+    try:
+        gdt = gds.sel(time=t)
+    except KeyError as error:
+        print(f"{error}")
+        continue
     
-    # Convert from 0,360 lon to -180,180
-    gds_sub['lon'] = lon360to180(gds_sub['lon'])
+    search_window_t0 = (t - dt.timedelta(hours=configs.search_hours)).strftime(tstr)
+    kwargs['t0'] = search_window_t0
+    search_window_t1 = t.strftime(tstr) 
+    
+    # Loop through regions
+    for item in configs.regions:
+        region = region_config(item)
+        extent = region['extent']
+        print(f'Region: {region["name"]}, Extent: {extent}, Time: {t.strftime(tstr)}')
 
-    # Iterate through dates 
-    for t in date_list:
-        search_window_t0 = (t - dt.timedelta(hours=configs.search_hours)).strftime(tstr)
-        kwargs['t0'] = search_window_t0
-        search_window_t1 = t.strftime(tstr)
+        kwargs['colorbar'] = True
+
+        if 'eez' in region.keys():
+            kwargs["eez"] = region["eez"]
+
+        if region['currents']['bool']:
+            kwargs['currents'] = region['currents']
+
+        try:
+            kwargs['bathy'] = bathy_data.sel(
+                longitude=slice(extent[0] - 1, extent[1] + 1),
+                latitude=slice(extent[2] - 1, extent[3] + 1)
+            )
+        except NameError:
+            pass
+                
+        extent = np.add(extent, [-1, 1, -1, 1]).tolist()
+
+        # Find x, y indexes of the area we want to subset
+        lons_ind = np.interp(extent[:2], grid_lons, grid_x)
+        lats_ind = np.interp(extent[2:], grid_lats, grid_y)
+
+        # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice 
+        # in order to widen the area of the extent slightly.
+        extent_ind = [
+            np.floor(lons_ind[0]).astype(int),
+            np.ceil(lons_ind[1]).astype(int),
+            np.floor(lats_ind[0]).astype(int),
+            np.ceil(lats_ind[1]).astype(int)
+            ]
+
+        # Use .isel selector on x/y since we know indexes that we want to slice
+        rds_sub = rdt.isel(
+            x=slice(extent_ind[0], extent_ind[1]), 
+            y=slice(extent_ind[2], extent_ind[3])
+            ).set_coords(['u', 'v'])
         
+        # subset dataset to the proper extents for each region
+        lon360 = lon180to360(extent[:2]) # convert from 360 to 180 lon
+        gds_sub = gdt.sel(
+            lon=slice(lon360[0], lon360[1]),
+            lat=slice(extent[2], extent[3])
+        ).set_coords(['u', 'v'])
+        
+        # Convert from 0,360 lon to -180,180
+        gds_sub['lon'] = lon360to180(gds_sub['lon'])
+            
         if not argo_data.empty:
             argo_lon = argo_data['lon']
             argo_lat = argo_data['lat']
@@ -165,7 +174,7 @@ for item in ['west_florida_shelf']:
                 ]
             kwargs['gliders'] = glider_region
         try:
-            plot_model_region_comparison(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
+            plot_model_region_comparison(rds_sub, gds_sub, region, **kwargs)
         #     # plot_model_region_comparison_streamplot(rds_sub.sel(time=t), gds_sub.sel(time=t), region, **kwargs)
         except KeyError as e:
             print(e)
