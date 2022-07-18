@@ -1,5 +1,108 @@
 import numpy as np
 import pandas as pd
+from gsw import SA_from_SP, CT_from_t, rho, p_from_z
+
+
+def ocean_heat_content(depth, temp, density):
+    """
+    This function Calculates the ocean heat content from a temperature and
+    density profile (Leipper, Dale F., and Douglas Volgenau. "Hurricane heat
+    potential of the Gulf of Mexico". Journal of Physical Oceanography 2.3
+    (1972): 218-224).
+    
+    Q = ρ Cp ΔT ΔZ 
+    
+    Q: Hurricane Heat Potential
+    ρ: density (gm cm-3)
+    Cp: specific heat at constant pressure (cal cm-3) (C)
+    ΔT: Average temperature difference above 26C for a given depth increment
+    ΔZ: Depth increment (taken as 500cm)
+
+    Args:
+        depth (numpy.ndarray or pandas.Series or xarray.Series): depth (m)
+        temp (numpy.ndarray or pandas.Series or xarray.Series): temperature (c)
+        dens (numpy.ndarray or pandas.Series or xarray.Series): density (gm/cm^3)
+
+    Returns:
+        numpy.ndarray: Ocean heat content of the water column in kJ/cm^2
+    """
+
+    cp = 3985 #Heat capacity in J/(kg K)
+    temp_mask = temp >= 26 # only want data greater than or equal to 26C
+    depth = np.abs(depth) # absolute value of depth
+
+    # Mask the variables based off the temperature mask
+    depth_m = depth[temp_mask]
+    density_m = density[temp_mask]
+    temp_m = temp[temp_mask]
+
+    # If the number of depths do not equal 0
+    if len(depth_m) != 0:
+        # If the minimum depth is shallower than 10m
+        if np.nanmin(depth_m)>10:
+            OHC = np.nan
+        # If the minimum depth is deeper than 10m
+        else:
+            rho0 = np.nanmean(density_m) # don't include nans
+            OHC = np.abs(cp * rho0 * np.trapz(temp_m - 26, depth_m))
+            OHC = OHC * 10**(-7) # in kJ/cm^2
+    # If the number of depths do equal 0
+    else:
+        OHC = np.nan
+    return OHC
+
+
+def density(temperature, depth, salinity, latitude, longitude):
+    """
+    Calculates density given practical salinity, depth, latitude,
+    and longitude using Gibbs gsw SA_from_SP and rho functions.
+
+    Args:
+        temperature (_type_): temperature (C)
+        depth (_type_): depth, positive up (m)
+        salinity (array): salinity
+        latitude (array): latitude (decimal degrees)
+        longitude (array): longitude (decimal degrees)
+
+    Returns:
+        density: Density calculated using the Gibbs GSW
+    """
+
+    # Calculates sea pressure from height using computationally-efficient 
+    # 75-term expression for density, in terms of SA, CT and p 
+    # (Roquet et al., 2015). 
+    pressure = p_from_z(
+        depth,
+        latitude,
+    )
+
+    # Calculates Absolute Salinity from Practical Salinity. 
+    # Since SP is non-negative by definition,
+    # this function changes any negative input values of SP to be zero.
+    absolute_salinity = SA_from_SP(
+        salinity,
+        pressure,
+        longitude,
+        latitude
+    )
+
+    # Calculates Conservative Temperature of seawater from in-situ temperature.
+    conservative_temperature = CT_from_t(
+        absolute_salinity,
+        temperature,
+        pressure
+    )
+
+    # Calculates in-situ density from Absolute Salinity and
+    # Conservative Temperature, using the computationally-efficient expression 
+    # for specific volume in terms of SA, CT and p (Roquet et al., 2015).
+    density = rho(
+        absolute_salinity,
+        conservative_temperature,
+        pressure
+    )
+
+    return density
 
 
 def difference(array1, array2):

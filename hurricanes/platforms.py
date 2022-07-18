@@ -160,7 +160,11 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None, p
     # If we want to take advantage of parallel processing,
     # parellel = True as an optional argument input.
     if parallel:
-        num_cores = multiprocessing.cpu_count()
+        if isinstance(parallel, bool):
+            num_cores = multiprocessing.cpu_count()
+        else:
+            num_cores = parallel
+        
         downloads = Parallel(n_jobs=num_cores)(
             delayed(request_multi)(dataset_id) for dataset_id in gliders
         )

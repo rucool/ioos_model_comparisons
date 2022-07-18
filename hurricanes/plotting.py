@@ -2,6 +2,7 @@ import os
 import pickle
 import warnings
 from itertools import cycle
+from pathlib import Path
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
@@ -11,10 +12,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from cartopy.io.shapereader import Reader
+from cartopy.mpl.geoaxes import GeoAxesSubplot
 from matplotlib.colors import TwoSlopeNorm
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from mpl_toolkits.axes_grid1.inset_locator import InsetPosition, inset_axes
 from oceans.ocfis import spdir2uv, uv2spdir
-from mpl_toolkits.axes_grid1.inset_locator import InsetPosition
 from shapely.geometry.polygon import LinearRing
 from hurricanes.calc import dd2dms
 
@@ -36,6 +37,10 @@ def export_fig(path, fname, script=None, dpi=150):
         script (str, optional): Print name of script on plot. Defaults to None.
         dpi (int, optional): Dots per inch. Defaults to 150.
     """
+    
+    if isinstance(path, str):
+        path = Path(path)
+    
     os.makedirs(path, exist_ok=True)
     
     if script:
@@ -286,9 +291,9 @@ def map_add_currents(ax, ds, coarsen=None, ptype="quiver",
     return q
 
 
-def map_add_eez(ax, zorder=1, color='black'):
-    # eez = 'data/eez/eez_boundaries_v11.shp'
-    eez = '/home/hurricaneadm/data/eez/eez_boundaries_v11.shp'
+def map_add_eez(ax, zorder=1, color='white'):
+    eez = 'data/eez/eez_boundaries_v11.shp'
+    # eez = '/home/hurricaneadm/data/eez/eez_boundaries_v11.shp'
     shape_feature = cfeature.ShapelyFeature(
         Reader(eez).geometries(), 
         proj['data'],
@@ -385,7 +390,9 @@ def map_add_legend(ax):
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
 
-def map_add_ticks(ax, extent, fontsize=13, transform=proj['data']):
+def map_add_ticks(ax, extent, fontsize=13, transform=proj['data'], 
+                  label_left=True, label_right=False,
+                  label_bottom=True, label_top=False):
     xl = [extent[0], extent[1]]
     yl = [extent[2], extent[3]]
 
@@ -396,7 +403,7 @@ def map_add_ticks(ax, extent, fontsize=13, transform=proj['data']):
 
     # get and add latitude ticks/labels
     tick0y, tick1, ticklab = get_ticks(yl, 'sn', xl)
-    ax.set_yticks(tick0y, minor=True, crs=transform)
+    ax.set_yticks(tick0y, minor=True, crs=transform) 
     ax.set_yticks(tick1, crs=transform)
     ax.set_yticklabels(ticklab, fontsize=fontsize)
 
@@ -407,17 +414,17 @@ def map_add_ticks(ax, extent, fontsize=13, transform=proj['data']):
     ax.tick_params(which='major',
                    direction='out',
                    bottom=True, top=True,
-                   labelbottom=True, labeltop=False,
+                   labelbottom=label_bottom, labeltop=label_top,
                    left=True, right=True,
-                   labelleft=True, labelright=False,
+                   labelleft=label_left, labelright=label_right,
                    length=5, width=2)
 
     ax.tick_params(which='minor',
                    direction='out',
                    bottom=True, top=True,
-                   labelbottom=True, labeltop=False,
+                #    labelbottom=True, labeltop=False,
                    left=True, right=True,
-                   labelleft=True, labelright=False,
+                #    labelleft=True, labelright=False,
                    width=1)
 
     # if grid:
@@ -491,6 +498,43 @@ def map_create(extent,
     # and axis to the calling function.
     if fig_init:
         return fig, ax
+
+
+def add_colorbar(ax, h, location="bottom", constrain=True):
+
+    if isinstance(ax, list):
+        # Multiple axes are being passed
+        multi = True
+    elif isinstance(ax, GeoAxesSubplot):
+        multi = False
+
+    # We want to minimize input parameters to functions. We need the fig
+    # so we can use the .get_figure() method on the axes 
+    if multi:
+        fig = ax[0].get_figure()
+    else:
+        fig = ax.get_figure()
+
+    if constrain:
+        # Constrain the colorbar to the size of the plot
+        if location == "bottom" or location == "top":
+            if multi:
+                # length = len(ax)
+                widths = 250 + sum([a.bbox.width for a in ax])
+                ax_ratio = 0.047*(widths/ax[0].bbox.height)
+            else:
+                ax_ratio = 0.047*(ax.bbox.width/ax.bbox.height)
+        elif location == "left" or location == "right":
+            if multi:
+                ax_ratio = 0.047*(sum([a.bbox.height for a in ax])/ax[0].bbox.width)
+            else:
+                ax_ratio = 0.047*(ax.bbox.height/ax.bbox.width)
+    else:
+        ax_ratio = 0.15 # This is the default in matplotlib.
+        
+    # Add colorbar to axes
+    cb = fig.colorbar(h, ax=ax, location=location, fraction=ax_ratio)
+    return cb
 
 
 def plot_model_region(ds, region,
@@ -660,27 +704,35 @@ def remove_quiver_handles(ax):
 
 
 def plot_model_region_comparison(ds1, ds2, region,
-                                 bathy=None,
-                                 argo=None,
-                                 gliders=None,
-                                 currents=None,
-                                 eez=False,
-                                 transform=dict(map=proj['map'], 
-                                                data=proj['data']
-                                                ),
-                                 path_save=os.getcwd(),
-                                 dpi=150,
-                                 t0=None,
-                                 colorbar=True,
-                                 overwrite=False):
+                                       bathy=None,
+                                       argo=None,
+                                       gliders=None,
+                                       currents=None,
+                                       eez=False,
+                                       cols=6,
+                                       transform=dict(map=proj['map'], 
+                                                      data=proj['data']
+                                                      ),
+                                       path_save=os.getcwd(),
+                                       figsize=(14,8),
+                                       dpi=150,
+                                       colorbar=True,
+                                       overwrite=False
+                                       ):
     
+    # Convert ds.time value to a normal datetime
     time = pd.to_datetime(ds1.time.data)
-    # region_name = region["name"]
     extent = region['extent']
+
+    # Formatter for time
+    tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
+    tstr_folder = time.strftime('%Y-%m-%dT%H%M%SZ')
+    year = time.strftime("%Y")
+    month = time.strftime("%m")
 
     # Create subdirectory for region
     # region_file_str = ('_').join(region_name.lower().split(' '))
-    path_save_region = path_save / region['folder']
+    # path_save_region = path_save / region['folder']
     
     # # Create a map figure and serialize it if one doesn't already exist
     # region_name = "_".join(region["name"].split(' ')).lower()
@@ -691,18 +743,10 @@ def plot_model_region_comparison(ds1, ds2, region,
     # if not sfig.exists():
     # Create figure
 
-    # grid = [
-    #     ["rtofs", "gofs"],
-    #     ["legend", "legend"]
-    #     ]
     grid = """
     RG
     LL
     """
-    try:
-        figsize = region['figure']['figsize']
-    except KeyError:
-        figsize = (16,9)
 
     fig, _ = plt.subplot_mosaic(
         grid,
@@ -725,31 +769,27 @@ def plot_model_region_comparison(ds1, ds2, region,
             
     # Make the map pretty
     map_add_features(ax1, extent)# zorder=0)
+    map_add_features(ax2, extent)# zorder=0)
+
+    # Add bathymetry lines
     if bathy:
         map_add_bathymetry(ax1,
-                        bathy.longitude.values, 
-                        bathy.latitude.values, 
-                        bathy.elevation.values,
-                        levels=(-1000, -100),
-                        zorder=1.5)
-    map_add_ticks(ax1, extent)
-
-    # ax1.set_xlabel('Longitude', fontsize=14, fontweight='bold')
-    # ax1.set_ylabel('Latitude', fontsize=14, fontweight='bold')
-
-    # Make the map pretty
-    map_add_features(ax2, extent)# zorder=0)
-    if bathy:
+                           bathy.longitude.values, 
+                           bathy.latitude.values, 
+                           bathy.elevation.values,
+                           levels=(-1000, -100),
+                           zorder=1.5)
         map_add_bathymetry(ax2,
-                        bathy.longitude.values, 
-                        bathy.latitude.values, 
-                        bathy.elevation.values,
-                        levels=(-1000, -100),
-                        zorder=1.5)
-    map_add_ticks(ax2, extent)
+                           bathy.longitude.values, 
+                           bathy.latitude.values, 
+                           bathy.elevation.values,
+                           levels=(-1000, -100),
+                           zorder=1.5)
 
-    # ax2.set_xlabel('Longitude', fontsize=14, fontweight='bold')
-    # ax2.set_ylabel('Latitude', fontsize=14, fontweight='bold')
+    # Add ticks
+    map_add_ticks(ax1, extent, label_left=True)
+    map_add_ticks(ax2, extent, label_left=False, label_right=True)
+
 
     #             with open(sfig, 'wb') as file:
     #                 pickle.dump(fig, file)
@@ -770,20 +810,36 @@ def plot_model_region_comparison(ds1, ds2, region,
     plot_regional_assets(ax2, **rargs)
 
     # Label the subplots
-    ax1.set_title(ds1.model, fontsize=22, fontweight="bold")
-    ax2.set_title(ds2.model, fontsize=22, fontweight="bold")
+    ax1.set_title(ds1.model, fontsize=16, fontweight="bold")
+    ax2.set_title(ds2.model, fontsize=16, fontweight="bold")
     
     # Deal with the third axes
-    h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
+    h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
     if (len(h) > 0) & (len(l) > 0):
-        ax3.legend(h, l, ncol=region['figure']['legend']['columns'], loc='center', fontsize=10)
-        legstr = f'Glider/Argo Search Window: {str(t0)} to {str(time)}'
-        # ax3.set_title(legstr, loc="right", fontsize=10, fontweight="bold")
-        # plt.figtext(0.5, 0.01, legstr, ha="center", fontsize=10, fontweight='bold')
-        plt.figtext(0.5, 0.001, legstr, ha="center", fontsize=10, fontweight='bold')
+        
+        # Add handles to legend
+        legend = ax3.legend(h, l, ncol=cols, loc='center', fontsize=9)
+
+        # Add title to legend
+        t0 = []
+        if isinstance(argo, pd.DataFrame):
+            if not argo.empty:
+                t0.append(argo.index.min()[1])
+
+        if isinstance(gliders, pd.DataFrame):
+            if not gliders.empty:
+                t0.append(gliders.index.min()[1])
+
+        if len(t0) > 0:
+            t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+        else:
+            t0 = None
+        legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
+        ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+        legend._legend_box.sep = 1
+        # plt.figtext(0.5, 0.001, legstr, ha="center", fontsize=10, fontweight='bold')
     ax3.set_axis_off()
 
-    
     # Iterate through the variables to be plotted for each region. 
     # This dict contains information on what variables and depths to plot. 
     for k, v in region["variables"].items():
@@ -797,7 +853,7 @@ def plot_model_region_comparison(ds1, ds2, region,
             gsub = ds2[k].sel(depth=depth, method='nearest')
             
             # Create subdirectory for depth under variable subdirectory
-            save_dir_final = path_save_region / f"{k}_{depth}m" / time.strftime('%Y/%m')
+            save_dir_final = path_save / f"{k}_{depth}m" / time.strftime('%Y/%m')
             os.makedirs(save_dir_final, exist_ok=True)
 
             # Create a file name to save the plot as
@@ -812,12 +868,8 @@ def plot_model_region_comparison(ds1, ds2, region,
                 else:
                     print(f"{save_file} exists. Overwrite: True. Replotting.")
                     
-            # else:
-
             # Add the super title (title for both subplots)
-            title_time = time.strftime("%Y-%m-%d %H:%M:%S")
-            title = f"{var_str} ({depth} m) - {title_time}\n"
-            plt.suptitle(title, fontsize=24, fontweight="bold")
+            plt.suptitle(f"{var_str} ({depth} m) - {tstr_title}\n", fontsize=22, fontweight="bold")
 
             # Create dictionary for variable argument inputs for contourf
             vargs = {}
@@ -848,7 +900,7 @@ def plot_model_region_comparison(ds1, ds2, region,
             h2 = ax2.contourf(glons, glats, gsub.squeeze(), **vargs)
 
             if colorbar:
-                cb = fig.colorbar(h2, ax=axs[:2], location='bottom', aspect=80)
+                cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
                 cb.ax.tick_params(labelsize=12)
                 cb.set_label(f'{k.title()} ({rsub.units})', fontsize=12, fontweight="bold")
 
@@ -856,21 +908,17 @@ def plot_model_region_comparison(ds1, ds2, region,
             if eez:
                 eez1 = map_add_eez(ax1, zorder=1)
                 eez2 = map_add_eez(ax2, zorder=1)
-            
-            # Plot size adjustments
-            # fig.tight_layout()
-            # fig.subplots_adjust(top=0.9) 
 
             # Save the figure. Using fig to savefig allows us to delete any
             # figure handles so that we can reuse the figure.
-            fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            # export_fig(save_dir_final, sname, dpi=dpi)
+            fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
 
             # Add currents as overlays over variable plots
             if currents['bool']:
                 quiver_dir = save_dir_final / "currents_overlay"
                 os.makedirs(quiver_dir, exist_ok=True)
                 
-                save_file_q = quiver_dir / f"{sname}.png"
                 coarsen = currents['coarsen']
                 q1 = map_add_currents(ax1, rsub, coarsen=coarsen['rtofs'], **currents['kwargs'])
                 q2 = map_add_currents(ax2, gsub, coarsen=coarsen["gofs"], **currents['kwargs'])
@@ -879,61 +927,26 @@ def plot_model_region_comparison(ds1, ds2, region,
                     eez1._kwargs['edgecolor']= 'white'                
                     eez2._kwargs['edgecolor']= 'white'
                 
-                fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+                fig.savefig(quiver_dir / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+                # export_fig(quiver_dir, f"{sname}.png", dpi=dpi)
+
+                # Remove quiver handles from each axes
                 q1.lines.remove(), q2.lines.remove()
-                # eez1.remove(), eez2.remove()
                 remove_quiver_handles(ax1), remove_quiver_handles(ax2)
 
-            # Delete contour handles and remove colorbar axes to use figure
-            [x.remove() for x in h1.collections]
-            [x.remove() for x in h2.collections]
-            cb.remove()
-            # # plt.close()
-            
-            # # Plot currents with magnitude and direction
-            # quiver_dir = path_save_region / f"currents_{depth}m" / time.strftime('%Y/%m') / "currents"
-            # os.makedirs(quiver_dir, exist_ok=True)
-            
-            # sname = f'currents-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
-            # save_file_q = quiver_dir / f"{sname}.png"
+            # Remove handles so we can reuse figure
+            # Delete contour handles 
+            [x.remove() for x in h1.collections] # axes 1
+            [x.remove() for x in h2.collections] # axes 2
 
-            # if not save_file_q.is_file():
-            #     _, mag_r = uv2spdir(rsub['u'], rsub['v'])
-            #     _, mag_g = uv2spdir(gsub['u'], gsub['v'])
-
-            #     qargs = {}
-            #     qargs['vmin'] = 0
-            #     qargs['vmax'] = 1.20
-            #     qargs['levels'] = np.arange(0, 1.2 + .1, .10)
-            #     qargs['transform'] = transform['data']
-            #     qargs['cmap'] = cmocean.cm.speed
-            #     qargs['extend'] = "both"
-
-            #     # Set coarsening configs to a variable
-            #     coarsen = currents['coarsen']
+            if colorbar: 
+                cb.remove()
                 
-            #     # Filled contour for each model variable
-            #     m1 = ax1.contourf(rsub["lon"], rsub["lat"], mag_r, **qargs)
-            #     m2 = ax2.contourf(gsub["lon"], gsub["lat"], mag_g, **qargs)
-            #     s1 = map_add_currents(ax1, rsub, coarsen=coarsen["rtofs"], **currents["kwargs"])
-            #     s2 = map_add_currents(ax2, gsub, coarsen=coarsen["gofs"], **currents["kwargs"])
-                
-            #     cb = fig.colorbar(s2.lines, ax=axs[:2], location='bottom', aspect=80)#, shrink=0.7, aspect=20*0.7)
-            #     cb.ax.tick_params(labelsize=12)
-            #     cb.set_label(f'Magnitude', fontsize=12, fontweight="bold")
+            if eez:
+                eez1.remove()
+                eez2.remove()            
 
-            #     # Create a string for the title of the plot
-            #     title = f"Currents ({depth} m) - {title_time}\n"
-            #     plt.suptitle(title, fontsize=24, fontweight="bold")
-
-            #     # Save figure
-            #     fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
-            #     cb.remove()
-            #     # Delete contour handles and remove colorbar axes to use figure
-            #     s1.lines.remove(), s2.lines.remove()
-            #     remove_quiver_handles(ax1), remove_quiver_handles(ax2)
-            #     [x.remove() for x in m1.collections]
-            #     [x.remove() for x in m2.collections]
+            plt.close()
 
 
 def plot_regional_assets(ax, argo=None, gliders=None, 
@@ -956,7 +969,6 @@ def plot_regional_assets(ax, argo=None, gliders=None,
 
     if not transects.empty:
         map_add_transects(ax, transects, transform)
-
 
 
 def transect(fig, ax, x, y, z, c, cmap=None, levels=None, isobath=None, flip_y=None):
@@ -1030,42 +1042,253 @@ def plot_transects(x, y, c, xlabel, cmap=None, title=None, save_file=None, flip_
     plt.savefig(save_file, bbox_inches='tight', pad_inches=0.1, dpi=300)
     plt.close()
 
-def plot_model_region_comparison_streamplot(rtofs, gofs, region,
-                                            bathy=None,
-                                            argo=None,
-                                            gliders=None,
-                                            currents=None,
-                                            transform=dict(map=proj['map'], 
-                                                           data=proj['data']
-                                                           ),
-                                            path_save=os.getcwd(),
-                                            dpi=150,
-                                            t0=None,
-                                            colorbar=True):
+def plot_model_region_comparison_streamplot(ds1, ds2, region,
+                                                bathy=None,
+                                                argo=None,
+                                                gliders=None,
+                                                currents=None,
+                                                eez=False,
+                                                cols=6,
+                                                transform=dict(map=proj['map'], 
+                                                                data=proj['data']
+                                                                ),
+                                                path_save=os.getcwd(),
+                                                figsize=(14,8),
+                                                dpi=150,
+                                                colorbar=True,
+                                                overwrite=False
+                                                ):
 
-    time = pd.to_datetime(rtofs.time.data)
-    region_name = region["name"]
+    time = pd.to_datetime(ds1.time.data)
     extent = region['extent']
-
-    # Create subdirectory for region
-    region_file_str = ('_').join(region_name.lower().split(' '))
-    path_save_region = path_save / 'regions' / region_file_str
+    cdict = region['currents']
     
     grid = """
     RG
     LL
     """
-    try:
-        figsize = region['figure']['figsize']
-    except KeyError:
-        figsize = (16,9)
 
+    # Iterate through the variables to be plotted for each region. 
+    # This dict contains information on what variables and depths to plot. 
+    for depth in cdict['depths']:
+        print(f"Plotting currents @ {depth}m")
+        ds1_depth = ds1.sel(depth=depth)
+        ds2_depth = ds2.sel(depth=depth, method='nearest')
+        
+        # Plot currents with magnitude and direction
+        quiver_dir = path_save / f"currents_{depth}m" / time.strftime('%Y/%m')
+        os.makedirs(quiver_dir, exist_ok=True)
+
+        # Generate descriptive filename
+        sname = f'{region["folder"]}_{time.strftime("%Y-%m-%dT%H%M%SZ")}_currents-{depth}m_{ds1.model.lower()}-vs-{ds2.model.lower()}'
+        save_file_q = quiver_dir / f"{sname}.png"
+
+        # Check if filename already exists
+        if save_file_q.is_file():
+            if not overwrite:
+                print(f"{sname} exists. Overwrite: False. Skipping.")
+                continue
+            else:
+                print(f"{sname} exists. Overwrite: True. Replotting.")
+
+        # Convert u and v radial velocities to magnitude
+        _, mag_r = uv2spdir(ds1_depth['u'], ds1_depth['v'])
+        _, mag_g = uv2spdir(ds2_depth['u'], ds2_depth['v'])
+
+        # Initialize qargs dictionary for input into contour plot of magnitude
+        qargs = {}
+        qargs['transform'] = transform['data']
+        qargs['cmap'] = cmocean.cm.speed
+        qargs['extend'] = "max"
+
+        if 'limits' in cdict:
+            lims = cdict['limits']
+            qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+
+        # Initialize figure
+        fig, _ = plt.subplot_mosaic(
+            grid,
+            figsize=figsize,
+            layout="constrained",
+            subplot_kw={
+                'projection': proj['map']
+                },
+            gridspec_kw={
+                # set the height ratios between the rows
+                "height_ratios": [4, 1],
+                # set the width ratios between the columns
+                # # "width_ratios": [1],
+                },
+            )
+        axs = fig.axes
+        ax1 = axs[0] # rtofs
+        ax2 = axs[1] # gofs
+        ax3 = axs[2] # legend for argo/gliders
+
+        # Make the map pretty  
+        map_add_features(ax1, extent)# zorder=0)
+        map_add_features(ax2, extent)# zorder=0)
+        if bathy:       
+            map_add_bathymetry(ax1,
+                            bathy.longitude.values, 
+                            bathy.latitude.values, 
+                            bathy.elevation.values,
+                            levels=(-1000, -100),
+                            zorder=1.5
+                            )
+            map_add_bathymetry(ax2,
+                            bathy.longitude.values, 
+                            bathy.latitude.values, 
+                            bathy.elevation.values,
+                            levels=(-1000, -100),
+                            zorder=1.5
+                            )
+        map_add_ticks(ax1, extent)
+        map_add_ticks(ax2, extent, label_left=False, label_right=True)
+
+        # Plot gliders and argo floats
+        rargs = {}
+        rargs['argo'] = argo
+        rargs['gliders'] = gliders
+        rargs['transform'] = transform['data']  
+        plot_regional_assets(ax1, **rargs)
+        plot_regional_assets(ax2, **rargs)
+
+        # Label the subplots
+        ax1.set_title(ds1.model.upper(), fontsize=16, fontweight="bold")
+        ax2.set_title(ds2.model.upper(), fontsize=16, fontweight="bold")
+        
+        # Deal with the third axes
+        h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
+        if (len(h) > 0) & (len(l) > 0):
+            ax3.legend(h, l, ncol=cols, loc='center', fontsize=10)
+
+            # Add title to legend
+            t0 = []
+            if isinstance(argo, pd.DataFrame):
+                if not argo.empty:
+                    t0.append(argo.index.min()[1])
+
+            if isinstance(gliders, pd.DataFrame):
+                if not gliders.empty:
+                    t0.append(gliders.index.min()[1])
+
+            if len(t0) > 0:
+                t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+            else:
+                t0 = None
+            legstr = f'Glider/Argo Search Window: {str(t0)} to {str(time)}'
+            ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style="italic")
+            # plt.figtext(0.5, 0.001, legstr, ha="center", fontsize=10, fontweight='bold')
+        ax3.set_axis_off()
+
+        # fig.tight_layout()
+        # fig.subplots_adjust(top=0.88, wspace=.001)
+        
+        # Filled contour for each model variable
+        m1 = ax1.contourf(ds1_depth["lon"], ds1_depth["lat"], mag_r, **qargs)
+        m2 = ax2.contourf(ds2_depth["lon"], ds2_depth["lat"], mag_g, **qargs)
+
+        # Set coarsening configs to a variable
+        if 'coarsen' in cdict:
+            coarsen = region['currents']['coarsen']
+        else:
+            coarsen['rtofs'] = 1
+            coarsen['gofs'] = 1
+
+        # Add streamlines
+        s1 = map_add_currents(ax1, ds1_depth, coarsen=coarsen["rtofs"], **currents["kwargs"])
+        s2 = map_add_currents(ax2, ds2_depth, coarsen=coarsen["gofs"], **currents["kwargs"])
+
+        # Add EEZ
+        if eez:
+            eez1 = map_add_eez(ax1, zorder=1, color='red')
+            eez2 = map_add_eez(ax2, zorder=1, color='red')
+
+        if colorbar:
+            cb = fig.colorbar(m1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
+            # cb = add_colorbar(axs[:2], m1, location="bottom")
+            cb.ax.tick_params(labelsize=12)
+            cb.set_label(f'Magnitude (m/s)', fontsize=12, fontweight="bold")
+
+        # Create a string for the title of the plot
+        title_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        title = f"Currents ({depth} m) - {title_time}\n"
+        plt.suptitle(title, fontsize=22, fontweight="bold")
+        
+        # Save figure
+        fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        # plt.close()
+        if colorbar:
+            cb.remove()
+        # Delete contour handles and remove colorbar axes to use figure
+        s1.lines.remove(), s2.lines.remove()
+        remove_quiver_handles(ax1), remove_quiver_handles(ax2)
+        [x.remove() for x in m1.collections]
+        [x.remove() for x in m2.collections]
+
+def salinity_max(ds, extent, region_name,
+                 limits=None,
+                 bathy=None,
+                 argo=None,
+                 gliders=None,
+                 eez=False,
+                 cols=6,
+                 path_save=os.getcwd(), 
+                 transform=dict(map=ccrs.Mercator(), 
+                                data=ccrs.PlateCarree()
+                                ), 
+                 figsize=(14,8),
+                 dpi=150,
+                 overwrite=False):
+    
+    # Convert ds.time value to a normal datetime
+    time = pd.to_datetime(ds.time.values)
+    
+    # Formatter for time
+    tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
+    tstr_folder = time.strftime('%Y-%m-%dT%H%M%SZ')
+    year = time.strftime("%Y")
+    month = time.strftime("%m")
+
+    # Generate filename
+    fname = f"{path_save.name}_{tstr_folder}_salinity_max_{ds.model.lower()}.png"
+
+    # Append salinity_max, year, and month to path_save
+    path_save = path_save / 'salinity_max' / year / month
+
+    save_file = path_save / fname
+    
+    if save_file.is_file():
+        if not overwrite:
+            print(f"{save_file} exists. Overwrite: False. Skipping.")
+            return
+        else:
+            print(f"{save_file} exists. Overwrite: True. Replotting.")
+        
+    # Make sure path_save exists
+    os.makedirs(path_save, exist_ok=True)
+    
+    print(f"Plotting Salinity Max of {region_name} at {tstr_title}")
+    
+    # Get the maximum salinity over the dimension 'depth'
+    smax = ds['salinity'].max("depth")
+
+    # Get the depth that the maximum salinity occurs at.
+    # We find the indexes of the salinity maximum using the .argmax() method.
+    # We use the .isel() method to select the depths that the salinity max occured.
+    smax_depth = ds['salinity'].idxmax("depth")
+
+    # Initialize figure    
     fig, _ = plt.subplot_mosaic(
-        grid,
+        """
+        RG
+        LL
+        """,
         figsize=figsize,
         layout="constrained",
         subplot_kw={
-            'projection': proj['map']
+            'projection': transform['map']
             },
         gridspec_kw={
             # set the height ratios between the rows
@@ -1078,31 +1301,37 @@ def plot_model_region_comparison_streamplot(rtofs, gofs, region,
     ax1 = axs[0] # rtofs
     ax2 = axs[1] # gofs
     ax3 = axs[2] # legend for argo/gliders
-            
-    # Make the map pretty
-    map_add_features(ax1, extent)# zorder=0)
-    if bathy:
+    
+    
+    # Add features to both map axes. Land, water, coastlines, etc.
+    map_add_features(ax1, extent)
+    map_add_features(ax2, extent)
+
+    # Add bathymetry lines
+    if bathy:       
         map_add_bathymetry(ax1,
-                        bathy.longitude.values, 
-                        bathy.latitude.values, 
-                        bathy.elevation.values,
-                        levels=(-1000, -100),
-                        zorder=1.5)
-    map_add_ticks(ax1, extent)
-
-    # ax1.set_xlabel('Longitude', fontsize=14, fontweight='bold')
-    # ax1.set_ylabel('Latitude', fontsize=14, fontweight='bold')
-
-    # Make the map pretty
-    map_add_features(ax2, extent)# zorder=0)
-    if bathy:
+                           bathy.longitude.values, 
+                           bathy.latitude.values, 
+                           bathy.elevation.values,
+                           levels=(-1000, -100),
+                           zorder=1.5
+                           )
         map_add_bathymetry(ax2,
-                        bathy.longitude.values, 
-                        bathy.latitude.values, 
-                        bathy.elevation.values,
-                        levels=(-1000, -100),
-                        zorder=1.5)
-    map_add_ticks(ax2, extent)
+                           bathy.longitude.values, 
+                           bathy.latitude.values, 
+                           bathy.elevation.values,
+                           levels=(-1000, -100),
+                           zorder=1.5
+                           )
+
+    # Add eez lines
+    if eez:
+        map_add_eez(ax1, color='white', zorder=10)
+        map_add_eez(ax2, color='white', zorder=10)
+    
+    # Add ticks
+    map_add_ticks(ax1, extent, label_left=True)
+    map_add_ticks(ax2, extent, label_left=False, label_right=True)
 
     # Plot gliders and argo floats
     rargs = {}
@@ -1112,70 +1341,317 @@ def plot_model_region_comparison_streamplot(rtofs, gofs, region,
     plot_regional_assets(ax1, **rargs)
     plot_regional_assets(ax2, **rargs)
 
-    # Label the subplots
-    ax1.set_title("RTOFS", fontsize=22, fontweight="bold")
-    ax2.set_title("GOFS", fontsize=22, fontweight="bold")
-    
     # Deal with the third axes
-    h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
+    h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
     if (len(h) > 0) & (len(l) > 0):
-        ax3.legend(h, l, ncol=region['figure']['legend']['columns'], loc='center', fontsize=10)
-        legstr = f'Glider/Argo Search Window: {str(t0)} to {str(time)}'
-        # ax3.set_title(legstr, loc="right", fontsize=10, fontweight="bold")
-        # plt.figtext(0.5, 0.01, legstr, ha="center", fontsize=10, fontweight='bold')
-        plt.figtext(0.5, 0.001, legstr, ha="center", fontsize=10, fontweight='bold')
+        
+        # Add handles to legend
+        ax3.legend(h, l, ncol=cols, loc='center', fontsize=10)
+
+        # Add title to legend
+        t0 = []
+        if isinstance(argo, pd.DataFrame):
+            if not argo.empty:
+                t0.append(argo.index.min()[1])
+
+        if isinstance(gliders, pd.DataFrame):
+            if not gliders.empty:
+                t0.append(gliders.index.min()[1])
+
+        if len(t0) > 0:
+            t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+        else:
+            t0 = None
+        legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
+        ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
     ax3.set_axis_off()
 
+    # Calculate contours
+    if limits:
+        salt_min = limits[0]
+        salt_max = limits[1]
+        salt_stride = limits[2]
+    else:
+        # Calculate the colorbar limits automatically
+        percentiles = [.25, .75]
+        salinity_quantile = smax.quantile(percentiles)
+        salt_min = np.floor(salinity_quantile[0])
+        salt_max = np.ceil(salinity_quantile[1])
+        salt_stride = .1
+
+    # Calculate salinity contours
+    levels = np.arange(
+        salt_min,
+        salt_max+salt_stride,
+        salt_stride
+        )
+
+    # Calculate depth contours
+    depths = np.arange(40, 200, 20)
+
+    # Salinity Max Plot
+    h1 = ax1.contourf(smax['lon'], smax['lat'], smax,
+                        levels=levels, 
+                        extend="both",
+                        cmap=cmocean.cm.haline,
+                        transform=transform['data'])
+
+    # Salinity Max Depth Plot
+    h2 = ax2.contourf(smax_depth['lon'], smax_depth['lat'], smax_depth, 
+                        levels=depths,
+                        extend="both",
+                        cmap=cmocean.cm.deep,
+                        transform=transform['data'])
     
-    # Iterate through the variables to be plotted for each region. 
-    # This dict contains information on what variables and depths to plot. 
-    for depth in region['currents']['depths']:
-        print(depth)
-        rsub = rtofs.sel(depth=depth)
-        gsub = gofs.sel(depth=depth)
+    # Add colorbar to first axes
+    cb = add_colorbar(ax1, h1)
+    cb.ax.tick_params(labelsize=10)
+    cb.set_label(f'Salinity', fontsize=11, fontweight="bold")
+    
+    # Add colorbar to second axes
+    cb = add_colorbar(ax2, h2)
+    cb.ax.tick_params(labelsize=10)
+    cb.set_label(f'Depth (m)', fontsize=11, fontweight="bold")
+
+    # Set title for each axes
+    ax1.set_title("Salinity Maximum", fontsize=16, fontweight='bold')
+    ax2.set_title("Depth of Salinity Maximum", fontsize=16, fontweight='bold')
+    fig.suptitle(f"{ds.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
+
+    # # Hide x labels and tick labels for top plots and y ticks for right plots.
+    # for axs in ax.flat:
+    #     axs.label_inner()
+
+    # fig.tight_layout()
+    # fig.subplots_adjust(top=0.95)
+    
+    export_fig(path_save, fname, dpi=dpi)
+    plt.close()
+
+
+def plot_ohc(ds1, ds2, extent, region_name,
+             limits=None,
+             bathy=None,
+             argo=None,
+             gliders=None,
+             eez=False,
+             cols=6,
+             path_save=os.getcwd(), 
+             transform=dict(map=ccrs.Mercator(), 
+                            data=ccrs.PlateCarree()
+                            ), 
+             figsize=(14,8),
+             dpi=150,
+             overwrite=False
+             ):
+
+    # Convert ds.time value to a normal datetime
+    time = pd.to_datetime(ds1.time.values)
+    
+    # Formatter for time
+    tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
+    tstr_folder = time.strftime('%Y-%m-%dT%H%M%SZ')
+    year = time.strftime("%Y")
+    month = time.strftime("%m")
+
+    # Generate filename
+    fname = f"{path_save.name}_{tstr_folder}_heat_content_{ds1.model.lower()}-{ds2.model.lower()}.png"
+
+    # Append salinity_max, year, and month to path_save
+    path_save = path_save / 'ocean_heat_content' / year / month
+
+    save_file = path_save / fname
+    
+    if save_file.is_file():
+        if not overwrite:
+            print(f"{save_file} exists. Overwrite: False. Skipping.")
+            return
+        else:
+            print(f"{save_file} exists. Overwrite: True. Replotting.")    
+    
+    # Make sure path_save exists
+    os.makedirs(path_save, exist_ok=True)
+    
+    print(f"Plotting Ocean Heat Content of {region_name} at {tstr_title}")
+
+    # # ds1
+    # # Calculate density of model dataset
+    # ds1['density'] = xr.apply_ufunc(density, 
+    #                                ds1['temperature'], 
+    #                                -ds1['depth'],
+    #                                ds1['salinity'], 
+    #                                ds1['lat'], 
+    #                                ds1['lon']
+    #                                )
+
+    # # Calculate ocean heat content of model dataset.
+    # # input_core_dims tells apply_ufunc to broadcast the ocean_heat_content
+    # # function across every dimension EXCEPT the depth dimension.
+    # ds1['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+    #                            ds1.depth, 
+    #                            ds1.temperature, 
+    #                            ds1.density, 
+    #                            input_core_dims=[['depth'], ['depth'], ['depth']], 
+    #                            vectorize=True)
+
+    # # ds2
+    # # Calculate density of model dataset
+    # ds2['density'] = xr.apply_ufunc(density, 
+    #                                ds2['temperature'], 
+    #                                -ds2['depth'],
+    #                                ds2['salinity'], 
+    #                                ds2['lat'], 
+    #                                ds2['lon']
+    #                                )
+
+    # # Calculate ocean heat content of model dataset.
+    # # input_core_dims tells apply_ufunc to broadcast the ocean_heat_content
+    # # function across every dimension EXCEPT the depth dimension.
+    # ds2['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+    #                            ds2.depth, 
+    #                            ds2.temperature, 
+    #                            ds2.density, 
+    #                            input_core_dims=[['depth'], ['depth'], ['depth']], 
+    #                            vectorize=True)
+    
+    # Initialize figure    
+    fig, _ = plt.subplot_mosaic(
+        """
+        RG
+        LL
+        """,
+        figsize=figsize,
+        layout="constrained",
+        subplot_kw={
+            'projection': transform['map']
+            },
+        gridspec_kw={
+            # set the height ratios between the rows
+            "height_ratios": [4, 1],
+            # set the width ratios between the columns
+            # # "width_ratios": [1],
+            },
+        )
+    axs = fig.axes
+    ax1 = axs[0] # rtofs
+    ax2 = axs[1] # gofs
+    ax3 = axs[2] # legend for argo/gliders
+    
+    
+    # Add features to both map axes. Land, water, coastlines, etc.
+    map_add_features(ax1, extent)
+    map_add_features(ax2, extent)
+
+    # Add bathymetry lines
+    if bathy:       
+        map_add_bathymetry(ax1,
+                           bathy.longitude.values, 
+                           bathy.latitude.values, 
+                           bathy.elevation.values,
+                           levels=(-1000, -100),
+                           zorder=1.5
+                           )
+        map_add_bathymetry(ax2,
+                           bathy.longitude.values, 
+                           bathy.latitude.values, 
+                           bathy.elevation.values,
+                           levels=(-1000, -100),
+                           zorder=1.5
+                           )
+
+    # Add eez lines
+    if eez:
+        map_add_eez(ax1, color='black', zorder=10)
+        map_add_eez(ax2, color='black', zorder=10)
+    
+    # Add ticks
+    map_add_ticks(ax1, extent, label_left=True)
+    map_add_ticks(ax2, extent, label_left=False, label_right=True)
+
+    # Plot gliders and argo floats
+    rargs = {}
+    rargs['argo'] = argo
+    rargs['gliders'] = gliders
+    rargs['transform'] = transform['data']  
+    plot_regional_assets(ax1, **rargs)
+    plot_regional_assets(ax2, **rargs)
+
+    # Deal with the third axes
+    h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+    if (len(h) > 0) & (len(l) > 0):
         
-        # Plot currents with magnitude and direction
-        quiver_dir = path_save_region / f"currents_{depth}m" / time.strftime('%Y/%m') / "currents"
-        os.makedirs(quiver_dir, exist_ok=True)
-        
-        sname = f'currents-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
-        save_file_q = quiver_dir / f"{sname}.png"
+        # Add handles to legend
+        ax3.legend(h, l, ncol=cols, loc='center', fontsize=10)
 
-        if not save_file_q.is_file():
-            _, mag_r = uv2spdir(rsub['u'], rsub['v'])
-            _, mag_g = uv2spdir(gsub['u'], gsub['v'])
+        # Add title to legend
+        t0 = []
+        if isinstance(argo, pd.DataFrame):
+            if not argo.empty:
+                t0.append(argo.index.min()[1])
 
-            qargs = {}
-            # qargs['vmin'] = 0
-            # qargs['vmax'] = 1.20
-            # qargs['levels'] = np.arange(0, 1.2 + .1, .10)
-            qargs['transform'] = transform['data']
-            qargs['cmap'] = cmocean.cm.speed
-            qargs['extend'] = "both"
+        if isinstance(gliders, pd.DataFrame):
+            if not gliders.empty:
+                t0.append(gliders.index.min()[1])
 
-            # Set coarsening configs to a variable
-            coarsen = region['currents']['coarsen']
-            
-            # Filled contour for each model variable
-            m1 = ax1.contourf(rsub["lon"], rsub["lat"], mag_r, **qargs)
-            m2 = ax2.contourf(gsub["lon"], gsub["lat"], mag_g, **qargs)
-            s1 = map_add_currents(ax1, rsub, coarsen=coarsen["rtofs"], **currents["kwargs"])
-            s2 = map_add_currents(ax2, gsub, coarsen=coarsen["gofs"], **currents["kwargs"])
-            
-            cb = fig.colorbar(s2.lines, ax=axs[:2], location='bottom', aspect=80)#, shrink=0.7, aspect=20*0.7)
-            cb.ax.tick_params(labelsize=12)
-            cb.set_label(f'Magnitude', fontsize=12, fontweight="bold")
+        if len(t0) > 0:
+            t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+        else:
+            t0 = None
+        legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
+        ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+    ax3.set_axis_off()
 
-            # Create a string for the title of the plot
-            title_time = time.strftime("%Y-%m-%d %H:%M:%S")
-            title = f"Currents ({depth} m) - {title_time}\n"
-            plt.suptitle(title, fontsize=24, fontweight="bold")
+    # Calculate contours
+    if limits:
+        ohc_min = limits[0]
+        ohc_max = limits[1]
+        ohc_stride = limits[2]
+    else:
+        # Calculate the colorbar limits automatically
+        percentiles = [.25, .75]
+        quantile = ds1['ohc'].quantile(percentiles)
+        ohc_min = np.floor(quantile[0])
+        ohc_max = np.ceil(quantile[1])
+        ohc_stride = 10
 
-            # Save figure
-            fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
-            cb.remove()
-            # Delete contour handles and remove colorbar axes to use figure
-            s1.lines.remove(), s2.lines.remove()
-            remove_quiver_handles(ax1), remove_quiver_handles(ax2)
-            [x.remove() for x in m1.collections]
-            [x.remove() for x in m2.collections]
+    # Calculate salinity contours
+    levels = np.arange(
+        ohc_min,
+        ohc_max+ohc_stride,
+        ohc_stride
+        )
+
+    # Ocean Heat Content Plot
+    h1 = ax1.contourf(ds1['lon'], ds1['lat'], ds1['ohc'],
+                      levels=levels, 
+                      extend="both",
+                      cmap=cmocean.cm.thermal,
+                      transform=transform['data'])
+
+    # Ocean Heat Content Plot
+    h2 = ax2.contourf(ds2['lon'], ds2['lat'], ds2['ohc'], 
+                      levels=levels,
+                      extend="both",
+                      cmap=cmocean.cm.thermal,
+                      transform=transform['data']
+                      )
+    
+    # Add colorbar to first axes
+    cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
+    cb.ax.tick_params(labelsize=12)
+    cb.set_label('kJ/cm^2', fontsize=12, fontweight="bold")
+
+    # Set title for each axes
+    ax1.set_title(f"{ds1.model.upper()}", fontsize=16, fontweight='bold')
+    ax2.set_title(f"{ds2.model.upper()}", fontsize=16, fontweight='bold')
+    fig.suptitle(f"Ocean Heat Content - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
+
+    # # Hide x labels and tick labels for top plots and y ticks for right plots.
+    # for axs in ax.flat:
+    #     axs.label_inner()
+
+    # fig.tight_layout()
+    # fig.subplots_adjust(top=0.95)
+    
+    export_fig(path_save, fname, dpi=dpi)
+    plt.close()

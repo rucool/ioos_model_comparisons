@@ -22,44 +22,9 @@ def region_config(regions=None, model=None):
 
     # Defaults
     eez = False
-
-    key = "hurricane"
-    if key in regions:
-        # Caribbean Limits
-        name = "Hurricane Alley"
-        folder = "hurricane_alley"
-        extent = [-89, -12, 0, 20]
-        sea_water_temperature = [
-            dict(depth=0, limits=[20 , 29.25, .25]),
-            dict(depth=150, limits=[17, 24.5, .5]),
-            # dict(depth=200, limits=[14, 22, .5])
-            ]
-        salinity = [
-            dict(depth=0, limits=[34.6, 37.2, .1]),
-            dict(depth=150, limits=[35.7, 36.4, .05]),
-            # dict(depth=200, limits=[35.5, 37, .1])
-            ]
-        sea_surface_height = [
-            dict(depth=0, limits=[-.6, .7, .1])
-            ]
-        currents = dict(
-            bool=True,
-            depths = [0, 150, 200],
-            coarsen=dict(rtofs=11, gofs=12),
-            kwargs=dict(
-                ptype="streamplot",
-                color="black", 
-                density=4,
-                linewidth=.5
-                # scale=60,
-                # headwidth=4,
-                # headlength=4,
-                # headaxislength=3.5
-                )
-            )
-        figure = dict(
-            legend = dict(columns=9),
-            )
+    ocean_heat_content = False
+    salinity_max = False
+    currents = False
 
     key = "yucatan"
     if key in regions:
@@ -67,7 +32,8 @@ def region_config(regions=None, model=None):
         name = "Yucatan"
         folder = "yucatan"
         extent = [-90, -78, 18, 26]
-        sea_water_temperature = [ 
+        sea_water_temperature = [
+            # dict(depth=0, limits=[24.5, 27.75, .25]),
             dict(depth=0, limits=[27.5, 31, .25]),
             dict(depth=150, limits=[18, 25.5, .5]),
             dict(depth=200, limits=[14, 23, .5])
@@ -80,22 +46,27 @@ def region_config(regions=None, model=None):
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
             ]
+        salinity_max = dict(
+            # figsize=(14, 6.5),
+            limits=[36, 37, .1]
+            )
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
         currents = dict(
             bool=True,
             depths = [0, 150, 200],
+            limits = [0, 1.5, .1],
             coarsen=dict(rtofs=5, gofs=6),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
-                # scale=60,
-                # headwidth=3,
-                # headlength=3,
-                # headaxislength=2.5
                 )
             )
         eez = True
         figure = dict(
-            legend = dict(columns=9),
+            legend = dict(columns=8),
+            figsize=(14,8)
             )
 
     key = "leeward"
@@ -117,23 +88,27 @@ def region_config(regions=None, model=None):
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
             ]
+        salinity_max = dict(
+            figsize=(14, 5.5),
+            limits=[36, 37.5, .1]
+            )
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
         currents = dict(
             bool=True,
             depths = [0, 150, 200],
+            limits = [0, 1.5, .1],
             coarsen=dict(rtofs=1, gofs=1),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
-                # scale=60,
-                # headwidth=3,
-                # headlength=3,
-                # headaxislength=2.5
                 )
             )
         eez = True
         figure = dict(
-            legend = dict(columns=9),
-            # figsize
+            legend = dict(columns=5),
+            figsize = (11.25,5.5),
             )
 
     key = "gom"
@@ -155,6 +130,13 @@ def region_config(regions=None, model=None):
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
             ]
+        salinity_max = dict(
+            figsize=(14, 6.5),
+            limits=[36, 37, .1]
+        )
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
         currents = dict(
             bool=True,
             depths = [0, 150, 200],
@@ -162,15 +144,11 @@ def region_config(regions=None, model=None):
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
-                # scale=60,
-                # headwidth=3,
-                # headlength=3,
-                # headaxislength=2.5
                 )
             )
         figure = dict(
-            legend = dict(columns=9),
-            # figsize
+            legend = dict(columns=7),
+            figsize = (13, 7.5)
             )
 
     key = "sab"
@@ -192,6 +170,13 @@ def region_config(regions=None, model=None):
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
             ]
+        salinity_max = dict(
+            figsize=(14, 6.5),
+            limits=[36, 37, .1]
+            )
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
         currents = dict(
             bool=True,
             depths = [0, 150, 200],
@@ -199,15 +184,11 @@ def region_config(regions=None, model=None):
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
-                # scale=60,
-                # headwidth=3,
-                # headlength=3,
-                # headaxislength=2.5
                 )
             )
         figure = dict(
-            legend = dict(columns=5),
-            # figsize
+            legend = dict(columns=7),
+            figsize = (12, 7)
             )
 
     key = "mab"
@@ -233,6 +214,13 @@ def region_config(regions=None, model=None):
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1]),
             ]
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
+        salinity_max = dict(
+            figsize=(14, 8.5),
+            limits=[34.4, 37, .2]
+            )
         currents = dict(
             bool=True,
             depths = [0, 100, 150, 200],
@@ -240,22 +228,19 @@ def region_config(regions=None, model=None):
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
-                # scale=60,
-                # headwidth=4,
-                # headlength=4,
-                # headaxislength=3.5
                 )
             )
         figure = dict(
             legend = dict(columns=5),
-            figsize = (12, 9)
+            figsize = (10.5, 7.5)
             )
+    
     key = "west_florida_shelf"
     if key in regions:
         name = "West Florida Shelf"
         folder = "west_florida_shelf"
         # extent = [-83.2, -82.4, 27, 27+30/60]
-        extent = [-87.5, -82, 24, 30.5]
+        extent = [-87.5, -80, 24, 30.5]
         sea_water_temperature = [
             dict(depth=0, limits=[29, 31.3, .1]),
             dict(depth=100, limits=[18, 27.5, .5]),
@@ -269,6 +254,13 @@ def region_config(regions=None, model=None):
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
             ]
+        salinity_max = dict(
+            figsize=(14, 8),
+            limits=[36, 37, .1]
+            )
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
         currents = dict(
             bool=True,
             depths = [0],
@@ -276,16 +268,11 @@ def region_config(regions=None, model=None):
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
-                # scale=60,
-                # headwidth=4,
-                # headlength=4,
-                # headaxislength=3.5
                 )
             )
-        eez = False
         figure = dict(
-            legend = dict(columns=4),
-            figsize = (10,10)
+            legend = dict(columns=5),
+            figsize = (10,7.75)
             )
     
     key = "caribbean"
@@ -309,6 +296,13 @@ def region_config(regions=None, model=None):
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
             ]
+        salinity_max = dict(
+            figsize=(14, 5),
+            limits= [36, 37.5, .1]
+            )
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
         currents = dict(
             bool=True,
             depths = [0, 150, 200],
@@ -316,16 +310,12 @@ def region_config(regions=None, model=None):
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
-                # scale=60,
-                # headwidth=4,
-                # headlength=4,
-                # headaxislength=3.5
                 )
             )
         eez = True
         figure = dict(
-            legend = dict(columns=9),
-            figsize = (16,7)
+            legend = dict(columns=7),
+            figsize = (12.5,6.5)
             )
 
     key = "windward"
@@ -347,6 +337,13 @@ def region_config(regions=None, model=None):
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
             ]
+        salinity_max = dict(
+            figsize=(14, 8),
+            limits=[36, 37.5, .1]
+        )
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
         currents = dict(
             bool=True,
             # coarsen=dict(rtofs=None, gofs=None),
@@ -355,15 +352,12 @@ def region_config(regions=None, model=None):
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
-                # scale=60,
-                # headwidth=3,
-                # headlength=3,
-                # headaxislength=2.5
                 )
             )
+        eez = True
         figure = dict(
             legend = dict(columns=5),
-            figsize = (13, 9)
+            figsize = (11.5, 8)
             )
         
     key = "amazon"
@@ -403,7 +397,42 @@ def region_config(regions=None, model=None):
             legend = dict(columns=9),
             figsize = (13, 9)
             )
-        
+
+    key = "hurricane"
+    if key in regions:
+        # Caribbean Limits
+        name = "Hurricane Alley"
+        folder = "hurricane_alley"
+        extent = [-89, -12, 0, 20]
+        sea_water_temperature = [
+            dict(depth=0, limits=[20 , 29.25, .25]),
+            dict(depth=150, limits=[17, 24.5, .5]),
+            # dict(depth=200, limits=[14, 22, .5])
+            ]
+        salinity = [
+            dict(depth=0, limits=[34.6, 37.2, .1]),
+            dict(depth=150, limits=[35.7, 36.4, .05]),
+            # dict(depth=200, limits=[35.5, 37, .1])
+            ]
+        sea_surface_height = [
+            dict(depth=0, limits=[-.6, .7, .1])
+            ]
+        currents = dict(
+            bool=True,
+            depths = [0, 150, 200],
+            coarsen=dict(rtofs=11, gofs=12),
+            kwargs=dict(
+                ptype="streamplot",
+                color="black", 
+                density=4,
+                linewidth=.5
+                )
+            )
+        figure = dict(
+            legend = dict(columns=9),
+            )
+    # currents['depths'] = [0]
+    
     # Create subdirectory for data variables
     vars = {}
     vars.update(salinity=salinity)
@@ -413,10 +442,15 @@ def region_config(regions=None, model=None):
     limits.update(name=name)
     limits.update(folder=folder)
     limits.update(extent=extent)
-    limits.update(currents=currents)
     limits.update(figure=figure)
     limits.update(sea_surface_height=sea_surface_height)
     limits.update(eez=eez)
     limits.update(variables=vars)
+    if currents:
+        limits.update(currents=currents)
+    if salinity_max:
+        limits.update(salinity_max=salinity_max)
+    if ocean_heat_content:
+        limits.update(ocean_heat_content=ocean_heat_content)
     return limits
 
