@@ -18,6 +18,7 @@ from mpl_toolkits.axes_grid1.inset_locator import InsetPosition, inset_axes
 from oceans.ocfis import spdir2uv, uv2spdir
 from shapely.geometry.polygon import LinearRing
 from hurricanes.calc import dd2dms
+import hurricanes.configs as conf
 
 # Suppresing warnings for a "pretty output."
 warnings.simplefilter("ignore")
@@ -292,10 +293,8 @@ def map_add_currents(ax, ds, coarsen=None, ptype="quiver",
 
 
 def map_add_eez(ax, zorder=1, color='white'):
-    eez = 'data/eez/eez_boundaries_v11.shp'
-    # eez = '/home/hurricaneadm/data/eez/eez_boundaries_v11.shp'
     shape_feature = cfeature.ShapelyFeature(
-        Reader(eez).geometries(), 
+        Reader(conf.eez_path).geometries(), 
         proj['data'],
         linestyle='-.',
         linewidth=0.5,

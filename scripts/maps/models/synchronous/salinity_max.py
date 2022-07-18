@@ -27,8 +27,8 @@ gofs = True
 cmems = True
 
 # For debug 
-conf.days = 1
-conf.regions = ['mab']
+# conf.days = 1
+# conf.regions = ['mab']
 
 # Get today and yesterday dates
 today = dt.date.today()

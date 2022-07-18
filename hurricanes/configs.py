@@ -10,10 +10,12 @@ script_name = Path(__file__).name
 # Set root path of where to save the plots
 if platform == "linux" or platform == "linux2":
     # server
-    path_plots = Path("/www/web/rucool/hurricane/model_comparisons") 
+    path_plots = Path("/www/web/rucool/hurricane/model_comparisons")
+    eez_path = '/home/hurricaneadm/data/eez/eez_boundaries_v11.shp'
 elif platform == "darwin":
     # local
     path_plots = Path.home() / "Documents" / "plots" / "model_comparisons"
+    eez_path = 'data/eez/eez_boundaries_v11.shp'
 # elif platform == "win32":
     # Windows...
 
