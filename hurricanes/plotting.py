@@ -50,7 +50,6 @@ def export_fig(path, fname, script=None, dpi=150):
         plt.figtext(.98, 0.20, f"{script} {now}",  fontsize=10, rotation=90)
         
     plt.savefig(path / fname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
-    # plt.clf()
 
 
 def categorical_cmap(nc, nsc, cmap="tab10", continuous=False):
@@ -811,13 +810,14 @@ def plot_model_region_comparison(ds1, ds2, region,
     # Label the subplots
     ax1.set_title(ds1.model, fontsize=16, fontweight="bold")
     ax2.set_title(ds2.model, fontsize=16, fontweight="bold")
+    txt = plt.suptitle("", fontsize=22, fontweight="bold")
     
     # Deal with the third axes
     h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
     if (len(h) > 0) & (len(l) > 0):
         
         # Add handles to legend
-        legend = ax3.legend(h, l, ncol=cols, loc='center', fontsize=9)
+        legend = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
 
         # Add title to legend
         t0 = []
@@ -868,7 +868,7 @@ def plot_model_region_comparison(ds1, ds2, region,
                     print(f"{save_file} exists. Overwrite: True. Replotting.")
                     
             # Add the super title (title for both subplots)
-            plt.suptitle(f"{var_str} ({depth} m) - {tstr_title}\n", fontsize=22, fontweight="bold")
+            txt.set_text(f"{var_str} ({depth} m) - {tstr_title}\n")
 
             # Create dictionary for variable argument inputs for contourf
             vargs = {}
@@ -1345,7 +1345,7 @@ def salinity_max(ds, extent, region_name,
     if (len(h) > 0) & (len(l) > 0):
         
         # Add handles to legend
-        ax3.legend(h, l, ncol=cols, loc='center', fontsize=10)
+        ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
 
         # Add title to legend
         t0 = []
@@ -1580,7 +1580,7 @@ def plot_ohc(ds1, ds2, extent, region_name,
     if (len(h) > 0) & (len(l) > 0):
         
         # Add handles to legend
-        ax3.legend(h, l, ncol=cols, loc='center', fontsize=10)
+        ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
 
         # Add title to legend
         t0 = []
