@@ -161,15 +161,15 @@ def find_nearest(array, value):
     return array.flat[idx], idx
 
 
-def depth_interpolate(df, depth_var='depth', depth_min=None, depth_max=None, stride=1, method='linear', index=None):
+def depth_interpolate(df, depth_var='depth', depth_min=0, depth_max=1000, stride=10, method='linear', index=None):
     """_summary_
 
     Args:
         df (pd.DataFrame): Depth profile in the form of a pandas dataframe
         depth_var (str, optional): Name of the depth variable in the dataframe. Defaults to 'depth'.
-        depth_min (_type_, optional): Shallowest bin depth. Defaults to None.
-        depth_max (_type_, optional): Deepest bin depth. Defaults to None.
-        stride (int, optional): Amount of space between bins. Defaults to 1.
+        depth_min (float or string, optional): Shallowest bin depth. Pass 'round' to round to nearest minimumdepth. Defaults to None.
+        depth_max (float or string, optional): Deepest bin depth. Pass 'round' to round to nearest maximum depth. Defaults to None.
+        stride (int, optional): Amount of space between bins. Defaults to 10.
         method (str, optional): Interpolation type. Defaults to 'linear'.
 
     Returns:
@@ -178,8 +178,18 @@ def depth_interpolate(df, depth_var='depth', depth_min=None, depth_max=None, str
     if df.empty:
         print("Dataframe empty. Returning to original function")
         return
-    depth_min = depth_min or round(df[depth_var].min())
-    depth_max = depth_max or round(df[depth_var].max())
+
+    if isinstance(depth_min, str):
+        if depth_min == 'round':
+            depth_min = round(df[depth_var].min())
+        else:
+            depth_min = int(depth_min)
+
+    if isinstance(depth_min, str):
+        if depth_min == 'round':
+            depth_max = round(df[depth_var].max())
+        else:
+            depth_max = int(depth_max)
 
     bins = np.arange(depth_min, depth_max+stride, stride)
 
