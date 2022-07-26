@@ -1,7 +1,5 @@
-import datetime as dt
 import os
 
-import hurricanes.configs as configs
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,58 +10,91 @@ import xarray as xr
 from hurricanes.calc import depth_interpolate, lon180to360, lon360to180, difference
 from hurricanes.models import gofs, rtofs, cmems
 from hurricanes.platforms import get_argo_floats_by_time
-from hurricanes.plotting import map_create
+from hurricanes.plotting import map_create, map_add_ticks
 from hurricanes.regions import region_config
+import hurricanes.configs as conf
 
-save_dir = configs.path_plots / 'profiles' / 'argo'
+save_dir = conf.path_plots / 'profiles' / 'argo'
 
 # Configs
+parallel = True
+
 # argos = ["4902350", "4903250", "6902854", "4903224", "4903227"]
 # argos = [4903227]
-days = 5
-dpi = configs.dpi
-depths = slice(0, 400)
-vars = 'platform_number', 'time', 'longitude', 'latitude', 'pres', 'temp', 'psal'
-
-# initialize keyword arguments for map plot
-kwargs = dict()
-kwargs['model'] = 'rtofs'
-kwargs['save_dir'] = save_dir
-kwargs['dpi'] = dpi
+# conf.regions = ['caribbean-leeward'] # For debug purposes
+days = 10
+dpi = conf.dpi
+depths = slice(0, 1000)
+vars = ['platform_number', 'time', 'longitude', 'latitude', 'pres', 'temp', 'psal']
 
 # Load models
 rds = rtofs().sel(depth=depths)
 gds = gofs(rename=True).sel(depth=depths)
 cds = cmems(rename=True).sel(depth=depths)
 
-# Create list of yesterday and todays dates
-date_list = [dt.date.today() - dt.timedelta(days=x+1) for x in range(days)]
-date_list.insert(0, dt.date.today())
+# Create a date list ending today and starting x days in the past
+date_end = pd.Timestamp.utcnow().tz_localize(None)
+date_start = (date_end - pd.Timedelta(days=days)).floor('1d')
 
-now = pd.Timestamp.utcnow()
-t0 = pd.to_datetime(now - pd.Timedelta(days, 'd')).tz_localize(None)
-t1 = pd.to_datetime(now).tz_localize(None)
+# Get extent for all configured regions to download argo/glider data one time
+extent_list = []
+for region in conf.regions:
+    extent_list.append(region_config(region)["extent"])
 
-# Loop through regions
-for item in configs.regions:
-    region = region_config(item)
+extent_df = pd.DataFrame(
+    np.array(extent_list),
+    columns=['lonmin', 'lonmax', 'latmin', 'latmax']
+    )
+
+global_extent = [
+    extent_df.lonmin.min(),
+    extent_df.lonmax.max(),
+    extent_df.latmin.min(),
+    extent_df.latmax.max()
+    ]
+
+# import time
+# startTime = time.time() # Start time to see how long the script took
+# Download argo floats from ifremer erddap server
+floats = get_argo_floats_by_time(global_extent,
+                                 date_start,
+                                 date_end, 
+                                 variables=vars)
+# print('Execution time in seconds: ' + str(time.time() - startTime))
+# search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
+# search_window_t1 = ctime.strftime(tstr) 
+        
+def process_argo(region):    
+    # Loop through regions
+    region = region_config(region)
     extent = region['extent']
     print(f'Region: {region["name"]}, Extent: {extent}')
-
-    temp_save_dir = save_dir / '_'.join(region['name'].split(' ')).lower()
+    # extended = np.add(extent, [-1, 1, -1, 1]).tolist()
+    temp_save_dir = save_dir / region['folder']
     os.makedirs(temp_save_dir, exist_ok=True)
 
-    # Download argo floats from ifremer erddap server
-    floats = get_argo_floats_by_time(extent, t0, t1, variables=vars)
-
+    # Filter to region
     if floats.empty:
         print(f"No Argo floats found in {region['name']}")
-        continue
+        return
+    else:
+        argo_region = floats[
+            (extent[0] <= floats['lon']) & (floats['lon'] <= extent[1]) 
+            &
+            (extent[2] <= floats['lat']) & (floats['lat'] <= extent[3])
+            ]
+
+    # Setting RTOFS lon and lat to their own variables speeds up the script
+    rlons = rds.lon.data[0, :]
+    rlats = rds.lat.data[:, 0] 
+    rx = rds.x.data
+    ry = rds.y.data
 
     # Iterate through argo float profiles
-    for gname, df in floats.reset_index().groupby(['argo', 'time']):
+    for gname, df in argo_region.reset_index().groupby(['argo', 'time']):
         wmo = gname[0] # wmo id from gname
         ctime = gname[1] # time from gname
+        print(f"Checking ARGO {wmo} for new profiles")
         
         tstr = ctime.strftime("%Y-%m-%d %H:%M:%S") # create time string
         save_str = f'{wmo}-profile-{ctime.strftime("%Y-%m-%dT%H%M%SZ")}.png'
@@ -87,6 +118,7 @@ for item in configs.regions:
                 # Profile difference does not exist yet
                 profile_diff_exist = False
         else:
+            print(f"Processing ARGO {wmo} profile that occured at {ctime}")
             # Profile does not exist yet
             profile_exist = False   
 
@@ -120,10 +152,10 @@ for item in configs.regions:
 
             # Interpolate argo profile to configuration depths
             df = depth_interpolate(df, 
-                                depth_var='depth', 
-                                depth_min=configs.min_depth,
-                                depth_max=configs.max_depth,
-                                stride=configs.stride)
+                                   depth_var='depth', 
+                                   depth_min=conf.min_depth,
+                                   depth_max=conf.max_depth,
+                                   stride=conf.stride)
 
             # Grab lon and lat of argo profile
             lon, lat = df['lon'].unique()[-1], df['lat'].unique()[-1]
@@ -134,9 +166,9 @@ for item in configs.regions:
             
             # Calculate depths to interpolate 
             depths_interp = np.arange(
-                configs.min_depth, 
-                configs.max_depth+configs.stride, 
-                configs.stride)
+                conf.min_depth, 
+                conf.max_depth+conf.stride, 
+                conf.stride)
 
             # GOFS
             gdsp = gds.sel(time=ctime, method='nearest')
@@ -153,15 +185,9 @@ for item in configs.regions:
             gdsi["density"] = xr.apply_ufunc(seawater.eos80.dens, gdsi.salinity, gdsi.temperature, gdsi.pressure)
 
             # RTOFS
-            # Setting RTOFS lon and lat to their own variables speeds up the script
-            rlon = rds.lon.data[0, :]
-            rlat = rds.lat.data[:, 0]
-            rx = rds.x.data
-            ry = rds.y.data
-
             # interpolating lon and lat to x and y index of the rtofs grid
-            rlonI = np.interp(lon, rlon, rx)
-            rlatI = np.interp(lat, rlat, ry)
+            rlonI = np.interp(lon, rlons, rx)
+            rlatI = np.interp(lat, rlats, ry)
 
             rdsp = rds.sel(time=ctime, method='nearest')
             rdsi = rdsp.interp(
@@ -169,6 +195,7 @@ for item in configs.regions:
                 y=rlatI,
                 depth=xr.DataArray(depths_interp, dims='depth')
             )
+            
             # Calculate density for rtofs profile
             rdsi['pressure'] = xr.apply_ufunc(seawater.eos80.pres, rdsi.depth, rdsi.lat)
             rdsi['density'] = xr.apply_ufunc(seawater.eos80.dens, rdsi.salinity, rdsi.temperature, rdsi.pressure)
@@ -200,7 +227,7 @@ for item in configs.regions:
             ax3 = fig.add_subplot(gs[:, 2], sharey=ax1) # Density
             plt.setp(ax3.get_yticklabels(), visible=False)
             ax4 = fig.add_subplot(gs[0, -1]) # Title
-            ax5 = fig.add_subplot(gs[1, -1], projection=configs.projection['map']) # Map
+            ax5 = fig.add_subplot(gs[1, -1], projection=conf.projection['map']) # Map
             ax6 = fig.add_subplot(gs[2, -1]) # Legend
 
             alon = round(lon, 2)
@@ -266,14 +293,15 @@ for item in configs.regions:
             ax4.set_axis_off()
 
             map_create(extent, ax=ax5, ticks=False)
-            ax5.plot(lon, lat, 'ro', transform=configs.projection['data'])
+            map_add_ticks(ax5, extent, fontsize=10)
+            ax5.plot(lon, lat, 'ro', transform=conf.projection['data'])
 
             h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
 
             ax6.legend(h, l, ncol=1, loc='center', fontsize=12)
             ax6.set_axis_off()
             
-            plt.figtext(0.15, 0.001, f'Depths interpolated to every {configs.stride}m', ha="center", fontsize=10, fontstyle='italic')
+            plt.figtext(0.15, 0.001, f'Depths interpolated to every {conf.stride}m', ha="center", fontsize=10, fontstyle='italic')
 
 
             fig.tight_layout()
@@ -297,7 +325,7 @@ for item in configs.regions:
             ax3 = fig.add_subplot(gs[:, 2], sharey=ax1) # Density
             plt.setp(ax3.get_yticklabels(), visible=False)
             ax4 = fig.add_subplot(gs[0, -1]) # Title
-            ax5 = fig.add_subplot(gs[1, -1], projection=configs.projection['map']) # Map
+            ax5 = fig.add_subplot(gs[1, -1], projection=conf.projection['map']) # Map
             ax6 = fig.add_subplot(gs[2, -1]) # Legend
 
             # Temperature 
@@ -377,14 +405,16 @@ for item in configs.regions:
             ax4.set_axis_off()
 
             map_create(extent, ax=ax5, ticks=False)
-            ax5.plot(lon, lat, 'ro', transform=configs.projection['data'])
+            map_add_ticks(ax5, extent, fontsize=10)
+            
+            ax5.plot(lon, lat, 'ro', transform=conf.projection['data'])
 
             h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
 
-            ax6.legend(h, ['GOFS', 'RTOFS', 'Copernicus'], ncol=1, loc='center', fontsize=12)
+            ax6.legend(h, [f'GOFS [{ glon }, { glat }]', f'RTOFS [{ rlon }, { rlat }]', f"Copernicus [{ clon }, { clat }]"], ncol=1, loc='center', fontsize=12)
             ax6.set_axis_off()
             
-            plt.figtext(0.15, 0.001, f'Depths interpolated to every {configs.stride}m', ha="center", fontsize=10, fontstyle='italic')
+            plt.figtext(0.15, 0.001, f'Depths interpolated to every {conf.stride}m', ha="center", fontsize=10, fontstyle='italic')
 
 
             fig.tight_layout()
@@ -394,3 +424,20 @@ for item in configs.regions:
 
             plt.savefig(diff_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
+
+def main():    
+    if parallel: 
+        import concurrent.futures
+        if isinstance(parallel, bool):
+            workers = 6
+        elif isinstance(parallel, int):
+            workers = parallel
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
+            executor.map(process_argo, conf.regions)
+    else:
+        for region in conf.regions:
+            process_argo(region)
+
+if __name__ == "__main__":
+    main()
