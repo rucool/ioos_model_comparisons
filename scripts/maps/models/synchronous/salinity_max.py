@@ -28,13 +28,19 @@ cmems = True
 
 # For debug 
 # conf.days = 1
-# conf.regions = ['mab']
+# conf.regions = ['tropical_western_atlantic']
 
 # Get today and yesterday dates
 today = dt.date.today()
 tomorrow = today + dt.timedelta(days=1)
 past = today - dt.timedelta(days=conf.days)
 freq = '6H'
+
+# initialize keyword arguments. Grab anything from configs.py
+kwargs = dict()
+kwargs['transform'] = conf.projection
+kwargs['dpi'] = conf.dpi
+kwargs['overwrite'] = False
 
 # Create dates that we want to plot
 date_list = pd.date_range(past, tomorrow, freq=freq, closed="right")
@@ -89,12 +95,6 @@ if gofs:
 if cmems:
     from hurricanes.models import cmems as c
     cds = c(rename=True)
-
-# initialize keyword arguments. Grab anything from configs.py
-kwargs = dict()
-kwargs['transform'] = conf.projection
-kwargs['dpi'] = conf.dpi
-kwargs['overwrite'] = False
 
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
@@ -266,8 +266,8 @@ def plot_ctime(ctime):
             if 'argo' in kwargs:
                 del kwargs['argo']
                            
-        except TopologicalError as error:
-            print("Error: {error}")
+        except TopologicalError as e:
+            print(f"Error: {e}")
             continue
 
 def main():
