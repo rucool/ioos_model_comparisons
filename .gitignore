@@ -7,9 +7,6 @@
 .idea/Daily_glider_models_comparisons.iml
 .DS_Store
 *.nc
-data/rtofs/rtofs.20210312/.nfs00000000000103210000e845
-data/rtofs/rtofs.20210313/.nfs000000000001080a0000edc6
-data/rtofs/rtofs.20210319/.nfs000000000000b1f200010ce5
 .idea/workspace.xml
 .idea/inspectionProfiles/Project_Default.xml
 .idea/hurricanes.iml
@@ -17,14 +14,8 @@ data/rtofs/rtofs.20210319/.nfs000000000000b1f200010ce5
 *.zip
 *.DS_Store
 *.xml
-apps/.ipynb_checkpoints/Untitled-checkpoint.ipynb
-apps/.ipynb_checkpoints/roms_profile-checkpoint.ipynb
+*-checkpoint.ipynb
 .vscode/settings.json
 .vscode/launch.json
 .vscode/extensions.json
-.ipynb_checkpoints/Untitled1-checkpoint.ipynb
-.ipynb_checkpoints/Untitled-checkpoint.ipynb
-.ipynb_checkpoints/profiles-checkpoint.ipynb
-.ipynb_checkpoints/plot_quiver-checkpoint.ipynb
-.ipynb_checkpoints/contour-checkpoint.ipynb
 scratches/apps/.ipynb_checkpoints/Untitled-checkpoint.ipynb

@@ -4,7 +4,7 @@ import hurricanes.configs as conf
 import numpy as np
 import pandas as pd
 from hurricanes.calc import lon180to360, lon360to180
-from hurricanes.models import gofs, rtofs, cmems
+from hurricanes.models import gofs, rtofs, cmems, amseas
 from hurricanes.platforms import (get_active_gliders, 
                                   get_argo_floats_by_time,
                                   get_bathymetry)
@@ -29,8 +29,8 @@ kwargs['overwrite'] = False
 kwargs['colorbar'] = True
 
 # For debug purposes. Comment this out when commiting to repo.
-# conf.regions = ['west_florida_shelf']
-# conf.days = 1
+conf.regions = ['yucatan']
+conf.days = 1
 
 # Get today and yesterday dates
 today = dt.date.today()
@@ -95,6 +95,9 @@ gds = gofs(rename=True)
 # Load Copernicus
 cds = cmems(rename=True)
 
+# Load AMSEAS
+am = amseas(rename=True)
+
 def main():
     # Loop through times
     for ctime in date_list:
@@ -104,7 +107,7 @@ def main():
             print(f"RTOFS: True")
             rdt_flag = True
         except KeyError as error:
-            print(f"RTOFS: False")
+            print(f"RTOFS: False - {error}")
             rdt_flag = False
         
         try:
@@ -112,7 +115,7 @@ def main():
             print(f"GOFS: True")
             gdt_flag = True
         except KeyError as error:
-            print(f"GOFS: False")
+            print(f"GOFS: False - {error}")
             gdt_flag = False
         
         try:
@@ -120,8 +123,16 @@ def main():
             print(f"CMEMS: True")
             cdt_flag = True
         except KeyError as error:
-            print(f"CMEMS: False")
+            print(f"CMEMS: False - {error}")
             cdt_flag = False
+
+        try:
+            amt = am.sel(time=ctime)
+            print(f"AMSEAS: True")
+            amt_flag = True
+        except KeyError as error:
+            print(f"AMSEAS: False - {error}")
+            amt_flag = False
         print("\n")
             
         search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
@@ -191,7 +202,15 @@ def main():
                     lon=slice(extended[0], extended[1]),
                     lat=slice(extended[2], extended[3])
                 ).set_coords(['u', 'v'])
-                
+
+            am_sub = amt.sel(
+                lon=slice(lon360[0], lon360[1]),
+                lat=slice(extended[2], extended[3])
+            ).set_coords(['u', 'v'])
+
+            # Check if any asset data was downloaded and subset it to the 
+            # region and time being plotted
+            # ARGO
             if not argo_data.empty:
                 argo_lon = argo_data['lon']
                 argo_lat = argo_data['lat']
@@ -202,6 +221,7 @@ def main():
                 idx = pd.IndexSlice
                 kwargs['argo'] = argo_region.loc[idx[:, search_window_t0:search_window_t1], :]
 
+            # Gliders
             if not glider_data.empty:
                 glider_lon = glider_data['lon']
                 glider_lat = glider_data['lat']
@@ -223,10 +243,14 @@ def main():
                 if rdt_flag and cdt_flag:
                     plot_model_region_comparison(rds_sub, cds_sub, region, **kwargs)
                     plot_model_region_comparison_streamplot(rds_sub, cds_sub, region, **kwargs)
+
+                if rdt_flag and amt_flag:
+                    plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
+                    plot_model_region_comparison_streamplot(rds_sub, am_sub, region, **kwargs) 
             except KeyError as e:
                 print(e)
                 continue
-
+ 
 
 if __name__ == "__main__":
     main()
