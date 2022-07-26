@@ -1,5 +1,6 @@
 from erddapy import ERDDAP
 import datetime as dt
+from numpy import isin
 import pandas as pd
 from requests.exceptions import HTTPError as rHTTPError
 # urllib.error.HTTPError
@@ -29,7 +30,7 @@ rename_argo["latitude (degrees_north)"] = "lat"
 
 def get_argo_floats_by_time(bbox=(-100, -45, 5, 46),
                             time_start=None, time_end=dt.date.today(),
-                            floats=None, variables=None):
+                            wmo_id=None, variables=None):
     """_summary_
 
     Args:
@@ -42,8 +43,13 @@ def get_argo_floats_by_time(bbox=(-100, -45, 5, 46),
     Returns:
         _type_: _description_
     """
+    # Accept both tuples and lists, but turn tuple into a list if passed a tuple
+    if isinstance(variables, tuple):
+        variables = list(variables)
+        
     time_start = time_start or (time_end - dt.timedelta(days=1))
-    variables = variables or ['platform_number', 'time', 'longitude', 'latitude']
+    
+    default_variables = ['platform_number', 'time', 'longitude', 'latitude']
     
     constraints = {
         'time>=': str(time_start),
@@ -56,9 +62,16 @@ def get_argo_floats_by_time(bbox=(-100, -45, 5, 46),
         constraints['latitude>='] = bbox[2]
         constraints['latitude<='] = bbox[3]
 
-    if floats:
-        constraints['platform_number='] = floats
+    if wmo_id:
+        if isinstance(wmo_id, int) or isinstance(wmo_id, float):
+            wmo_id = str(wmo_id)
+            
+        constraints['platform_number='] = wmo_id
 
+    if variables:
+        default_variables = default_variables + variables
+        default_variables = list(set(default_variables)) # remove duplicates
+        
     e = ERDDAP(
         server='IFREMER',
         protocol='tabledap',
@@ -67,7 +80,7 @@ def get_argo_floats_by_time(bbox=(-100, -45, 5, 46),
 
     e.dataset_id = 'ArgoFloats'
     e.constraints = constraints
-    e.variables = variables
+    e.variables = default_variables
 
     try:
         df = e.to_pandas(
