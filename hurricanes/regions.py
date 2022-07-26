@@ -140,6 +140,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             depths = [0, 150, 200],
+            limits = [0, 1.5, .1],
             coarsen=dict(rtofs=7, gofs=8),
             kwargs=dict(
                 ptype="streamplot",
@@ -180,6 +181,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             depths = [0, 150, 200],
+            limits = [0, 1.5, .1],
             coarsen=dict(rtofs=7, gofs=8),
             kwargs=dict(
                 ptype="streamplot",
@@ -224,6 +226,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             depths = [0, 100, 150, 200],
+            limits = [0, 1.5, .1],
             coarsen=dict(rtofs=5, gofs=6),
             kwargs=dict(
                 ptype="streamplot",
@@ -264,6 +267,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             depths = [0],
+            limits = [0, 1.5, .1],
             coarsen=dict(rtofs=11, gofs=12),
             kwargs=dict(
                 ptype="streamplot",
@@ -306,6 +310,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             depths = [0, 150, 200],
+            limits = [0, 1.5, .1],
             coarsen=dict(rtofs=11, gofs=12),
             kwargs=dict(
                 ptype="streamplot",
@@ -348,6 +353,7 @@ def region_config(regions=None, model=None):
             bool=True,
             # coarsen=dict(rtofs=None, gofs=None),
             depths = [0, 150, 200],
+            limits = [0, 1.3, .1],
             coarsen=dict(rtofs=5, gofs=6),
             kwargs=dict(
                 ptype="streamplot",
@@ -431,8 +437,50 @@ def region_config(regions=None, model=None):
         figure = dict(
             legend = dict(columns=9),
             )
-    # currents['depths'] = [0]
-    
+
+    key = "tropical_western_atlantic"
+    if key in regions:
+        # Caribbean Limits
+        name = "Tropical Western Atlantic"
+        folder = "tropical_western_atlantic"
+        extent = [-70, -40.7, 0, 25]
+        sea_water_temperature = [
+            dict(depth=0, limits=[25, 29.5, .5]),
+            dict(depth=150, limits=[11, 23, 1]),
+            dict(depth=200, limits=[10, 22, 1])
+            ]
+        salinity = [
+            dict(depth=0, limits=[34, 37.6, .1]),
+            dict(depth=150, limits=[35.2, 37.6, .1]),
+            dict(depth=200, limits=[35.2, 37.3, .1])
+            # dict(depth=150, limits=[35.8, 36.3, .05]),
+            ]
+        sea_surface_height = [
+            dict(depth=0, limits=[-.6, .7, .1])
+            ]
+        salinity_max = dict(
+            limits= [36, 37.5, .1]
+            )
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
+        currents = dict(
+            bool=True,
+            depths = [0, 150, 200],
+            limits = [0, 1.6, .1],
+            coarsen=dict(rtofs=14, gofs=15),
+            kwargs=dict(
+                ptype="streamplot",
+                color="black", 
+                density=4,
+                linewidth=.5
+                )
+            )
+        figure = dict(
+            figsize = (12, 8.5),
+            legend = dict(columns=9),
+            )
+
     # Create subdirectory for data variables
     vars = {}
     vars.update(salinity=salinity)
