@@ -31,9 +31,10 @@ regions = [
     "leeward", 
     "windward",
     "gom",
-    "caribbean"
+    "caribbean",
+    "tropical_western_atlantic"
     ]
-days = 4
+days = 2
 
 # Assets
 search_hours = 24*5 # hours to search for argo/gliders prior to plot time
