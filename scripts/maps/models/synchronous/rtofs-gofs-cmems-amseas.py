@@ -29,8 +29,8 @@ kwargs['overwrite'] = False
 kwargs['colorbar'] = True
 
 # For debug purposes. Comment this out when commiting to repo.
-conf.regions = ['yucatan']
-conf.days = 1
+# conf.regions = ['tropical_western_atlantic']
+# conf.days = 1
 
 # Get today and yesterday dates
 today = dt.date.today()
@@ -247,7 +247,7 @@ def main():
                 if rdt_flag and amt_flag:
                     plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
                     plot_model_region_comparison_streamplot(rds_sub, am_sub, region, **kwargs) 
-            except KeyError as e:
+            except Exception as e:
                 print(e)
                 continue
  

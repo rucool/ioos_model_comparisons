@@ -1160,7 +1160,7 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         # Deal with the third axes
         h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
         if (len(h) > 0) & (len(l) > 0):
-            ax3.legend(h, l, ncol=cols, loc='center', fontsize=10)
+            ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
 
             # Add title to legend
             t0 = []

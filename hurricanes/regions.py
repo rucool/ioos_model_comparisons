@@ -466,13 +466,18 @@ def region_config(regions=None, model=None):
             )
         currents = dict(
             bool=True,
-            depths = [0, 150, 200],
+            depths = [0],
             limits = [0, 1.6, .1],
-            coarsen=dict(rtofs=14, gofs=15),
+            coarsen=dict(
+                rtofs=14,
+                gofs=15,
+                cmems=14,
+                amseas=13
+                ),
             kwargs=dict(
                 ptype="streamplot",
                 color="black", 
-                density=4,
+                density=2.25,
                 linewidth=.5
                 )
             )

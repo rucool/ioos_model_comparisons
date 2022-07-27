@@ -3,7 +3,7 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import datetime as dt
-from hurricanes.calc import find_nearest
+from hurricanes.calc import find_nearest, lon180to360, lon360to180
 from hurricanes.plotting import map_add_ticks, map_add_features, map_add_bathymetry, export_fig
 from hurricanes.platforms import get_glider_by_id, get_bathymetry, get_argo_floats_by_time
 from hurricanes.models import gofs, rtofs
@@ -32,8 +32,6 @@ path_data = (root_dir / "data") # create data path
 path_gliders = (path_data / "gliders")
 path_argo = (path_data / "argo")
 path_ibtracs = (path_data / "ibtracs/IBTrACS.NA.v04r00.nc")
-path_rtofs = (path_data / "rtofs")
-path_gofs = "https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0"
 
 # Paths to save plots and figures
 path_plot = (root_dir / "plots" / script_name) # create plot path
@@ -48,22 +46,32 @@ model = "rtofs" # Which model: rtofs or gofs
 
 # Plot the following
 bathy = True
-argo = True
-temp = True
-salinity = True
-glider = "ng645-20210613T0000"
-# glider = "ng230-20210928T0000"
-# glider = "ng278-20210928T0000"
-# glider = "ng347-20210928T0000"
-# glider = "ng447-20210928T0000"
+argo = False
+plot_temperature = False
+plot_salinity = True
+replot = True
 
-# Colormap range
-# temp_range = [24, 32, .5] # [min, max, step]
-temp_range = [12, 24, .5] # [min, max, step]
-haline_range = [34, 37, .25] # [min, max, step]
+# Plot information
+extent = [-75.5, -65, 34, 42] # cartopy extent format
+glider = "ng738-20211002T0000"
+
+# temp_range = [12, 21.5, .5] # [min, max, step]
+# haline_range = [35.3, 36.7, .1] # [min, max, step]
+# depth = 200 
+
+# temp_range = [13, 26, 1] # [min, max, step]
+# haline_range = [35.3, 36.7, .1] # [min, max, step]
+# depth = 100 
+
+# temp_range = [13, 29, 1] # [min, max, step]
+# haline_range = [35, 36.6, .1] # [min, max, step]
+# depth = 50
+
+temp_range = [12, 29, 1] # [min, max, step]
+haline_range = [34.4, 36.6, .1] # [min, max, step]
+depth = 0
 
 # Set cartopy information
-extent = [-98, -80, 18, 31] # cartopy extent format
 projection_map = ccrs.Mercator()
 projection_data = ccrs.PlateCarree()
 
@@ -96,15 +104,16 @@ estr = date_e.strftime(dstr)
 
 ranges = pd.date_range(date_s.strftime("%Y-%m-%d"), date_e.strftime("%Y-%m-%d"), freq=freq)
 
-# Read argo data from the erddap server
-pkl_a = f"argo_floats_{date_s}_{date_e}.pkl"
-
-try:
-    argo_df = pd.read_pickle(path_argo / pkl_a)
-except:
-    print(f"Downloading {date_s} to {date_e} ARGO data from ifremer.fr")
-    argo_df = get_argo_floats_by_time(extent, date_s, date_e)
-    argo_df = argo_df.to_pickle(path_argo / pkl_a)
+if argo:
+    # Read argo data from the erddap server
+    pkl_a = f"argo_floats_{date_s}_{date_e}.pkl"
+    
+    try:
+        argo_df = pd.read_pickle(path_argo / pkl_a)
+    except:
+        print(f"Downloading {date_s} to {date_e} ARGO data from ifremer.fr")
+        argo_df = get_argo_floats_by_time(extent, date_s, date_e)
+        argo_df = argo_df.to_pickle(path_argo / pkl_a)
 
 # read in ibtracs hurricane packs and convert to dataframe
 if storm_id:
@@ -160,44 +169,50 @@ else:
 # ida_press_ib = ds.usa_pres[ida_storm_number,:]
 # ida_rmw_ib = ds.usa_rmw[ida_storm_number,:]
 
-# Temperature arguments
+# Contour arguments
+cargs = {}
+cargs['transform'] = projection_data
+cargs['extend'] = "both"
+
 targs = {}
+targs['cmap'] = cmocean.cm.thermal
 targs['vmin'] = temp_range[0]
 targs['vmax'] = temp_range[1]
-targs['transform'] = projection_data
-targs['cmap'] = cmocean.cm.thermal
 targs['levels'] = np.arange(temp_range[0], temp_range[1], temp_range[2])
-targs['extend'] = 'both'
 
-# Salinity arguments
 hargs = {}
+hargs['cmap'] = cmocean.cm.haline
 hargs['vmin'] = haline_range[0]
 hargs['vmax'] = haline_range[1]
-hargs['transform'] = projection_data
-hargs['cmap'] = cmocean.cm.haline
 hargs['levels'] = np.arange(haline_range[0], haline_range[1], haline_range[2])
-hargs['extend'] = 'both'
 
+plot_vars = []
+if plot_temperature:
+    plot_vars.append('temperature')
+
+if plot_salinity:
+    plot_vars.append('salinity')
+    
 if bathy:
     # Load bathymetry
     bathy = get_bathymetry(extent)
 
 if model == "gofs":
     # Load and subset GOFS data to the proper extents for each region
-    ds = xr.open_dataset(path_gofs, drop_variables="tau")
+    ds = gofs(rename=True).sel(depth=depth)
+    lon360 = lon180to360(extent[:2])
     ds = ds.sel(
-        lon=slice(extent[0] + 359, extent[1] + 361),
-        lat=slice(extent[2] - 1, extent[3] + 1)
+        lon=slice(lon360[0], lon360[1]),
+        lat=slice(extent[2], extent[3])
     )
     ds['lon'] = ds['lon'] - 360  # Convert model lon to glider lon
 elif model == "rtofs":
-    # RTOFS
-    # Load in RTOFS files locally
+    # Load RTOFS data
+    ds = rtofs().sel(depth=depth)
     
-    with rtofs() as tds:
-        # Save rtofs lon and lat as variables to speed up indexing calculation
-        rtofs_lon = tds.lon.values
-        rtofs_lat = tds.lat.values
+    # Save rtofs lon and lat as variables to speed up indexing calculation
+    rtofs_lon = ds.lon.values
+    rtofs_lat = ds.lat.values
 
     # Find index of nearest lon and lat points
     _, lon1_ind = find_nearest(rtofs_lon[0, :], extent[0])
@@ -207,16 +222,15 @@ elif model == "rtofs":
     _, lat2_ind = find_nearest(rtofs_lat[:, 0], extent[3])
 
     rtofs_extent = [lon1_ind, lon2_ind, lat1_ind, lat2_ind]
-
-    # ds = xr.open_mfdataset(rtofs_file_paths, parallel=True)
-    # ds = ds.rename({'Longitude': 'lon', 'Latitude': 'lat',
-    #                 'MT': 'time', 'Depth': 'depth'})
-
-    # # subset the dataset to the extent of the region
-    # ds = ds.isel(
-    #     X=slice(rtofs_extent[0], rtofs_extent[1]),
-    #     Y=slice(rtofs_extent[2], rtofs_extent[3])
-    #     ).squeeze()
+    
+    # subset the dataset to the extent of the region
+    ds = ds.isel(
+        x=slice(rtofs_extent[0], rtofs_extent[1]),
+        y=slice(rtofs_extent[2], rtofs_extent[3])
+        ).squeeze()
+    
+# # Select depth we are plotting
+# ds = ds.sel(depth=depth)
 
 # Create a map figure and serialize it if one doesn't already exist for this glider
 sfig = (path_plot_maps / f"{glider}_fig.pkl")
@@ -267,191 +281,204 @@ for index, value in enumerate(ranges[1:], start=1):
     lon_gl = glider_df_temp['longitude (degrees_east)']
     lat_gl = glider_df_temp['latitude (degrees_north)']
 
-    # Subset argo erddap dataframe
-    argo_df_temp = argo_df.loc[pd.IndexSlice[:, t0:t1], :]
-    
-    # Groupby platform and grab the first record in reach group
-    # Argo reports each profile at the same longitude and latitude
-    # grouped = argo_df_temp.groupby(["platform_number"]).first()
-    lon_argo = argo_df_temp['lon']
-    lat_argo = argo_df_temp['lat']
+    if argo:
+        # Subset argo erddap dataframe
+        argo_df_temp = argo_df.loc[pd.IndexSlice[:, t0:t1], :]
 
-    if model == "rtofs":
-        # Load RTOFS file that corresponds to ctime
-        ds = rtofs()
-        # ds = ds.rename({'Longitude': 'lon', 'Latitude': 'lat',  
-                        # 'MT': 'time', 'Depth': 'depth'})
-        # subset the dataset to the extent of the region
-        ds = ds.isel(
-            x=slice(rtofs_extent[0], rtofs_extent[1]),
-            y=slice(rtofs_extent[2], rtofs_extent[3])
-            ).squeeze()
-    if temp:
-        path_temp = path_plot / model / "temp" 
+    with open(sfig, 'rb') as file:
+        fig = pickle.load(file)
+        ax = fig.axes[0]
+    
+    for v in plot_vars:
+        # Create directory to save plots
+        path_temp = path_plot / model / glider / f"{v}_{depth}m" 
         os.makedirs(path_temp, exist_ok=True)
-        sname = f"glider_track_{datefmt}.png"
+        sname = f"{glider}_track_{v}_{depth}m_{datefmt}.png"
 
         if (path_temp / sname).is_file():
+            if not replot:
+                continue
+    
+        # with open(sfig, 'rb') as file:
+        #     fig = pickle.load(file)
+        #     ax = fig.axes[0]
+
+        # Select variable in model
+        try:
+            tds = ds[v].sel(time=ctime).squeeze()
+        except KeyError:
             continue
-        with open(sfig, 'rb') as file:
-            fig = pickle.load(file)
-            ax = fig.axes[0]
 
-            # Temperature
-            if model == "gofs":
-                tds = ds['water_temp'].sel(time=ctime, depth=200).squeeze()
-            elif model == "rtofs":
-                tds = ds['temperature'].sel(time=ctime, depth=200).squeeze()
-
-            # Contour plot of the variable
-            h1 = ax.contourf(tds['lon'], tds['lat'], tds.squeeze(), **targs)
-            axins = inset_axes(ax,  # here using axis of the lowest plot
-                width="2.5%",  # width = 5% of parent_bbox width
-                height="100%",  # height : 340% good for a (4x4) Grid
-                loc='lower left',
-                bbox_to_anchor=(1.05, 0., 1, 1),
-                bbox_transform=ax.transAxes,
-                borderpad=0
-                )
-            cb = fig.colorbar(h1, cax=axins)
-            cb.ax.tick_params(labelsize=12)
-            cb.set_label("Temperature (deg C)", fontsize=13)
-
-            # Plot subsetted glider track
-            h3 = ax.plot(lon_gl, lat_gl,
-                'w-',
-                linewidth=5,
-                transform=projection_data)
-
-            h4 = ax.plot(lon_argo, lat_argo,
-                        "o",
-                        color="limegreen",
-                        markeredgecolor="black",
-                        markersize=6,
-                        transform=projection_data)
-
-            if not storm_df.empty:
-                bt = storm_df.index.min() - dt.timedelta(days=5)
-                et = storm_df.index.max() + dt.timedelta(days=5)
-
-                if (pd.to_datetime(t0) > bt) & (pd.to_datetime(t1) < et):
-                    # Plot hurricanes (until that day)
-                    track_1 = ax.plot(storm_df["lon"], storm_df["lat"],
-                                    '-',
-                                    linewidth=2.5,
-                                    color="black",
-                                    # markersize=8, 
-                                    # # markerfillcolor="red",
-                                    # markeredgecolor="black", 
-                                    transform=projection_data, 
-                                    zorder=20)
-                    
-                    markers = ax.scatter(tstorm["lon"], tstorm["lat"],
-                                         c="red", s=8, marker="o",
-                                         transform=projection_data, zorder=20)
-
-                    # Plot hurricanes (track of that day)
-                    track_2 = ax.plot(tstorm_day["lon"], tstorm_day["lat"],
-                                    '-',
-                                    color="red",
-                                    linewidth=2.5,
-                                    transform=projection_data, 
-                                    zorder=20)
-                    
-                    markers = ax.scatter(tstorm_day["lon"], tstorm_day["lat"],
-                                            c=tstorm_day["colors"], 
-                                            s=tstorm_day["size"],
-                                            marker='o',
-                                            edgecolors="black",
-                                            transform=projection_data,  zorder=20)
-                
-            ax.grid(True, color='k', linestyle='--', alpha=.5, linewidth=.5)
-
-            # Add title
-            ax.set_title(f"Glider: ng645\n{t0} to {t1}\n{model} Temperature (200m) @ {ctime}")
-
-            # Save salinity figure
-            export_fig(path_temp, sname, dpi=300)
-            plt.close()
-
-    if salinity:
-        with open(sfig, 'rb') as file:
-            fig = pickle.load(file)
-            ax = fig.axes[0]
-
-            # Salinity
-            if model == "gofs":
-                tds = ds['salinity'].sel(time=ctime, depth=0).squeeze()
-            elif model == "rtofs":
-                tds = ds['salinity'].sel(time=ctime, depth=0).squeeze()
-
-            # hargs["zorder"] = 3
-            h2 = ax.contourf(tds['lon'], tds['lat'], tds.squeeze(), **hargs)
-            axins = inset_axes(ax,  # here using axis of the lowest plot
-                width="2.5%",  # width = 5% of parent_bbox width
-                height="100%",  # height : 340% good for a (4x4) Grid
-                loc='lower left',
-                bbox_to_anchor=(1.05, 0., 1, 1),
-                bbox_transform=ax.transAxes,
-                borderpad=0
-                )
-            cb = fig.colorbar(h2, cax=axins)
-            cb.ax.tick_params(labelsize=12)
-            cb.set_label("Salinity", fontsize=13)
-
-            # Plot subsetted glider track
-            h3 = ax.plot(lon_gl, lat_gl,
-                'w-',
-                linewidth=5,
-                transform=projection_data,
-                )
-            h4 = ax.plot(lon_argo, lat_argo,
-                        "o",
-                        color="limegreen",
-                        markeredgecolor="black",
-                        markersize=6,
-                        transform=projection_data)
+        # Create kwargs dict based off the variable being plotted.
+        kwargs = {}
+        kwargs.update(cargs)
+        if v == 'temperature':
+            kwargs.update(targs)
+        elif v == 'salinity':
+            kwargs.update(hargs)
             
-            if not storm_df.empty:
-                bt = storm_df.index.min() - dt.timedelta(days=5)
-                et = storm_df.index.max() + dt.timedelta(days=5)
+        # Contour plot of the variable
+        h1 = ax.contourf(tds['lon'], tds['lat'], tds.squeeze(), **kwargs)
+        axins = inset_axes(ax,  # here using axis of the lowest plot
+            width="2.5%",  # width = 5% of parent_bbox width
+            height="100%",  # height : 340% good for a (4x4) Grid
+            loc='lower left',
+            bbox_to_anchor=(1.05, 0., 1, 1),
+            bbox_transform=ax.transAxes,
+            borderpad=0
+            )
+        cb = fig.colorbar(h1, cax=axins)
+        cb.ax.tick_params(labelsize=12)
+        # cb.set_label("Temperature (deg C)", fontsize=13)
+        cb.set_label(f"{tds.name.title()} ({tds.units})", fontsize=13)
 
-                if (pd.to_datetime(t0) > bt) & (pd.to_datetime(t1) < et):
-                    # Plot hurricanes (until that day)
-                    track_1 = ax.plot(storm_df["lon"], storm_df["lat"],
-                                    '-',
-                                    linewidth=2.5,
-                                    color="black",
-                                    # markersize=8, 
-                                    # # markerfillcolor="red",
-                                    # markeredgecolor="black", 
-                                    transform=projection_data, 
-                                    zorder=20)
+        # Plot subsetted glider track
+        h3 = ax.plot(lon_gl, lat_gl,
+            'w-',
+            linewidth=5,
+            transform=projection_data)
+
+        if argo:
+            h4 = ax.plot(argo_df_temp['lon'], argo_df_temp['lat'],
+                        "o",
+                        color="limegreen",
+                        markeredgecolor="black",
+                        markersize=6,
+                        transform=projection_data)
+
+        if not storm_df.empty:
+            bt = storm_df.index.min() - dt.timedelta(days=5)
+            et = storm_df.index.max() + dt.timedelta(days=5)
+
+            if (pd.to_datetime(t0) > bt) & (pd.to_datetime(t1) < et):
+                # Plot hurricanes (until that day)
+                track_1 = ax.plot(storm_df["lon"], storm_df["lat"],
+                                '-',
+                                linewidth=2.5,
+                                color="black",
+                                # markersize=8, 
+                                # # markerfillcolor="red",
+                                # markeredgecolor="black", 
+                                transform=projection_data, 
+                                zorder=20)
+                
+                markers = ax.scatter(tstorm["lon"], tstorm["lat"],
+                                    c="red", s=8, marker="o",
+                                    transform=projection_data, zorder=20)
+
+                # Plot hurricanes (track of that day)
+                track_2 = ax.plot(tstorm_day["lon"], tstorm_day["lat"],
+                                '-',
+                                color="red",
+                                linewidth=2.5,
+                                transform=projection_data, 
+                                zorder=20)
+                
+                markers = ax.scatter(tstorm_day["lon"], tstorm_day["lat"],
+                                        c=tstorm_day["colors"], 
+                                        s=tstorm_day["size"],
+                                        marker='o',
+                                        edgecolors="black",
+                                        transform=projection_data,  zorder=20)
+            
+        ax.grid(True, color='k', linestyle='--', alpha=.5, linewidth=.5)
+
+        # Add title
+        ax.set_title(f"{model.upper()} - {v.title()} ({depth}m) @ {ctime}\n{glider} - {t0} to {t1}")
+
+        # Save figure
+        # export_fig(path_temp, sname, dpi=150)
+        fig.savefig(path_temp / sname, dpi=150, bbox_inches='tight', pad_inches=0.1)
+
+        # Remove handles so we can reuse figure
+        # Delete contour handles 
+        [x.remove() for x in h1.collections] # axes 1
+        cb.remove()
+        # plt.close()
+
+    # if salinity:
+    #     # Save salinity figure
+    #     path_salt = path_plot / model / glider / f"salinity_{depth}m"
+    #     os.makedirs(path_salt, exist_ok=True)
+    #     sname = f"{glider}_track_salinity_{depth}m_{datefmt}.png"
+    #     if (path_salt / sname).is_file():
+    #         if not replot:
+    #             continue
+            
+    #     with open(sfig, 'rb') as file:
+    #         fig = pickle.load(file)
+    #         ax = fig.axes[0]
+
+    #         # Salinity
+    #         if model == "gofs":
+    #             tds = ds['salinity'].sel(time=ctime, depth=0).squeeze()
+    #         elif model == "rtofs":
+    #             tds = ds['salinity'].sel(time=ctime, depth=0).squeeze()
+
+    #         # hargs["zorder"] = 3
+    #         h2 = ax.contourf(tds['lon'], tds['lat'], tds.squeeze(), **hargs)
+    #         axins = inset_axes(ax,  # here using axis of the lowest plot
+    #             width="2.5%",  # width = 5% of parent_bbox width
+    #             height="100%",  # height : 340% good for a (4x4) Grid
+    #             loc='lower left',
+    #             bbox_to_anchor=(1.05, 0., 1, 1),
+    #             bbox_transform=ax.transAxes,
+    #             borderpad=0
+    #             )
+    #         cb = fig.colorbar(h2, cax=axins)
+    #         cb.ax.tick_params(labelsize=12)
+    #         cb.set_label("Salinity", fontsize=13)
+
+    #         # Plot subsetted glider track
+    #         h3 = ax.plot(lon_gl, lat_gl,
+    #             'w-',
+    #             linewidth=5,
+    #             transform=projection_data,
+    #             )
+    #         if argo:
+    #             h4 = ax.plot(lon_argo, lat_argo,
+    #                         "o",
+    #                         color="limegreen",
+    #                         markeredgecolor="black",
+    #                         markersize=6,
+    #                         transform=projection_data)
+            
+    #         if not storm_df.empty:
+    #             bt = storm_df.index.min() - dt.timedelta(days=5)
+    #             et = storm_df.index.max() + dt.timedelta(days=5)
+
+    #             if (pd.to_datetime(t0) > bt) & (pd.to_datetime(t1) < et):
+    #                 # Plot hurricanes (until that day)
+    #                 track_1 = ax.plot(storm_df["lon"], storm_df["lat"],
+    #                                 '-',
+    #                                 linewidth=2.5,
+    #                                 color="black",
+    #                                 # markersize=8, 
+    #                                 # # markerfillcolor="red",
+    #                                 # markeredgecolor="black", 
+    #                                 transform=projection_data, 
+    #                                 zorder=20)
                     
-                    markers = ax.scatter(tstorm["lon"], tstorm["lat"],
-                                         c="red", s=8, marker="o",
-                                         transform=projection_data, zorder=20)
+    #                 markers = ax.scatter(tstorm["lon"], tstorm["lat"],
+    #                                      c="red", s=8, marker="o",
+    #                                      transform=projection_data, zorder=20)
 
-                    # Plot hurricanes (track of that day)
-                    track_2 = ax.plot(tstorm_day["lon"], tstorm_day["lat"],
-                                    '-',
-                                    color="red",
-                                    linewidth=2.5,
-                                    transform=projection_data, 
-                                    zorder=20)
+    #                 # Plot hurricanes (track of that day)
+    #                 track_2 = ax.plot(tstorm_day["lon"], tstorm_day["lat"],
+    #                                 '-',
+    #                                 color="red",
+    #                                 linewidth=2.5,
+    #                                 transform=projection_data, 
+    #                                 zorder=20)
                     
-                    markers = ax.scatter(tstorm_day["lon"], tstorm_day["lat"],
-                                            c=tstorm_day["colors"], 
-                                            s=tstorm_day["size"],
-                                            marker='o',
-                                            edgecolors="black",
-                                            transform=projection_data,  zorder=20)
-            ax.grid(True, color='k', linestyle='--', alpha=.25, linewidth=.75)
+    #                 markers = ax.scatter(tstorm_day["lon"], tstorm_day["lat"],
+    #                                         c=tstorm_day["colors"], 
+    #                                         s=tstorm_day["size"],
+    #                                         marker='o',
+    #                                         edgecolors="black",
+    #                                         transform=projection_data,  zorder=20)
+    #         ax.grid(True, color='k', linestyle='--', alpha=.25, linewidth=.75)
 
-            # Adjust labels and title
-            ax.set_title(f"Glider: ng645\n {t0} to {t1}\n{model} Surface Salinity @ {ctime}")
-
-            # Save salinity figure
-            path_salt = path_plot / model / "haline"
-            os.makedirs(path_salt, exist_ok=True)
-            export_fig(path_salt, f"glider_track_{datefmt}.png", dpi=300)
+    #         # Adjust labels and title
+    #         ax.set_title(f"RTOFS - Salinity ({depth}m) @ {ctime}\n{glider} - {t0} to {t1}")       
+    #         export_fig(path_salt, sname, dpi=150)
