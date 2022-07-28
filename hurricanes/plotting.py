@@ -291,12 +291,12 @@ def map_add_currents(ax, ds, coarsen=None, ptype="quiver",
     return q
 
 
-def map_add_eez(ax, zorder=1, color='white'):
+def map_add_eez(ax, zorder=1, color='white', linewidth=0.75):
     shape_feature = cfeature.ShapelyFeature(
         Reader(conf.eez_path).geometries(), 
         proj['data'],
         linestyle='-.',
-        linewidth=0.5,
+        linewidth=linewidth,
         edgecolor=color, 
         facecolor='none'
         )
@@ -1201,8 +1201,8 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
 
         # Add EEZ
         if eez:
-            eez1 = map_add_eez(ax1, zorder=1, color='red')
-            eez2 = map_add_eez(ax2, zorder=1, color='red')
+            eez1 = map_add_eez(ax1, zorder=1, color='red', linewidth=1)
+            eez2 = map_add_eez(ax2, zorder=1, color='red', linewidth=1)
 
         if colorbar:
             cb = fig.colorbar(m1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)

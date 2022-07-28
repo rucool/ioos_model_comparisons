@@ -466,7 +466,7 @@ def region_config(regions=None, model=None):
             )
         currents = dict(
             bool=True,
-            depths = [0],
+            depths = [0, 100, 150, 200],
             limits = [0, 1.6, .1],
             coarsen=dict(
                 rtofs=14,
