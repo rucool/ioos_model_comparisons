@@ -25,16 +25,18 @@ path_save = (conf.path_plots / "maps")
 rtofs = True
 gofs = True
 cmems = True
+amseas = True
 
 # For debug 
 # conf.days = 1
 # conf.regions = ['tropical_western_atlantic']
 
 # Get today and yesterday dates
-today = dt.date.today()
-tomorrow = today + dt.timedelta(days=1)
-past = today - dt.timedelta(days=conf.days)
-freq = '6H'
+now = dt.datetime.utcnow()
+today = dt.datetime(*now.timetuple()[:3]) + dt.timedelta(hours=12)
+date_end = today + dt.timedelta(days=1)
+date_start = today - dt.timedelta(days=conf.days)
+freq = '24H'
 
 # initialize keyword arguments. Grab anything from configs.py
 kwargs = dict()
@@ -43,7 +45,7 @@ kwargs['dpi'] = conf.dpi
 kwargs['overwrite'] = False
 
 # Create dates that we want to plot
-date_list = pd.date_range(past, tomorrow, freq=freq, closed="right")
+date_list = pd.date_range(date_start, date_end, freq=freq)
 
 start = date_list[0] - dt.timedelta(hours=conf.search_hours)
 
@@ -65,12 +67,12 @@ global_extent = [
     ]
 
 if conf.argo:
-    argo_data = get_argo_floats_by_time(global_extent, start, tomorrow)
+    argo_data = get_argo_floats_by_time(global_extent, start, date_end)
 else:
     argo_data = pd.DataFrame()
 
 if conf.gliders:
-    glider_data = get_active_gliders(global_extent, start, tomorrow, 
+    glider_data = get_active_gliders(global_extent, start, date_end, 
                                      parallel=False)
 else:
     glider_data = pd.DataFrame()
@@ -95,6 +97,10 @@ if gofs:
 if cmems:
     from hurricanes.models import cmems as c
     cds = c(rename=True)
+
+if amseas:
+    from hurricanes.models import amseas as a
+    ads = a(rename=True)
 
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
@@ -129,6 +135,15 @@ def plot_ctime(ctime):
         except KeyError:
             print(f"CMEMS: False")
             cdt_flag = False
+
+    if amseas:
+        try:
+            ads_time = ads.sel(time=ctime)
+            print("AMSEAS: True")
+            adt_flag = True
+        except KeyError as error:
+            print ("AMSEAS: False")
+            adt_flag = False
     print("\n")
 
     search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
@@ -143,6 +158,9 @@ def plot_ctime(ctime):
         # Increase the extent a little bit to grab slightly more data than the region 
         # we want to plot. Otherwise, we will have areas of the plot with no data.
         extent_data = np.add(extent, [-1, 1, -1, 1]).tolist()
+
+        # Convert lon from 180 to 360 (some models require this)
+        lon360 = lon180to360(extent_data[:2]) 
 
         # Add the following to keyword arguments to salinity_max function
         kwargs['path_save'] = path_save / configs['folder']
@@ -193,7 +211,6 @@ def plot_ctime(ctime):
             
         if gdt_flag:
             # subset dataset to the proper extents for each region
-            lon360 = lon180to360(extent_data[:2]) # convert from 360 to 180 lon
             gds_slice = gds_time.sel(
                 lon=slice(lon360[0], lon360[1]),
                 lat=slice(extent_data[2], extent_data[3])
@@ -207,6 +224,16 @@ def plot_ctime(ctime):
                 lon=slice(extent_data[0], extent_data[1]),
                 lat=slice(extent_data[2], extent_data[3])
                 )
+
+        if adt_flag:
+            # subset dataset to the proper extents for each region
+            ads_slice = ads_time.sel(
+                lon=slice(lon360[0], lon360[1]),
+                lat=slice(extent_data[2], extent_data[3])
+            )
+
+            # Convert from 0,360 lon to -180,180
+            ads_slice['lon'] = lon360to180(ads_slice['lon'])
 
         # Subset downloaded Argo data to this region and time
         if not argo_data.empty:
@@ -240,14 +267,14 @@ def plot_ctime(ctime):
             kwargs['gliders'] = glider_region
             
         try:
-            if rdt_flag:
-                salinity_max(rds_slice, extent, configs['name'], **kwargs)
+            if rdt_flag and gdt_flag:
+                salinity_max(rds_slice, gds_slice, extent, configs['name'], **kwargs)
                 
-            if gdt_flag:
-                salinity_max(gds_slice, extent, configs['name'], **kwargs)
-                
-            if cdt_flag:
-                salinity_max(cds_slice, extent, configs['name'], **kwargs)
+            if rdt_flag and cdt_flag:
+                salinity_max(rds_slice, cds_slice, extent, configs['name'], **kwargs)
+
+            if rdt_flag and adt_flag:
+                salinity_max(rds_slice, ads_slice, extent, configs['name'], **kwargs)
 
             # Delete some keyword arguments that may not be defined in all
             # regions. We don't want to plot the regions with wrong inputs 

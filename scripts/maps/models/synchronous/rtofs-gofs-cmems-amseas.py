@@ -42,10 +42,7 @@ freq = '6H'
 tstr = '%Y-%m-%d %H:%M:%S'
 
 # Create dates that we want to plot
-date_list = pd.date_range(date_start, 
-                          date_end,
-                          freq=freq, 
-                          closed="right")
+date_list = pd.date_range(date_start, date_end, freq=freq)
 
 # This is the initial time to start the search for argo/gliders
 search_start = date_list[0] - dt.timedelta(hours=conf.search_hours)

@@ -35,16 +35,13 @@ path_save = (conf.path_plots / "maps")
     
 # Get today and yesterday dates
 today = dt.date.today()
+# today = dt.datetime(*dt.date.today().timetuple()[:3]) + dt.timedelta(hours=12)
 date_end = today + dt.timedelta(days=1)
 date_start = today - dt.timedelta(days=conf.days)
 freq = '6H'
 
 # Create dates that we want to plot
-date_list = pd.date_range(
-    date_start, 
-    date_end,
-    freq=freq,
-    closed="right")
+date_list = pd.date_range(date_start, date_end, freq=freq)
 
 search_start = date_list[0] - dt.timedelta(hours=conf.search_hours)
 
