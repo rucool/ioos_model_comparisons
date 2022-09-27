@@ -8,7 +8,7 @@ import datetime as dt
 import os
 import numpy as np
 from scripts.harvest import grab_cmems
-from hurricanes.limits import limits_regions
+from ioos_model_comparisons.limits import limits_regions
 
 # COPERNICUS MARINE ENVIRONMENT MONITORING SERVICE (CMEMS)
 # ncCOP_global = '/home/lgarzio/cmems/global-analysis-forecast-phy-001-024_1565877333169.nc'  # on server

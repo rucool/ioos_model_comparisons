@@ -12,9 +12,9 @@ import pandas as pd
 import xarray as xr
 import datetime as dt
 import os
-from hurricanes.storms_plt import plot_transect
+from ioos_model_comparisons.storms_plt import plot_transect
 from current_storms import current_forecast_track
-import hurricanes.storms as storms
+import ioos_model_comparisons.storms as storms
 
 url = 'https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0'
 save_dir = '/www/home/lgarzio/public_html/hurricanes/current_storm_tracks'  # in server
