@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from hurricanes.plotting import export_fig
+from ioos_model_comparisons.plotting import export_fig
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pandas as pd

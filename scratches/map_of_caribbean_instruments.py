@@ -1,9 +1,9 @@
-from hurricanes.src import limits_regions
+from ioos_model_comparisons.src import limits_regions
 import datetime as dt
-from hurricanes.src import active_drifters
+from ioos_model_comparisons.src import active_drifters
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
-from hurricanes.src import map_add_features, map_add_ticks
+from ioos_model_comparisons.src import map_add_features, map_add_ticks
 
 regions = limits_regions('rtofs', ['carib'])
 transform = ccrs.PlateCarree()

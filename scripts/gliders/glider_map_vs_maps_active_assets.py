@@ -3,10 +3,10 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import datetime as dt
-from hurricanes.calc import find_nearest, convert_lon_360_to_180
-from hurricanes.plotting import map_add_ticks, map_add_features, map_add_bathymetry, export_fig
-from hurricanes.platforms import get_bathymetry, Argo, get_active_gliders
-from hurricanes.regions import region_config
+from ioos_model_comparisons.calc import find_nearest, convert_lon_360_to_180
+from ioos_model_comparisons.plotting import map_add_ticks, map_add_features, map_add_bathymetry, export_fig
+from ioos_model_comparisons.platforms import get_bathymetry, Argo, get_active_gliders
+from ioos_model_comparisons.regions import region_config
 import cartopy.crs as ccrs
 import numpy as np
 import xarray as xr

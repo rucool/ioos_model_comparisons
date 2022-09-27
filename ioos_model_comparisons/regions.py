@@ -55,7 +55,7 @@ def region_config(regions=None, model=None):
             )
         currents = dict(
             bool=True,
-            depths = [0, 150, 200],
+            depths = [0, 30],
             limits = [0, 1.5, .1],
             coarsen=dict(rtofs=5, gofs=6),
             kwargs=dict(
@@ -138,15 +138,58 @@ def region_config(regions=None, model=None):
             limits= [0, 120, 10]
             )
         currents = dict(
-            bool=True,
+            bool=False,
             depths = [0, 150, 200],
-            limits = [0, 1.5, .1],
+            # depths = [0, 30],
+            limits = [0, 2.0, .1],
             coarsen=dict(rtofs=7, gofs=8),
+            # contours=[0.771667], # m/s
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
                 )
             )
+        
+        figure = dict(
+            legend = dict(columns=7),
+            figsize = (13, 7.5)
+            )
+        
+    key = "loop_current"
+    if key in regions:
+        # Gulf of Mexico Limits
+        name = "Loop Current Eddy"
+        folder = "loop_current_eddy"
+        extent = [-93, -83, 24, 30]
+        sea_water_temperature = [
+            dict(depth=0, limits=[27, 32, .5]),
+            dict(depth=150, limits=[14, 26, .5]),
+            dict(depth=200, limits=[12, 23, .5])
+            ]
+        salinity = [
+            dict(depth=0, limits=[34, 36.7, .1]), 
+            dict(depth=150, limits=[35.9, 36.7, .1]),
+            dict(depth=200, limits=[35.7, 36.8, .1]),
+            ]
+        salinity_max = dict(
+            figsize=(14, 6.5),
+            limits=[36, 37, .1]
+        )
+        ocean_heat_content = dict(
+            limits= [0, 180, 10]
+            )
+        currents = dict(
+            bool=True,
+            depths = [0, 30],
+            limits = [0, 2.0, .1],
+            coarsen=dict(rtofs=7, gofs=8),
+            contours=[0.771667], # m/s
+            kwargs=dict(
+                ptype="streamplot",
+                color="black"
+                )
+            )
+        
         figure = dict(
             legend = dict(columns=7),
             figsize = (13, 7.5)
@@ -496,7 +539,7 @@ def region_config(regions=None, model=None):
     limits.update(folder=folder)
     limits.update(extent=extent)
     limits.update(figure=figure)
-    limits.update(sea_surface_height=sea_surface_height)
+    # limits.update(sea_surface_height=sea_surface_height)
     limits.update(eez=eez)
     limits.update(variables=vars)
     if currents:

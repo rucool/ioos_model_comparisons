@@ -1,9 +1,9 @@
-from hurricanes.calc import depth_bin, depth_interpolate
+from ioos_model_comparisons.calc import depth_bin, depth_interpolate
 import numpy as np
 import pandas as pd
 import xarray as xr
-from hurricanes.platforms import get_glider_by_id
-from hurricanes.calc import convert_lon_180_to_360, find_nearest
+from ioos_model_comparisons.platforms import get_glider_by_id
+from ioos_model_comparisons.calc import convert_lon_180_to_360, find_nearest
 import seawater
 from glob import glob
 import os

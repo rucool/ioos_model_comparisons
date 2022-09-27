@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from hurricanes.plotting import map_add_ticks, map_add_features, map_add_bathymetry
-from hurricanes.platforms import active_argo_floats, active_gliders
+from ioos_model_comparisons.plotting import map_add_ticks, map_add_features, map_add_bathymetry
+from ioos_model_comparisons.platforms import active_argo_floats, active_gliders
 import cartopy.crs as ccrs
 import xarray as xr
 

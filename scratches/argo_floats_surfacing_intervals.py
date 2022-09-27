@@ -1,13 +1,13 @@
 import pandas as pd
-from hurricanes.src import active_argo_floats
+from ioos_model_comparisons.platforms import get_argo_floats_by_time
 import datetime as dt
 
 extent = [-99.040131, -37.089444, 7.514353, 35.693125]
 
 t0 = dt.datetime(2021, 8, 1)
-t1 = dt.datetime(2021, 10, 1)
+t1 = dt.datetime(2021, 8, 3)
 
-floats = active_argo_floats(bbox=extent, time_start=t0, time_end=t1)
+floats = get_argo_floats_by_time(bbox=extent, time_start=t0, time_end=t1)
 # floats.to_csv('/Users/mikesmith/Documents/argo-erddap-hurricane-season2021.csv', index=False)
 # floats = pd.read_csv('/Users/mikesmith/Documents/argo-erddap-hurricane-season2021.csv')
 
@@ -39,4 +39,4 @@ for group in grouped_floats:
 temp_df['wmo'] = temp_df['wmo'].astype(int)
 tdf = temp_df[temp_df.surfacing_interval < '4 days']
 # tdf.to_csv('/Users/mikesmith/Documents/who_argo.csv', index=False)
-tdf.to_csv('/Users/mikesmith/Documents/whoi_argo_complete_profiles.csv', index=False)
+tdf.to_csv('/Users/mikesmith/Documents/profiles.csv', index=False)

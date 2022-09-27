@@ -17,9 +17,9 @@ import pandas as pd
 import xarray as xr
 from erddapy import ERDDAP
 
-import hurricanes.configs as configs
-from hurricanes.models import amseas
-from hurricanes.platforms import get_bathymetry, get_active_gliders
+import ioos_model_comparisons.configs as configs
+from ioos_model_comparisons.models import amseas
+from ioos_model_comparisons.platforms import get_bathymetry, get_active_gliders
 import time
 import matplotlib
 from pathlib import Path

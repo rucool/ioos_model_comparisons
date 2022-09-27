@@ -8,7 +8,7 @@ import pandas as pd
 import xarray as xr
 # from erddapy import ERDDAP
 from upper_ocean_metrics.upper_ocean_metrics import ohc_from_profile, mld_temp_crit, mld_dens_crit, temp_average_depth, potential_energy_anomaly100
-from hurricanes.platforms import get_glider_by_id
+from ioos_model_comparisons.platforms import get_glider_by_id
 import seawater
 from glob import glob
 import os

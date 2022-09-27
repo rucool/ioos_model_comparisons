@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import xarray as xr
 import os
-from hurricanes.limits import limits_regions
+from ioos_model_comparisons.limits import limits_regions
 import datetime as dt
 import numpy as np
-from hurricanes.platforms import active_gliders, active_argo_floats
+from ioos_model_comparisons.platforms import active_gliders, active_argo_floats
 import pandas as pd
 from glob import glob
 import geopandas
@@ -16,7 +16,7 @@ import sys
 import warnings
 from dateutil import parser
 from pytz import timezone
-from hurricanes.plotting import map_add_ticks, cmaps, map_add_features, map_add_bathymetry
+from ioos_model_comparisons.plotting import map_add_ticks, cmaps, map_add_features, map_add_bathymetry
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 pdf = pd.read_csv('/Users/mikesmith/Documents/whoi_argo_complete_profiles.csv', parse_dates=['time'])

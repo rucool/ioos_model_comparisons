@@ -2,7 +2,7 @@ import datetime as dt
 import os
 import matplotlib.pyplot as plt
 
-import hurricanes.gliders as gld
+import ioos_model_comparisons.gliders as gld
 import numpy as np
 
 ## Peak Finder

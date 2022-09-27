@@ -7,8 +7,8 @@ from matplotlib.ticker import MaxNLocator
 from matplotlib.colors import LinearSegmentedColormap
 import cmocean
 from matplotlib import colors as c
-from hurricanes.gliders import glider_dataset
-from hurricanes.calc import depth_bin
+from ioos_model_comparisons.gliders import glider_dataset
+from ioos_model_comparisons.calc import depth_bin
 
 ## Peak Finder
 from scipy.signal import find_peaks

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 import datetime as dt
-from hurricanes.common import list_to_dataframe
+from ioos_model_comparisons.common import list_to_dataframe
 
 # url = '/home/hurricaneadm/data/rtofs/'
 # save_dir = '/www/web/rucool/hurricane/model_comparisons/profiles/'

@@ -106,7 +106,7 @@ def glider_dataset(gliderid, time_start=None, time_end=None, variables=None, fil
 
 # Grab the glider data back from erddap
 glider_df = glider_dataset(glider, **gargs)
-from hurricanes.src import depth_interpolate
+from ioos_model_comparisons.src import depth_interpolate
 
 tdf = depth_interpolate(glider_df)
 

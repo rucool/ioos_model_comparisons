@@ -94,7 +94,8 @@ def get_argo_floats_by_time(bbox=(-100, -45, 5, 46),
     return df
 
 
-def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None, parallel=False):
+def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None, 
+                       timeout=5, parallel=False):
     variables = variables or ['time', 'latitude', 'longitude']
     bbox = bbox or [-100, -40, 18, 60]
     t0 = t0 or (t1 - dt.timedelta(days=1))
@@ -106,8 +107,10 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None, p
     # Initialize GliderDAC Object
     e = ERDDAP(server='NGDAC')
 
-    # Grab every dataset available
+    # Set timeout (seconds)
+    e.requests_kwargs['timeout'] = timeout
 
+    # Grab every dataset available
     # Search constraints
     kw = dict()
     kw['min_time'] = t0

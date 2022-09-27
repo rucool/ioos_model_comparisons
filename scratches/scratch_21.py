@@ -1,9 +1,9 @@
 import xarray as xr
 import os
-from hurricanes.limits import limits_regions
+from ioos_model_comparisons.limits import limits_regions
 import datetime as dt
 import numpy as np
-from hurricanes.platforms import active_argo_floats, active_gliders
+from ioos_model_comparisons.platforms import active_argo_floats, active_gliders
 import pandas as pd
 import matplotlib.pyplot as plt
 import cartopy.feature as cfeature

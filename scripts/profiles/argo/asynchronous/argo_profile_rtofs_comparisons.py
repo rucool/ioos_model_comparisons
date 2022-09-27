@@ -1,7 +1,7 @@
 import datetime as dt
 import os
 
-import hurricanes.configs as configs
+import ioos_model_comparisons.configs as configs
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,11 +9,11 @@ import pandas as pd
 import scipy.stats as stats
 import seawater
 import xarray as xr
-from hurricanes.calc import depth_interpolate, lon180to360, lon360to180, difference
-from hurricanes.models import rtofs, gofs, cmems
-from hurricanes.platforms import get_argo_floats_by_time
-from hurricanes.plotting import map_create
-from hurricanes.regions import region_config
+from ioos_model_comparisons.calc import depth_interpolate, lon180to360, lon360to180, difference
+from ioos_model_comparisons.models import rtofs, gofs, cmems
+from ioos_model_comparisons.platforms import get_argo_floats_by_time
+from ioos_model_comparisons.plotting import map_create
+from ioos_model_comparisons.regions import region_config
 
 save_dir = configs.path_plots / 'profiles' / 'argo' / 'rtofs_comparisons'
 

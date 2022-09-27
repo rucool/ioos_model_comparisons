@@ -1,7 +1,7 @@
 import pandas as pd
 from  upper_ocean_metrics.uom_functions import calculate_upper_ocean_metrics
 from pathlib import Path
-from hurricanes.platforms import get_glider_by_id
+from ioos_model_comparisons.platforms import get_glider_by_id
 import xarray as xr
 import numpy as np
 import os

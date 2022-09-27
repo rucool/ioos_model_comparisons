@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-from hurricanes.src import map_add_ticks, map_add_features
+from ioos_model_comparisons.src import map_add_ticks, map_add_features
 import cartopy.crs as ccrs
 import pandas as pd
 

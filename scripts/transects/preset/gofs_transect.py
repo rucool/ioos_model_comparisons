@@ -2,11 +2,11 @@ import cmocean
 import xarray as xr
 import datetime as dt
 import os
-from hurricanes.calc import calculate_transect, convert_ll_to_model_ll
-from hurricanes.plotting import plot_transects
-from hurricanes.common import rename_model_variables
-from hurricanes.storms import custom_transect
-from hurricanes.limits import transects, limits_regions
+from ioos_model_comparisons.calc import calculate_transect, convert_ll_to_model_ll
+from ioos_model_comparisons.plotting import plot_transects
+from ioos_model_comparisons.common import rename_model_variables
+from ioos_model_comparisons.storms import custom_transect
+from ioos_model_comparisons.limits import transects, limits_regions
 import pandas as pd
 
 save_dir = '/Users/mikesmith/Documents/github/rucool/hurricanes/plots/transects/'

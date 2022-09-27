@@ -3,10 +3,10 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import datetime as dt
-from hurricanes.calc import find_nearest, lon180to360, lon360to180
-from hurricanes.plotting import map_add_ticks, map_add_features, map_add_bathymetry, export_fig
-from hurricanes.platforms import get_glider_by_id, get_bathymetry, get_argo_floats_by_time
-from hurricanes.models import gofs, rtofs
+from ioos_model_comparisons.calc import find_nearest, lon180to360, lon360to180
+from ioos_model_comparisons.plotting import map_add_ticks, map_add_features, map_add_bathymetry, export_fig
+from ioos_model_comparisons.platforms import get_glider_by_id, get_bathymetry, get_argo_floats_by_time
+from ioos_model_comparisons.models import gofs, rtofs
 import cartopy.crs as ccrs
 import numpy as np
 import xarray as xr
@@ -47,29 +47,31 @@ model = "rtofs" # Which model: rtofs or gofs
 # Plot the following
 bathy = True
 argo = False
-plot_temperature = False
+plot_temperature = True
 plot_salinity = True
 replot = True
 
 # Plot information
 extent = [-75.5, -65, 34, 42] # cartopy extent format
-glider = "ng738-20211002T0000"
+
+glider = "ng657-20211002T0000"
+# glider = "ng738-20211002T0000"
 
 # temp_range = [12, 21.5, .5] # [min, max, step]
 # haline_range = [35.3, 36.7, .1] # [min, max, step]
 # depth = 200 
 
-# temp_range = [13, 26, 1] # [min, max, step]
-# haline_range = [35.3, 36.7, .1] # [min, max, step]
-# depth = 100 
+temp_range = [13, 26, 1] # [min, max, step]
+haline_range = [35.3, 36.7, .1] # [min, max, step]
+depth = 100 
 
 # temp_range = [13, 29, 1] # [min, max, step]
 # haline_range = [35, 36.6, .1] # [min, max, step]
 # depth = 50
 
-temp_range = [12, 29, 1] # [min, max, step]
-haline_range = [34.4, 36.6, .1] # [min, max, step]
-depth = 0
+# temp_range = [12, 29, 1] # [min, max, step]
+# haline_range = [34.4, 36.6, .1] # [min, max, step]
+# depth = 0
 
 # Set cartopy information
 projection_map = ccrs.Mercator()
@@ -83,7 +85,7 @@ try:
 except FileNotFoundError:
     print(f"Downloading {glider} data from DAC")
     glider_df = get_glider_by_id(dataset_id=glider)
-    glider_df = glider_df.to_pickle(path_gliders / pkl_g)
+    glider_df.to_pickle(path_gliders / pkl_g)
 
 # Create lon and lat variables for the entire glider track
 glider_lon = glider_df['longitude (degrees_east)']
@@ -94,8 +96,9 @@ date_s = glider_df.index[0].floor(freq="1D")
 date_e = glider_df.index[-1].ceil(freq='1D')
 
 # center_time = dt.datetime(2021, 8, 29)
-# start_date = center_time - dt.timedelta(days=7)
-# end_date = center_time + dt.timedelta(days=7)
+center_time = dt.datetime(2021, 11, 9)
+date_s = center_time - dt.timedelta(days=7)
+date_e = center_time + dt.timedelta(days=7)
 
 # Convert date_s and date_e to strings
 dstr = "%Y%m%d"

@@ -1,9 +1,9 @@
 import datetime as dt
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
-from hurricanes.gliders import glider_dataset
+from ioos_model_comparisons.gliders import glider_dataset
 from matplotlib.ticker import AutoMinorLocator
-from hurricanes.platforms import active_argo_floats
+from ioos_model_comparisons.platforms import active_argo_floats
 
 glider = 'ng645-20210613T0000'
 save_dir = '/Users/mikesmith/Documents/'

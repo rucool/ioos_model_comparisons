@@ -2,7 +2,7 @@ import datetime as dt
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-import hurricanes.gliders as gld
+import ioos_model_comparisons.gliders as gld
 import gsw
 from matplotlib.ticker import MaxNLocator
 from matplotlib.colors import LinearSegmentedColormap

@@ -13,10 +13,10 @@ import xarray as xr
 import datetime as dt
 import os
 import glob
-from hurricanes.calc import calculate_transect
-import hurricanes.storms as storms
-import hurricanes.gliders as gld
-from hurricanes.gliders_plt import plot_transect, plot_transects
+from ioos_model_comparisons.calc import calculate_transect
+import ioos_model_comparisons.storms as storms
+import ioos_model_comparisons.gliders as gld
+from ioos_model_comparisons.gliders_plt import plot_transect, plot_transects
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 

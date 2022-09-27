@@ -1,7 +1,7 @@
 
 import pandas as pd
 import matplotlib.pyplot as plt
-from hurricanes.plotting import map_add_ticks, map_add_features
+from ioos_model_comparisons.plotting import map_add_ticks, map_add_features
 import cartopy.crs as ccrs
 import xarray as xr
 import datetime as dt

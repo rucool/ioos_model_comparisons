@@ -9,8 +9,8 @@ import xarray as xr
 # from glider_uom import calculate_upper_ocean_metrics
 # from erddapy import ERDDAP
 # from upper_ocean_metrics.uom_functions import calculate_upper_ocean_metrics
-from hurricanes.platforms import get_glider_by_id, Argo
-from hurricanes.calc import convert_lon_180_to_360, find_nearest
+from ioos_model_comparisons.platforms import get_glider_by_id, Argo
+from ioos_model_comparisons.calc import convert_lon_180_to_360, find_nearest
 import os
 from pathlib import Path
 

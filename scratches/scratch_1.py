@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import gsw
-from hurricanes.src import glider_dataset
+from ioos_model_comparisons.src import glider_dataset
 
 ## Peak Finder
 from scipy.signal import find_peaks

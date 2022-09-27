@@ -1,15 +1,15 @@
 import datetime as dt
 from pathlib import Path
 
-import hurricanes.configs as configs
+import ioos_model_comparisons.configs as configs
 import numpy as np
 import pandas as pd
-from hurricanes.calc import lon360to180, lon180to360
-from hurricanes.models import gofs
-from hurricanes.platforms import (get_active_gliders, get_argo_floats_by_time,
+from ioos_model_comparisons.calc import lon360to180, lon180to360
+from ioos_model_comparisons.models import gofs
+from ioos_model_comparisons.platforms import (get_active_gliders, get_argo_floats_by_time,
                                   get_bathymetry)
-from hurricanes.plotting import plot_model_region
-from hurricanes.regions import region_config
+from ioos_model_comparisons.plotting import plot_model_region
+from ioos_model_comparisons.regions import region_config
 
 # Get path information about this script
 script_name = Path(__file__).name

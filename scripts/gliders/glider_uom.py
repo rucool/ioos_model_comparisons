@@ -8,8 +8,8 @@ import pandas as pd
 import xarray as xr
 # from erddapy import ERDDAP
 from upper_ocean_metrics.uom_functions import calculate_upper_ocean_metrics
-from hurricanes.platforms import get_glider_by_id
-from hurricanes.calc import convert_lon_180_to_360, find_nearest
+from ioos_model_comparisons.platforms import get_glider_by_id
+from ioos_model_comparisons.calc import convert_lon_180_to_360, find_nearest
 import seawater
 from glob import glob
 import os

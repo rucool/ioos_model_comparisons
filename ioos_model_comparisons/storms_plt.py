@@ -13,7 +13,7 @@ import matplotlib as mpl
 from matplotlib.lines import Line2D
 import cartopy.crs as ccrs
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-import hurricanes.plotting as sp
+import ioos_model_comparisons.plotting as sp
 from oceans.ocfis import uv2spdir, spdir2uv
 
 

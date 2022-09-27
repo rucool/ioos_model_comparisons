@@ -3,9 +3,9 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import datetime as dt
-from hurricanes.calc import find_nearest
-from hurricanes.plotting import map_add_ticks, map_add_features, map_add_bathymetry, export_fig
-from hurricanes.platforms import strip_timezone, get_glider_by_id, get_bathymetry, get_argo_floats_by_time
+from ioos_model_comparisons.calc import find_nearest
+from ioos_model_comparisons.plotting import map_add_ticks, map_add_features, map_add_bathymetry, export_fig
+from ioos_model_comparisons.platforms import strip_timezone, get_glider_by_id, get_bathymetry, get_argo_floats_by_time
 import cartopy.crs as ccrs
 import numpy as np
 import xarray as xr

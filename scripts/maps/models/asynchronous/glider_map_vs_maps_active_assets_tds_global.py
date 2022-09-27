@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from cartopy.io.shapereader import Reader
-from hurricanes.calc import find_nearest, lon180to360, lon360to180
-from hurricanes.models import gofs, rtofs
-from hurricanes.platforms import (get_active_gliders, get_argo_floats_by_time,
+from ioos_model_comparisons.calc import find_nearest, lon180to360, lon360to180
+from ioos_model_comparisons.models import gofs, rtofs
+from ioos_model_comparisons.platforms import (get_active_gliders, get_argo_floats_by_time,
                                   get_bathymetry)
-from hurricanes.plotting import (export_fig, map_add_bathymetry,
+from ioos_model_comparisons.plotting import (export_fig, map_add_bathymetry,
                                  map_add_features, map_add_ticks)
-from hurricanes.regions import region_config
+from ioos_model_comparisons.regions import region_config
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 # Get path information about this script

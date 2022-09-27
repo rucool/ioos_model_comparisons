@@ -10,8 +10,8 @@ import numpy as np
 import xarray as xr
 import cftime
 from collections import namedtuple
-from hurricanes.limits import limits_regions
-from hurricanes.platforms import active_argo_floats
+from ioos_model_comparisons.limits import limits_regions
+from ioos_model_comparisons.platforms import active_argo_floats
 
 
 def convert_target_gofs_lon(target_lon):

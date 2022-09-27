@@ -1,8 +1,8 @@
 # %%
 import datetime as dt
 import numpy as np
-from hurricanes.models import gofs, rtofs
-from hurricanes.regions import region_config
+from ioos_model_comparisons.models import gofs, rtofs
+from ioos_model_comparisons.regions import region_config
 import seaborn as sns
 
 sns.set_theme(style='whitegrid')

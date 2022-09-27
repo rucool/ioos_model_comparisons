@@ -1,9 +1,9 @@
 from setuptools import setup
 
 setup(
-    name='hurricanes',
+    name='ioos_model_comparisons',
     version='0.0.2',
-    packages=['hurricanes',
+    packages=['ioos_model_comparisons',
               'data', 
               'scripts',
               'scripts.gliders',
@@ -14,7 +14,7 @@ setup(
               'scripts.profiles',
               'scripts.transects',
               ],
-    url='github.com/rucool/hurricanes/',
+    url='github.com/rucool/ioos_model_comparisons/',
     license='',
     author='mikesmith',
     author_email='michaesm@marine.rutgers.edu',

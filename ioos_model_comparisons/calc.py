@@ -1,6 +1,42 @@
 import numpy as np
 import pandas as pd
 from gsw import SA_from_SP, CT_from_t, rho, p_from_z
+import datetime as dt
+
+
+def create_datetime_list(ctime=dt.datetime.utcnow(), 
+                         days_before=2,
+                         days_after=1, 
+                         freq='6H',
+                         time_offset=0):
+    """_summary_
+
+    Args:
+        ctime (datetime, optional): Center Time. Defaults to dt.datetime.utcnow().
+        days_before (int, optional): Days before center time. Defaults to 2.
+        days_after (int, optional): Days after center time. Defaults to 1.
+        freq (str, optional): Pandas frequency string. Defaults to '6H'.
+        time_offset (int, optional): _description_. Defaults to 0.
+
+    Returns:
+        list: list of datetimes
+    """
+    
+    # Convert  
+    ctime = dt.datetime(*ctime.timetuple()[:3])
+
+    # If you want to start the date list at a specific day
+    if time_offset:
+        ctime = ctime + dt.timedelta(hours=time_offset)
+
+    # Calculate window around center time
+    date_start = ctime - dt.timedelta(days=days_before)
+    date_end = ctime + dt.timedelta(days=days_after)
+
+    # Create dates that we want to plot
+    date_list = pd.date_range(date_start, date_end, freq=freq)
+ 
+    return date_list
 
 
 def ocean_heat_content(depth, temp, density):
@@ -285,3 +321,35 @@ def interpolate(xval, df, xcol, ycol):
     :return:
     """
     return np.interp([xval], df[xcol], df[ycol])
+
+from pyproj import Geod
+geodesic = Geod(ellps="WGS84")  # define the coordinate system. WGS84 is the standard used by GPS.
+
+def inverse_transformation(lons1, lats1, lons2, lats2):
+    """
+    Inverse computation of bearing and distance given the latitudes and longitudes of an initial and terminus point.
+
+    Args:
+        lons1 (array, numpy.ndarray, list, tuple, or scalar): Longitude(s) of initial point(s)
+        lats1 (array, numpy.ndarray, list, tuple, or scalar): Latitude(s) of initial point(s)
+        lons2 (array, numpy.ndarray, list, tuple, or scalar): Longitude(s) of terminus point(s)
+        lats2 (array, numpy.ndarray, list, tuple, or scalar): Latitude(s) of terminus point(s)
+
+    Returns:
+       array, numpy.ndarray, list, tuple, or scalar: Forward azimuth(s)
+       array, numpy.ndarray, list, tuple, or scalar: Back azimuth(s)
+       array, numpy.ndarray, list, tuple, or scalar: Distance(s) between initial and terminus point(s) in kilometers
+    """
+    # Inverse transformation using pyproj
+    # Determine forward and back azimuths, plus distances between initial points and terminus points.
+    forward_azimuth, back_azimuth, distance = geodesic.inv(lons1, lats1, lons2, lats2)
+
+    forward_azimuth = np.array(forward_azimuth)
+    back_azimuth = np.array(back_azimuth)
+    distance = np.array(distance)
+    forward_azimuth = np.mod(forward_azimuth, 360)
+    back_azimuth = np.mod(back_azimuth, 360)
+    
+    distance = distance / 1000  # Lets stick with kilometers as the output since RUV ranges are in kilometers
+
+    return forward_azimuth, back_azimuth, distance

@@ -10,8 +10,8 @@ import numpy as np
 import pandas as pd
 import os
 import datetime as dt
-import hurricanes.gliders as gld
-from hurricanes.gliders_plt import plot_transect
+import ioos_model_comparisons.gliders as gld
+from ioos_model_comparisons.gliders_plt import plot_transect
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
 
 

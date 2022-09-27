@@ -7,7 +7,7 @@ Create transect "ribbons" of RTOFS along user-specified glider(s) tracks. Model 
 """
 import pandas as pd
 import os
-import hurricanes.gliders as gld
+import ioos_model_comparisons.gliders as gld
 import matplotlib.pyplot as plt
 import cmocean
 import matplotlib.dates as mdates

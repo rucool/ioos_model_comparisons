@@ -10,7 +10,7 @@ from cmocean import cm
 import pandas as pd
 import seawater
 from oceans.ocfis import spdir2uv, uv2spdir
-from hurricanes.plotting import map_add_ticks
+from cool_maps.plot import add_ticks
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 # %%
@@ -19,7 +19,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 # t1 = pd.Timestamp(2021, 9, 5, 12, 0, 0)
 # times = pd.date_range(t0, t1, freq='24H')
 # times = [pd.Timestamp(2021, 8, 1, 0, 0, 0)]
-times = [pd.Timestamp(2022, 3, 15, 12)]
+times = [pd.Timestamp(2022, 9, 25, 12)]
 
 
 # Isla Contoy to Cuba
@@ -211,7 +211,7 @@ def plot_map(da, cmap, vrange=None, title=None, figsize=(20,12), sname=None, dpi
     # Ticks
     plt.setp(ax.get_xticklabels(), fontsize=18)
     plt.setp(ax.get_yticklabels(), fontsize=18)
-    map_add_ticks(ax, [da["lon"].min(), da["lon"].max(), da["lat"].min(), da["lat"].max()])
+    add_ticks(ax, [da["lon"].min(), da["lon"].max(), da["lat"].min(), da["lat"].max()])
     
     if sname:
         sname = f"{sname}_{da.name}_map_{ctimestr}.png"

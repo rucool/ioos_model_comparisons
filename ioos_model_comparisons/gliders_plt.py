@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.dates as mdates
-import hurricanes.plotting as sp
+import ioos_model_comparisons.plotting as sp
 from oceans.ocfis import uv2spdir, spdir2uv
 import cmocean
 
