@@ -1,24 +1,24 @@
 import datetime as dt
 import time
 
-import hurricanes.configs as conf
+import ioos_model_comparisons.configs as conf
 import matplotlib
 import numpy as np
 import pandas as pd
-from hurricanes.calc import (lon180to360,
+from ioos_model_comparisons.calc import (lon180to360,
                              lon360to180, 
                              density, 
                              ocean_heat_content,
                              )
-from hurricanes.platforms import (get_active_gliders, 
+from ioos_model_comparisons.platforms import (get_active_gliders, 
                                   get_argo_floats_by_time,
                                   get_bathymetry)
-from hurricanes.plotting import plot_ohc
-from hurricanes.regions import region_config
+from ioos_model_comparisons.plotting import plot_ohc
+from ioos_model_comparisons.regions import region_config
 from shapely.errors import TopologicalError
-from hurricanes.models import rtofs as r
-from hurricanes.models import gofs as g
-from hurricanes.models import cmems as c
+from ioos_model_comparisons.models import rtofs as r
+from ioos_model_comparisons.models import gofs as g
+from ioos_model_comparisons.models import cmems as c
 import xarray as xr
 
 startTime = time.time()
