@@ -1,16 +1,16 @@
 import datetime as dt
 import time
 
-import hurricanes.configs as conf
+import ioos_model_comparisons.configs as conf
 import matplotlib
 import numpy as np
 import pandas as pd
-from hurricanes.calc import lon180to360, lon360to180
-from hurricanes.platforms import (get_active_gliders, 
+from ioos_model_comparisons.calc import lon180to360, lon360to180
+from ioos_model_comparisons.platforms import (get_active_gliders, 
                                   get_argo_floats_by_time,
                                   get_bathymetry)
-from hurricanes.plotting import salinity_max
-from hurricanes.regions import region_config
+from ioos_model_comparisons.plotting import salinity_max, salinity_max_comparison
+from ioos_model_comparisons.regions import region_config
 from shapely.errors import TopologicalError
 
 startTime = time.time()
@@ -47,6 +47,7 @@ kwargs['overwrite'] = False
 # Create dates that we want to plot
 date_list = pd.date_range(date_start, date_end, freq=freq)
 
+# Start date to search for asset date...
 start = date_list[0] - dt.timedelta(hours=conf.search_hours)
 
 # Get global extent for all regions
@@ -81,7 +82,7 @@ if conf.bathy:
     bathy_data = get_bathymetry(global_extent)
 
 if rtofs:
-    from hurricanes.models import rtofs as r
+    from ioos_model_comparisons.models import rtofs as r
     rds = r()
 
     # Save rtofs lon and lat as variables to speed up indexing calculation
@@ -91,15 +92,15 @@ if rtofs:
     grid_y = rds.y.values
 
 if gofs:
-    from hurricanes.models import gofs as g
+    from ioos_model_comparisons.models import gofs as g
     gds = g(rename=True)
 
 if cmems:
-    from hurricanes.models import cmems as c
+    from ioos_model_comparisons.models import cmems as c
     cds = c(rename=True)
 
 if amseas:
-    from hurricanes.models import amseas as a
+    from ioos_model_comparisons.models import amseas as a
     ads = a(rename=True)
 
 # Formatter for time
@@ -267,14 +268,15 @@ def plot_ctime(ctime):
             kwargs['gliders'] = glider_region
             
         try:
+            # salinity_max(rds_slice, extent, configs['name'], **kwargs)
             if rdt_flag and gdt_flag:
-                salinity_max(rds_slice, gds_slice, extent, configs['name'], **kwargs)
+                salinity_max_comparison(rds_slice, gds_slice, extent, configs['name'], **kwargs)
                 
             if rdt_flag and cdt_flag:
-                salinity_max(rds_slice, cds_slice, extent, configs['name'], **kwargs)
+                salinity_max_comparison(rds_slice, cds_slice, extent, configs['name'], **kwargs)
 
             if rdt_flag and adt_flag:
-                salinity_max(rds_slice, ads_slice, extent, configs['name'], **kwargs)
+                salinity_max_comparison(rds_slice, ads_slice, extent, configs['name'], **kwargs)
 
             # Delete some keyword arguments that may not be defined in all
             # regions. We don't want to plot the regions with wrong inputs 

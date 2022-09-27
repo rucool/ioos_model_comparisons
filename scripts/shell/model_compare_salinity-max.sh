@@ -12,7 +12,7 @@ source ~/miniconda3/etc/profile.d/conda.sh
 conda activate hurricanes
 export PYPROJ_GLOBAL_CONTEXT=ON
 export MPLBACKEND=agg
-python /home/hurricaneadm/scripts/hurricanes/scripts/maps/models/synchronous/salinity_max.py >> $logfile
+python /home/hurricaneadm/scripts/ioos_model_comparisons/scripts/maps/models/synchronous/salinity_max.py >> $logfile
 conda deactivate
 
 echo ---------------- End ------------------------ >> $logfile
