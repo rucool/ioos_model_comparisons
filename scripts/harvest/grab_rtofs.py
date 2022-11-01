@@ -2,25 +2,20 @@ import os
 from ftplib import FTP, error_perm
 import datetime as dt
 from tqdm import tqdm
+from pathlib import Path
 
-# ldir = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/rtofs/'
+# ddir = Path('/Users/mikesmith/Documents/data/rtofs/')
+ddir = Path('/home/hurricaneadm/data/rtofs')
 
-ldir = '/home/hurricaneadm/data/rtofs'
 url = 'ftp.ncep.noaa.gov'
+rtofs_dir = 'pub/data/nccf/com/rtofs/'
 
-nc_files_RTOFS = ['rtofs_glo_3dz_f006_6hrly_hvr_US_east.nc',
-                  'rtofs_glo_3dz_f012_6hrly_hvr_US_east.nc',
-                  'rtofs_glo_3dz_f018_6hrly_hvr_US_east.nc',
-                  'rtofs_glo_3dz_f024_6hrly_hvr_US_east.nc']
-
-today = dt.date.today()
-yesterday = today - dt.timedelta(days=1)
-
-today = today.strftime('%Y%m%d')
-yesterday = yesterday.strftime('%Y%m%d')
-
-time_list = [yesterday, today]
-
+fnames2grab = [
+    'rtofs_glo_3dz_f006_6hrly_hvr_US_east.nc',
+    'rtofs_glo_3dz_f012_6hrly_hvr_US_east.nc',
+    'rtofs_glo_3dz_f018_6hrly_hvr_US_east.nc',
+    'rtofs_glo_3dz_f024_6hrly_hvr_US_east.nc'
+    ]
 
 def download(remote_fname, local_fname, remote_size):
     print(f'Downloading {remote_fname}')
@@ -33,37 +28,58 @@ def download(remote_fname, local_fname, remote_size):
             ftp.retrbinary('RETR {}'.format(f), cb)
     print(f'Filename: {local_fname} Size: {os.stat(local_fname).st_size}')
 
-
 # Login to ftp file
 ftp = FTP(url)
 ftp.login()
 
 # %% load RTOFS nc files
 print('Attempting to download RTOFS NetCDF files from FTP server')
-for tstr in time_list:
-    new_dir = os.path.join(ldir, f'rtofs.{tstr}')
-    os.makedirs(new_dir, exist_ok=True)
-    ftp.cwd('/')
-    try:
-        ftp.cwd('pub/data/nccf/com/rtofs/prod/rtofs.{}'.format(tstr))
-    except error_perm:
-        print(f'Error: {tstr} not on ftp server. Adding newest time to time_list')
-        continue
+  
+ftp.cwd(rtofs_dir) #prod/rtofs.{}'.format(tstr))
 
-    for f in nc_files_RTOFS:
-        # Download nc files
-        fname = os.path.join(new_dir, f)
-        remote_size = ftp.size(f)
-        if os.path.isfile(fname):
-            local_size = os.stat(fname).st_size
-            if local_size == remote_size:
-                print(f'{f}: Local ({fname})/Remote (ftp) - {local_size}/{ftp.size(f)}. File sizes match')
-                continue
-            else:
-                print(f'{f}: Local({fname})/Remote (ftp)  - {local_size}/{ftp.size(f)}. File may be corrupt. Re-downloading.')
-                os.remove(fname)
-                download(f, fname, remote_size)
-        else:
-            print(f'{fname} not on local server. Downloading now')
-            download(f, fname, remote_size)
+# The rtofs directory contains multiple versions. Lets grab them all 
+# for version in ftp.nlst(): #When different versions are available
+for version in ['prod']:
+    # print(f"Saving RTOFS {version}")
+    print(f"CD into {version}")
+    ftp.cwd(version)
+
+    # The rtofs data only exists for 2 days at a time. Let's grab them both
+    for date in ftp.nlst():
+        # sdir = ddir / version / date
+        sdir = ddir / date
+        os.makedirs(sdir, exist_ok=True)
+
+        if ftp.nlst(date):
+            print(f"CD into {date}")
+            ftp.cwd(date)
+            print(f"CWD: {ftp.pwd()}")
+
+            # Download only the files specified by fnames2grab
+            for f in fnames2grab:
+                remote_size = ftp.size(f)
+                fname = sdir / f
+
+                # If the file exists, let's run through some checks to make sure
+                # that we don't have corrupt files downloaded on the file server.
+                if os.path.isfile(fname):
+                    local_size = os.stat(fname).st_size
+
+                    # If the local size is equal to the remote size.
+                    # Don't download. 
+                    if local_size == remote_size:
+                        print(f'{f}: Local ({fname})/Remote (ftp) - {local_size}/{ftp.size(f)}. File sizes match')
+                        continue
+                    # If the local size is not equal to the remote size. The local 
+                    # file may be corrupt. Re-download.
+                    else:
+                        print(f'{f}: Local({fname})/Remote (ftp)  - {local_size}/{ftp.size(f)}. File may be corrupt. Re-downloading.')
+                        os.remove(fname)
+                        download(f, fname, remote_size)
+                else:
+                    print(f'{fname} not on local server. Downloading now')
+                    download(f, fname, remote_size)
+            ftp.cwd('..')
+            print(f"CWD: {ftp.pwd()}")
+    ftp.cwd('..')
 ftp.quit()
