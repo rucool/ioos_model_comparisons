@@ -10,9 +10,9 @@ import xarray as xr
 from ioos_model_comparisons.calc import depth_interpolate, lon180to360, lon360to180, difference
 from ioos_model_comparisons.models import gofs, rtofs, cmems
 from ioos_model_comparisons.platforms import get_argo_floats_by_time
-from ioos_model_comparisons.plotting import map_create, map_add_ticks
 from ioos_model_comparisons.regions import region_config
 import ioos_model_comparisons.configs as conf
+import cool_maps.plot as cplt
 
 save_dir = conf.path_plots / 'profiles' / 'argo'
 
@@ -292,8 +292,10 @@ def process_argo(region):
             text.set_path_effects([path_effects.Normal()])
             ax4.set_axis_off()
 
-            map_create(extent, ax=ax5, ticks=False)
-            map_add_ticks(ax5, extent, fontsize=10)
+            # map_create(extent, ax=ax5, ticks=False)
+            # map_add_ticks(ax5, extent, fontsize=10)
+            cplt.create(extent, ax=ax5)
+            cplt.add_ticks(ax5, extent, fontsize=10)
             ax5.plot(lon, lat, 'ro', transform=conf.projection['data'])
 
             h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
