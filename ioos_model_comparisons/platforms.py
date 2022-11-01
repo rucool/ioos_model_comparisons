@@ -1,16 +1,17 @@
-from erddapy import ERDDAP
 import datetime as dt
-from numpy import isin
-import pandas as pd
-from requests.exceptions import HTTPError as rHTTPError
+import inspect
+import multiprocessing
+from collections import namedtuple
+from pprint import pprint
 # urllib.error.HTTPError
 from urllib.error import HTTPError as uHTTPError
 from urllib.error import URLError
-from collections import namedtuple
+
+import pandas as pd
+from erddapy import ERDDAP
 from joblib import Parallel, delayed
-import multiprocessing
-from pprint import pprint
-import inspect
+from numpy import isin
+from requests.exceptions import HTTPError as rHTTPError
 
 Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
