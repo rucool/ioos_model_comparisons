@@ -15,7 +15,7 @@ import ioos_model_comparisons.storms as storms
 import numpy as np
 import pandas as pd
 import xarray as xr
-from ioos_model_comparisons.calc import calculate_transect
+from ioos_model_comparisons.calc import calculate_transect, lon180to360
 from ioos_model_comparisons.gliders_plt import plot_transect, plot_transects
 
 pd.set_option('display.width', 320, "display.max_columns", 10)  # for display in pycharm console
@@ -52,7 +52,7 @@ def main(gliders, save_dir, m_t0, m_t1, g_t0, g_t1, lt, ylims, color_lims):
             targetlon = np.array(glider_df['longitude'])
             targetlat = np.array(glider_df['latitude'])
 
-        targetlon_GOFS = storms.convert_target_gofs_lon(targetlon)
+        targetlon_GOFS = lon180to360(targetlon)
 
         with xr.open_dataset(url, drop_variables='tau') as gofs:
             gofs = gofs.rename({'surf_el': 'sea_surface_height', 'water_temp': 'temperature', 'water_u': 'u', 'water_v': 'v'})
@@ -87,7 +87,7 @@ def main(gliders, save_dir, m_t0, m_t1, g_t0, g_t1, lt, ylims, color_lims):
                 targs['levels'] = color_lims['temp']
                 targs['ylims'] = ylims
                 print('plotting temperature by longitude')
-                plot_transect(lon_sub, -mdepth, mtemp, **targs)
+                plot_transect(lon_sub, -mdepth, mtemp['temperature'], **targs)
 
                 # plot temperature by longitude - model and glider
                 del targs['title']
@@ -95,42 +95,42 @@ def main(gliders, save_dir, m_t0, m_t1, g_t0, g_t1, lt, ylims, color_lims):
                                   f'{gl_t1.strftime("%Y-%m-%dT%H:%M")}'
                 targs['title1'] = f'GOFS Temperature at {date_str} UTC'
                 targs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_gofs_glider_transect_temp-{date_save}.png')
-                plot_transects(gl_lon, -gl_depth, gl_temp, lon_sub, -mdepth, mtemp, **targs)
+                plot_transects(gl_lon, -gl_depth, gl_temp, lon_sub, -mdepth, mtemp['temperature'], **targs)
 
-                # get the salinity transect from the model and glider
-                print('Getting GOFS custom salinity transect')
-                msalt, mdepth, lon_sub, lat_sub = storms.custom_transect(tds, 'salinity', targetlon_GOFS, targetlat, 'gofs')
-                gl_tm, gl_lon, gl_lat, gl_depth, gl_salt = gld.grid_glider_data(glider_df, 'salinity', 0.5)
+                # # get the salinity transect from the model and glider
+                # print('Getting GOFS custom salinity transect')
+                # msalt, mdepth, lon_sub, lat_sub = storms.custom_transect(tds, 'salinity', targetlon_GOFS, targetlat, 'gofs')
+                # gl_tm, gl_lon, gl_lat, gl_depth, gl_salt = gld.grid_glider_data(glider_df, 'salinity', 0.5)
 
-                # plot salinity by longitude
-                sargs = {}
-                sargs['cmap'] = cmocean.cm.haline
-                sargs['clab'] = 'Salinity'
-                sargs['title'] = f'GOFS Salinity at {date_str} UTC\n{glider} glider track'
-                sargs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_gofs_transect_salt-{date_save}.png')
-                sargs['levels'] = color_lims['salt']
-                sargs['ylims'] = ylims
-                print('plotting salinity by longitude')
-                plot_transect(lon_sub, -mdepth, msalt, **sargs)
+                # # plot salinity by longitude
+                # sargs = {}
+                # sargs['cmap'] = cmocean.cm.haline
+                # sargs['clab'] = 'Salinity'
+                # sargs['title'] = f'GOFS Salinity at {date_str} UTC\n{glider} glider track'
+                # sargs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_gofs_transect_salt-{date_save}.png')
+                # sargs['levels'] = color_lims['salt']
+                # sargs['ylims'] = ylims
+                # print('plotting salinity by longitude')
+                # plot_transect(lon_sub, -mdepth, msalt, **sargs)
 
-                # plot salinity by longitude - model and glider
-                del sargs['title']
-                sargs['title0'] = f'{glider.split("-")[0]} transect {gl_t0.strftime("%Y-%m-%dT%H:%M")} to ' \
-                                  f'{gl_t1.strftime("%Y-%m-%dT%H:%M")}'
-                sargs['title1'] = f'GOFS Salinity at {date_str} UTC'
-                sargs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_gofs_glider_transect_salt-{date_save}.png')
-                plot_transects(gl_lon, -gl_depth, gl_salt, lon_sub, -mdepth, msalt, **sargs)
+                # # plot salinity by longitude - model and glider
+                # del sargs['title']
+                # sargs['title0'] = f'{glider.split("-")[0]} transect {gl_t0.strftime("%Y-%m-%dT%H:%M")} to ' \
+                #                   f'{gl_t1.strftime("%Y-%m-%dT%H:%M")}'
+                # sargs['title1'] = f'GOFS Salinity at {date_str} UTC'
+                # sargs['save_file'] = os.path.join(sdir_glider, f'{glider.split("-")[0]}_gofs_glider_transect_salt-{date_save}.png')
+                # plot_transects(gl_lon, -gl_depth, gl_salt, lon_sub, -mdepth, msalt, **sargs)
 
 
 if __name__ == '__main__':
-    glider_deployments = ['ru30-20210503T1929']
-    sdir = '/Users/garzio/Documents/rucool/hurricane_glider_project/gliders'
-    model_t0 = dt.datetime(2021, 5, 10, 0, 0)  # False
+    glider_deployments = ['ng645-20210613T0000']
+    sdir = '/Users/mikesmith/Documents/'
+    model_t0 = False  # False
     model_t1 = False
-    glider_t0 = False  # dt.datetime(2021, 5, 4, 0, 0)
-    glider_t1 = dt.datetime(2021, 5, 10, 0, 0)
-    line_transect = True  # True or False  # get a straight line transect, rather than a transect along the glider track
+    glider_t0 = dt.datetime(2021, 8, 28, 0, 0)  # False
+    glider_t1 = dt.datetime(2021, 8, 31, 0, 0)
+    line_transect = False  # True or False  # get a straight line transect, rather than a transect along the glider track
     y_limits = [-100, 0]  # None
-    c_limits = dict(temp=dict(shallow=np.arange(9, 16, .5)),
-                    salt=dict(shallow=np.arange(31.6, 36.8, .2)))
+    c_limits = dict(temp=dict(shallow=np.arange(20, 30, 1)),
+                    salt=dict(shallow=np.arange(34, 37, .25)))
     main(glider_deployments, sdir, model_t0, model_t1, glider_t0, glider_t1, line_transect, y_limits, c_limits)

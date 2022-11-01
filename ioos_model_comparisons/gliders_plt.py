@@ -136,8 +136,8 @@ def plot_transect(x, y, c, cmap=None, title=None, save_file=None, ylims=None, le
     isotherm = plt.contour(x, y, c, [26], colors='k')  # add contour at 26C
     # test = isotherm.allsegs[0][0]
     # plt.axhline(test[:, 1].max())
-    xfmt = mdates.DateFormatter('%d-%b-%Y\n%H:%M:%S')
-    ax.xaxis.set_major_formatter(xfmt)
+    # xfmt = mdates.DateFormatter('%d-%b-%Y\n%H:%M:%S')
+    # ax.xaxis.set_major_formatter(xfmt)
 
     plt.xticks(rotation=45, fontsize=16)
     plt.yticks(fontsize=16)
