@@ -10,31 +10,31 @@ from cmocean import cm
 import pandas as pd
 import seawater
 from oceans.ocfis import spdir2uv, uv2spdir
-from hurricanes.plotting import map_add_ticks, export_fig
+from ioos_model_comparisons.plotting import map_add_ticks, export_fig
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from hurricanes.models import rtofs, gofs, cmems, amseas
+from ioos_model_comparisons.models import rtofs, gofs, cmems, amseas
 # from hurricanes.calc import calculate_transect
-import hurricanes.configs as conf
+import ioos_model_comparisons.configs as conf
 import os
 
 # Set path to save plots
 path_save = conf.path_plots / "transects" / "preset"
 
 # Select time we want to look at
-t0 = pd.Timestamp(2022, 3, 14, 12, 0, 0)
-t1 = pd.Timestamp(2022, 3, 16, 12, 0, 0)
+t0 = pd.Timestamp(2022, 9, 13, 0, 0, 0)
+t1 = pd.Timestamp(2022, 9, 14, 0, 0, 0)
 times = pd.date_range(t0, t1, freq='24H')
 
-# Isla Contoy to Cuba
-lons = [-88.6, -83]
-lats = [17.8, 25]
-title = "Straits of Yucatán (Isla Contoy to Western Cuba)"
-rstr = "yucatan_straits"
-xaxis = 'lon'
-start = -86.79, 21.46
-end = -84.95, 21.86
-points = 500
-depth_spacing = 1
+# # Isla Contoy to Cuba
+# lons = [-88.6, -83]
+# lats = [17.8, 25]
+# title = "Straits of Yucatán (Isla Contoy to Western Cuba)"
+# rstr = "yucatan_straits"
+# xaxis = 'lon'
+# start = -86.79, 21.46
+# end = -84.95, 21.86
+# points = 500
+# depth_spacing = 1
 
 # # Straits of Florida
 # lons = [-83.77, -79.64]
@@ -94,8 +94,32 @@ depth_spacing = 1
 # depth_spacing = 1
 # map = False
 
+# # Mid Atlantic Bight
+# lons = [-77, -67]
+# lats = [35, 43]
+# title = "Montauk -> South"
+# rstr = "long_island"
+# xaxis = 'lat'
+# start = -72, 41
+# end = -72, 39
+# points = 500
+# depth_spacing = 1
+# map = False
+
+# 38.93998010287428, -74.86470881406771
+lons = [-75.5, -71]
+lats = [41, 36]
+title = "Cape May -> Gulf Stream"
+rstr = "southern_nj"
+xaxis = 'lon'
+start = -75, 39
+end = -72, 38
+points = 500
+depth_spacing = 1
+map = False
+
 # Contour levels
-levels_salinity = np.arange(35, 37, .1)
+levels_salinity = np.arange(33, 35, .1)
 levels_temperature = np.arange(10, 28, 1)
 levels_u = np.arange(-1.0, 1.0, .1)
 levels_v = np.arange(-1.0, 1.0, .1)
@@ -253,7 +277,7 @@ def plot_transect(ds, var, cmap, levels=None, xaxis="lon", title=None, ax=None, 
         cb.set_label(label=f"{var.name.title()} ({var_units})", size=14*fontfrac, weight='bold')
         cb.ax.tick_params(labelsize=12*fontfrac)
 
-    ax.set_ylim([1000, 0])
+    ax.set_ylim([100, 0])
     plt.setp(ax.get_xticklabels(), fontsize=16*fontfrac)
     plt.setp(ax.get_yticklabels(), fontsize=16*fontfrac)
     if xlabel:
@@ -303,8 +327,8 @@ gofs = gofs.sel(depth=slice(0,1000), lon=slice(glons[0], glons[1]), lat=slice(la
 gofs["lon"] = np.mod(gofs["lon"]+180, 360)-180
 
 # Load and munge AMSEAS
-am = amseas(rename=True).sel(depth=slice(0,1000), lon=slice(glons[0], glons[1]), lat=slice(lats[0], lats[1]))
-am["lon"] = np.mod(am["lon"]+180, 360)-180
+# am = amseas(rename=True).sel(depth=slice(0,1000), lon=slice(glons[0], glons[1]), lat=slice(lats[0], lats[1]))
+# am["lon"] = np.mod(am["lon"]+180, 360)-180
 
 # Load Copernicus data
 cmems = cmems(rename=True).sel(depth=slice(0,1000), lon=slice(lons[0], lons[1]), lat=slice(lats[0], lats[1]))
@@ -315,24 +339,36 @@ for ctime in times:
     ctime_save_str = ctime.strftime("%Y-%m-%dT%H%M%SZ")
 
     # Select ctime with RTOFS
-    trtofs = rtofs.sel(time=ctime)
+    try:
+        trtofs = rtofs.sel(time=ctime)
+    except:
+        continue
 
     # Use xr.apply_ufunc to apply a function over all dimensions
     trtofs["pressure"] = xr.apply_ufunc(seawater.eos80.pres, trtofs.depth, trtofs.lat)
     trtofs["density"] = xr.apply_ufunc(seawater.eos80.dens, trtofs.salinity, trtofs.temperature, trtofs.pressure)
 
     # GOFS
-    tgofs = gofs.sel(time=ctime)
+    try:
+        tgofs = gofs.sel(time=ctime)
+    except:
+        continue
     tgofs["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tgofs.depth, tgofs.lat)
     tgofs["density"] = xr.apply_ufunc(seawater.eos80.dens, tgofs.salinity, tgofs.temperature, tgofs.pressure)
 
-    # AMSEAS
-    tam = am.sel(time=ctime)
-    tam["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tam.depth, tam.lat)
-    tam["density"] = xr.apply_ufunc(seawater.eos80.dens, tam.salinity, tam.temperature, tam.pressure)
+    # try:
+    #     # AMSEAS
+    #     tam = am.sel(time=ctime)
+    # except:
+    #     continue
+    # tam["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tam.depth, tam.lat)
+    # tam["density"] = xr.apply_ufunc(seawater.eos80.dens, tam.salinity, tam.temperature, tam.pressure)
 
     # Copernicus
-    tcmems = cmems.sel(time=ctime, method='nearest')
+    try:
+        tcmems = cmems.sel(time=ctime, method='nearest')
+    except:
+        continue
     tcmems["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tcmems.depth, tcmems.lat)
     tcmems["density"] = xr.apply_ufunc(seawater.eos80.dens, tcmems.salinity, tcmems.temperature, tcmems.pressure)
 
@@ -348,9 +384,9 @@ for ctime in times:
     lonidx, latidx = transect2rtofs(pts, grid_lons, grid_lats, grid_x=grid_x, grid_y=grid_y)
 
     # Create map plot
-    ax = plot_map(trtofs["salinity"].sel(depth=0), cm.haline, (35, 37, .1), title="RTOFS", figsize=(30,20))
+    ax = plot_map(trtofs["temperature"].sel(depth=30), cm.thermal, (11, 28, 1), title="RTOFS", figsize=(30,20))
     ax.plot(pts[:,0], pts[:,1], 'r-.', linewidth=4, transform=ccrs.PlateCarree())
-    export_fig(path_final, f'{rstr}_transect_map_salinity_{ctime_save_str}.png', dpi=conf.dpi)
+    export_fig(path_final, f'{rstr}_transect_map_temperature_{ctime_save_str}.png', dpi=conf.dpi)
 
     # Interpolate model data to transect
     # Interpolate RTOFS Transect
@@ -367,12 +403,12 @@ for ctime in times:
         depth=xr.DataArray(np.arange(0, tgofs.depth.max()+depth_spacing, depth_spacing), dims="depth")
     )
 
-    # Interpolate AMSEAS Transect
-    ads = tam.interp(
-        lon=xr.DataArray(pts[:,0], dims="point"),
-        lat=xr.DataArray(pts[:,1], dims="point"),
-        depth=xr.DataArray(np.arange(0, tam.depth.max()+depth_spacing, depth_spacing), dims="depth")
-    )
+    # # Interpolate AMSEAS Transect
+    # ads = tam.interp(
+    #     lon=xr.DataArray(pts[:,0], dims="point"),
+    #     lat=xr.DataArray(pts[:,1], dims="point"),
+    #     depth=xr.DataArray(np.arange(0, tam.depth.max()+depth_spacing, depth_spacing), dims="depth")
+    # )
 
     # Interpolate Copernicus Transect
     cds = tcmems.interp(
@@ -382,25 +418,26 @@ for ctime in times:
     )
 
     # Create salinity, temperature, density plots
-    fig, ax = plt.subplots(4, 3, figsize=(40,20))
+    # fig, ax = plt.subplots(4, 3, figsize=(40,20))
+    fig, ax = plt.subplots(3, 3, figsize=(40,20))
     if xaxis =='lon':
         xlabel = "Longitude"
     elif xaxis == 'lat':
         xlabel = "Latitude"
     plot_transect(rds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[0,0], cbar=dict(ax=ax[0,0], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[36.6], ylabel="RTOFS\nDepth (m)")
     plot_transect(gds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[1,0], cbar=dict(ax=ax[1,0], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[36.6], ylabel="GOFS\nDepth (m)")
-    plot_transect(ads, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[36.6], ylabel="AMSEAS\nDepth (m)")
-    plot_transect(cds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[3,0], cbar=dict(ax=ax[3,0], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[36.6], ylabel="Copernicus\nDepth (m)", xlabel=xlabel)
+    # plot_transect(ads, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[36.6], ylabel="AMSEAS\nDepth (m)")
+    plot_transect(cds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[36.6], ylabel="Copernicus\nDepth (m)", xlabel=xlabel)
 
     plot_transect(rds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[0,1], cbar=dict(ax=ax[0,1], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26])
     plot_transect(gds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[1,1], cbar=dict(ax=ax[1,1], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26])
-    plot_transect(ads, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26])
-    plot_transect(cds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[3,1], cbar=dict(ax=ax[3,1], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26], xlabel=xlabel)
+    # plot_transect(ads, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26])
+    plot_transect(cds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26], xlabel=xlabel)
 
     plot_transect(rds, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[0,2], cbar=dict(ax=ax[0,2], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26])
     plot_transect(gds, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[1,2], cbar=dict(ax=ax[1,2], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26])
-    plot_transect(ads, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[2,2], cbar=dict(ax=ax[2,2], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26])
-    plot_transect(cds, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[3,2], cbar=dict(ax=ax[3,2], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26], xlabel=xlabel)
+    # plot_transect(ads, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[2,2], cbar=dict(ax=ax[2,2], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26])
+    plot_transect(cds, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[2,2], cbar=dict(ax=ax[2,2], orientation='vertical', pad=0.01), fontfrac=1.25, contour=[26], xlabel=xlabel)
 
     plt.suptitle(f"{title}\n{ctime_str}", fontsize=32, fontweight="bold")
     plt.subplots_adjust(left=0.1,
@@ -411,16 +448,17 @@ for ctime in times:
     export_fig(path_final, f'{rstr}_tsd_{ctime_save_str}.png', dpi=conf.dpi)
 
     # Create velocity plots
-    fig, ax = plt.subplots(4, 2, figsize=(40,30))
+    # fig, ax = plt.subplots(4, 2, figsize=(40,30))
+    fig, ax = plt.subplots(3, 2, figsize=(40,30))
     plot_transect(rds, "u", cm.balance, levels=levels_u, xaxis=xaxis, title="Eastward Velocity", ax=ax[0,0], cbar=dict(ax=ax[0,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="RTOFS\nDepth (m)")
     plot_transect(gds, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[1,0], cbar=dict(ax=ax[1,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="GOFS\nDepth (m)")
-    plot_transect(ads, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="AMSEAS\nDepth (m)")
-    plot_transect(cds, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[3,0], cbar=dict(ax=ax[3,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="Copernicus\nDepth (m)", xlabel=xlabel)
+    # plot_transect(ads, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="AMSEAS\nDepth (m)")
+    plot_transect(cds, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="Copernicus\nDepth (m)", xlabel=xlabel)
 
     plot_transect(rds, "v", cm.balance, levels=levels_v, xaxis=xaxis, title="Northward Velocity", ax=ax[0,1], cbar=dict(ax=ax[0,1], orientation='vertical', pad=0.01), fontfrac=1.5)
     plot_transect(gds, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[1,1], cbar=dict(ax=ax[1,1], orientation='vertical', pad=0.01), fontfrac=1.5)
-    plot_transect(ads, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.5)
-    plot_transect(cds, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[3,1], cbar=dict(ax=ax[3,1], orientation='vertical', pad=0.01), fontfrac=1.5, xlabel=xlabel)
+    # plot_transect(ads, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+    plot_transect(cds, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.5, xlabel=xlabel)
 
 
     plt.suptitle(f"{title}\n{ctime_str}", fontsize=32, fontweight="bold")
