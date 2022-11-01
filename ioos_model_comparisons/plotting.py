@@ -31,6 +31,7 @@ from shapely.geometry.polygon import LinearRing
 
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import dd2dms
+import scipy.ndimage as ndimage
 
 # Suppresing warnings for a "pretty output."
 warnings.simplefilter("ignore")
@@ -926,49 +927,49 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         ax1.set_title(ds1.model.upper(), fontsize=16, fontweight="bold")
         ax2.set_title(ds2.model.upper(), fontsize=16, fontweight="bold")
 
-        # Add EddyWatch Fronts
-        for ax in [ax1, ax2]:
-            fronts = []
-            for item in data['BZ_all'][0]:
-                loop_y = item['y'].T
-                loop_x = item['x'].T
+        # # Add EddyWatch Fronts
+        # for ax in [ax1, ax2]:
+        #     fronts = []
+        #     for item in data['BZ_all'][0]:
+        #         loop_y = item['y'].T
+        #         loop_x = item['x'].T
 
-                hf = ax.plot(loop_x, loop_y,
-                            linestyle=item['LineStyle'][0],
-                            color='black',
-                            linewidth=3, 
-                            transform=ccrs.PlateCarree(), 
-                            zorder=120
-                            )
-                fronts.append(hf)
+        #         hf = ax.plot(loop_x, loop_y,
+        #                     linestyle=item['LineStyle'][0],
+        #                     color='black',
+        #                     linewidth=3, 
+        #                     transform=ccrs.PlateCarree(), 
+        #                     zorder=120
+        #                     )
+        #         fronts.append(hf)
 
-                # Add arrows
-                start_lon = item['bx'].T
-                start_lat = item['by'].T
-                end_lon = item['tx'].T
-                end_lat = item['ty'].T
+        #         # Add arrows
+        #         start_lon = item['bx'].T
+        #         start_lat = item['by'].T
+        #         end_lon = item['tx'].T
+        #         end_lat = item['ty'].T
 
-                for count, _ in enumerate(start_lon):
-                    ax.arrow(
-                        start_lon[count][0],
-                        start_lat[count][0],
-                        end_lon[count][0]-start_lon[count][0],
-                        end_lat[count][0]-start_lat[count][0],
-                        linewidth=0, 
-                        head_width=0.2,
-                        shape='full', 
-                        fc='black', 
-                        ec='black',
-                        transform=ccrs.PlateCarree(),
-                        zorder=130,
-                        )
-        fronts.reverse()
+        #         for count, _ in enumerate(start_lon):
+        #             ax.arrow(
+        #                 start_lon[count][0],
+        #                 start_lat[count][0],
+        #                 end_lon[count][0]-start_lon[count][0],
+        #                 end_lat[count][0]-start_lat[count][0],
+        #                 linewidth=0, 
+        #                 head_width=0.2,
+        #                 shape='full', 
+        #                 fc='black', 
+        #                 ec='black',
+        #                 transform=ccrs.PlateCarree(),
+        #                 zorder=130,
+        #                 )
+        # fronts.reverse()
 
         # Deal with the third axes
         h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
 
-        h_n = h + fronts
-        l_n = l + ["EddyWatch - 1.5 knots (Active)", "EddyWatch - Eddy Remnants"]
+        h_n = h #+ fronts
+        l_n = l #+ ["EddyWatch - 1.5 knots (Active)", "EddyWatch - Eddy Remnants"]
         
         if (len(h) > 0) & (len(l) > 0):
             ax3.legend(h_n, l_n, ncol=cols, loc='center', fontsize=8)
@@ -1236,6 +1237,43 @@ def salinity_max(ds, extent, region_name,
     export_fig(path_save, fname, dpi=dpi)
     plt.close()
 
+def plot_storm_track(ax, storm, zorder=90, proj=proj['data']):
+    cone = storm['cone']
+    storm_lon = storm['lon']
+    storm_lat = storm['lat']
+    
+    #Plot cone
+    cone_2d = cone['cone']
+    cone_2d = ndimage.gaussian_filter(cone_2d, sigma=0.5, order=0)
+
+    # Cone shading
+    ax.contourf(cone['lon2d'], cone['lat2d'], cone_2d, [0.9,1.1], 
+                colors=['#ffffff', '#ffffff'],
+                alpha=.25,
+                zorder=zorder+1,
+                transform=proj)
+
+    # Cone outline
+    ax.contour(cone['lon2d'], cone['lat2d'], cone_2d, [0.9], 
+                linewidths=1.5,
+                colors=['k'],
+                zorder=zorder+1,
+                transform=proj)
+
+    #Plot forecast center line & account for dateline crossing
+    ax.plot(cone['center_lon'], cone['center_lat'],
+            color='k',
+            linewidth=2.0,
+            zorder=zorder+2,
+            transform=proj
+            )
+
+    #Plot previous track
+    ax.plot(storm_lon, storm_lat, color='red',
+            linestyle='dotted',
+            linewidth=1,
+            zorder=zorder+1,
+            transform=proj)
 
 def salinity_max_comparison(ds1, ds2, extent, region_name,
                             limits=None,
@@ -1249,7 +1287,8 @@ def salinity_max_comparison(ds1, ds2, extent, region_name,
                                            data=ccrs.PlateCarree()), 
                             figsize=(14,8),
                             dpi=150,
-                            overwrite=False):
+                            overwrite=False,
+                            storms=None):
     
     # Convert ds.time value to a normal datetime
     time = pd.to_datetime(ds1.time.values)
@@ -1308,11 +1347,15 @@ def salinity_max_comparison(ds1, ds2, extent, region_name,
     ax2 = axs[1] # gofs
     ax3 = axs[2] # legend for argo/gliders
 
+    ax1.set_extent(extent)
+    ax2.set_extent(extent)
+
     # Argo/Glider Data Dicts
     rargs = {}
     rargs['argo'] = argo
     rargs['gliders'] = gliders
-    rargs['transform'] = transform['data'] 
+    rargs['transform'] = transform['data']
+    
 
     for ax in [ax1, ax2]:
         # Make the map pretty  
@@ -1337,7 +1380,12 @@ def salinity_max_comparison(ds1, ds2, extent, region_name,
 
         # Plot gliders and argo floats 
         plot_regional_assets(ax, **rargs)
-        
+
+        if storms:
+            for s in storms.keys():
+                storms['track']
+                plot_storm_track(ax, lon, lat, cone)
+                
     # Add ticks
     add_ticks(ax1, extent, label_left=True)
     add_ticks(ax2, extent, label_left=False, label_right=True)
@@ -1627,6 +1675,32 @@ def plot_ohc(ds1, ds2, extent, region_name,
     ax1.set_title(f"{ds1.model.upper()}", fontsize=16, fontweight='bold')
     ax2.set_title(f"{ds2.model.upper()}", fontsize=16, fontweight='bold')
     fig.suptitle(f"Ocean Heat Content - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
+
+    # from ioos_model_comparisons.plotting_hurricanes import plot_storms
+    # from tropycal import realtime
+    # import datetime as dt
+    
+    # realtime_obj = realtime.Realtime()
+
+    # realtime_obj.list_active_storms(basin='north_atlantic')
+
+    # # realtime_obj.plot_summary(domain={'w':-100,'e':-10,'s':4,'n':60})
+
+    # #Get realtime forecasts
+    # forecasts = []
+    # for key in realtime_obj.storms:
+    #     if realtime_obj[key].invest == False:
+    #         try:
+    #             forecasts.append(realtime_obj.get_storm(key).get_forecast_realtime(True))
+    #         except:
+    #             forecasts.append({})
+    #     else:
+    #         forecasts.append({})
+    # forecasts = [entry if 'init' in entry.keys() and (dt.utcnow() - entry['init']).total_seconds() / 3600.0 <= 12 else {} for entry in forecasts]
+    # storms = [realtime_obj.get_storm(key) for key in realtime_obj.storms]
+
+    # plot_storms(ax, storms, forecasts, zorder=80)
+
 
     # # Hide x labels and tick labels for top plots and y ticks for right plots.
     # for axs in ax.flat:

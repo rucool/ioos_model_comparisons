@@ -19,3 +19,4 @@
 .vscode/launch.json
 .vscode/extensions.json
 scratches/apps/.ipynb_checkpoints/Untitled-checkpoint.ipynb
+hurricanes.egg-info/*

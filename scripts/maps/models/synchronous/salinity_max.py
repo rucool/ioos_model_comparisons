@@ -27,9 +27,11 @@ gofs = True
 cmems = True
 amseas = True
 
+# plot_active_hurricanes = False
+
 # For debug 
 # conf.days = 1
-# conf.regions = ['tropical_western_atlantic']
+# conf.regions = ['gom']
 
 # Get today and yesterday dates
 now = dt.datetime.utcnow()
@@ -49,6 +51,22 @@ date_list = pd.date_range(date_start, date_end, freq=freq)
 
 # Start date to search for asset date...
 start = date_list[0] - dt.timedelta(hours=conf.search_hours)
+
+# if plot_active_hurricanes:
+    # from tropycal import realtime
+    # from tropycal.utils.generic_utils import wind_to_category, generate_nhc_cone
+
+#     realtime_obj = realtime.Realtime()
+
+#     storm_dict = {}
+#     storms = [realtime_obj.get_storm(key) for key in realtime_obj.list_active_storms(basin='north_atlantic')]
+#     for s in storms:
+#         storm_dict[s.name] = {}
+#         storm_dict[s.name]['track'] = pd.DataFrame({"date": s.date, "lon": s.lon, "lat": s.lat}).set_index('date')
+#         storm_dict[s.name]['cone'] = {}
+
+#         for t in date_list:
+#             storm_dict[s.name]['cone'][t] = generate_nhc_cone(s.get_nhc_forecast_dict(t), s.basin, cone_days=5)
 
 # Get global extent for all regions
 extent_list = []
@@ -266,6 +284,11 @@ def plot_ctime(ctime):
                 (glider_region.index.get_level_values('time') <= search_window_t1)
                 ]
             kwargs['gliders'] = glider_region
+            
+        # if storms:
+        #     kwargs['storms'] = storm_dict
+        #     mask = storm_dict['IAN']['track'].index < t
+        #     storm_dict['IAN']['track'].loc[mask]
             
         try:
             # salinity_max(rds_slice, extent, configs['name'], **kwargs)

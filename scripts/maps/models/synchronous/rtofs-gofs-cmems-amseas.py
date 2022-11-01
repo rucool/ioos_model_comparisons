@@ -1,17 +1,17 @@
 import datetime as dt
 
-import hurricanes.configs as conf
+import ioos_model_comparisons.configs as conf
 import numpy as np
 import pandas as pd
-from hurricanes.calc import lon180to360, lon360to180
-from hurricanes.models import gofs, rtofs, cmems, amseas
-from hurricanes.platforms import (get_active_gliders, 
+from ioos_model_comparisons.calc import lon180to360, lon360to180
+from ioos_model_comparisons.models import gofs, rtofs, cmems, amseas
+from ioos_model_comparisons.platforms import (get_active_gliders, 
                                   get_argo_floats_by_time,
                                   get_bathymetry)
-from hurricanes.plotting import (plot_model_region_comparison,
+from ioos_model_comparisons.plotting import (plot_model_region_comparison,
                                  plot_model_region_comparison_streamplot
                                  )
-from hurricanes.regions import region_config
+from ioos_model_comparisons.regions import region_config
 import matplotlib
 import time
 
@@ -236,17 +236,25 @@ def main():
                 if rdt_flag and gdt_flag:
                     plot_model_region_comparison(rds_sub, gds_sub, region, **kwargs)
                     plot_model_region_comparison_streamplot(rds_sub, gds_sub, region, **kwargs)
+            except Exception as e:
+                print(f"Failed to process RTOFS vs GOFS at {ctime}")
+                print(f"Error: {e}")
 
+            try:
                 if rdt_flag and cdt_flag:
                     plot_model_region_comparison(rds_sub, cds_sub, region, **kwargs)
                     plot_model_region_comparison_streamplot(rds_sub, cds_sub, region, **kwargs)
-
+            except Exception as e:
+                print(f"Failed to process RTOFS vs CMEMS at {ctime}")
+                print(f"Error: {e}")
+                
+            try:
                 if rdt_flag and amt_flag:
                     plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
                     plot_model_region_comparison_streamplot(rds_sub, am_sub, region, **kwargs) 
             except Exception as e:
-                print(e)
-                continue
+                print(f"Failed to process RTOFS vs AMSEAS at {ctime}")
+                print(f"Error: {e}")
  
 
 if __name__ == "__main__":
