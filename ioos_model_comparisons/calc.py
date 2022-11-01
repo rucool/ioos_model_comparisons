@@ -257,7 +257,7 @@ def depth_bin(df,  depth_var='depth', depth_min=0, depth_max=None, stride=1):
     depth_max = depth_max or df[depth_var].max()
 
     bins = np.arange(depth_min, depth_max+stride, stride)  # Generate array of depths you want to bin at
-    cut = pd.cut(df[depth_var], bins)  # Cut/Bin the dataframe based on the bins variable we just generated
+    cut = pd.cut(df[depth_var], bins, labels=False)  # Cut/Bin the dataframe based on the bins variable we just generated
     binned_df = df.groupby(cut).mean()  # Groupby the cut and do the mean
     return binned_df
 
