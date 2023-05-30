@@ -1,182 +1,214 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from ioos_model_comparisons.plotting import map_add_ticks, map_add_features, map_add_bathymetry
-from ioos_model_comparisons.platforms import active_argo_floats, active_gliders
+from ioos_model_comparisons.platforms import get_active_gliders, get_argo_floats_by_time
 import cartopy.crs as ccrs
-import xarray as xr
+import cool_maps.plot as cplt
+import numpy as np
 
 map_projection = ccrs.Mercator()
 data_projection = ccrs.PlateCarree()
 
-t0 = pd.Timestamp(2020, 6, 1, 0, 0, 0)
-t1 = pd.Timestamp(2020, 12, 1)
-extent = [-100, -46, 6.75, 45.25]
+t0 = pd.Timestamp(2023, 4, 25, 0, 0, 0)
+t1 = pd.Timestamp(2023, 5, 2, 0, 0, 0)
 
-def map_add_all_argo(ax, df, transform):
-    grouped = df.groupby(['longitude (degrees_east)', 'latitude (degrees_north)'])
+# t0 = pd.Timestamp(2022, 6, 1, 0, 0, 0)
+# t1 = pd.Timestamp(2022, 12, 1)
+# extent = [-100, -46, 6.75, 45.25]
+
+# extent = [-99, -79, 18, 31] #GoM
+# rstr = 'gom'
+
+# extent = [-89, -58, 7, 23] # caribbean
+# rstr = 'carib'
+
+# extent = [-82, -70, 24, 35]
+# rstr = 'sab'
+
+# extent = [-77, -67, 35, 43]
+# rstr = 'mab'
+
+extent = [-180, -90, 5, 35]
+rstr = 'pacific'
+
+extent = [-10, 15, -40, -20]
+rstr = 'esaw'
+
+# extent = [-50, -25, -40, -20]
+# rstr = 'wsaw'
+
+# variables to download
+var_list = ["project_name", "pi_name", "platform_type", 'temp', 'psal', 'pressure']
+
+# Get glider and argo data.. Save as CSV
+# gliders = get_active_gliders(extent, t0, t1, variables=['time', 'latitude', 'longitude', 'profile_id'])
+# gliders.to_csv(f'/Users/mikesmith/Documents/gliders_2023_{rstr}.csv')
+
+# argo = get_argo_floats_by_time(extent, t0, t1, variables=["project_name", "pi_name", "platform_type", 'temp', 'psal', 'pres'])
+# argo.to_csv(f'/Users/mikesmith/Documents/argo_2023_{rstr}.csv')
+
+# # # # ax.plot(test.lon, test.lat, 'k-', linewidth=1, transform=projection, zorder=20)
+# # # # ax.scatter(test.lon, test.lat, c=test['strength'].map(colors), s=test['strength'].map(size)*4, transform=projection, zorder=20)
+title_str = f'{t0} to {t1}'
+
+
+def map_add_all_argo(ax, df, color='green', transform=data_projection):
+    grouped = df.groupby(['lon', 'lat'])
     for i, x in grouped:
-        ax.plot(i[0], i[1], marker='o', markersize=3, color='blue', transform=transform)
-    
-    return ax
-
+        h = ax.plot(i[0], i[1],
+                    marker='o', 
+                    markersize=4,
+                    markeredgecolor='black',
+                    linestyle='None',
+                    color=color, 
+                    transform=transform,
+                    zorder=100)
+    return h
+        
 
 def map_add_all_gliders(ax, df, transform):
-    grouped = df.groupby(['dataset_id'])
+    grouped = df.groupby(['glider'])
     for i, x in grouped:
-        ax.plot(x['longitude (degrees_east)'], x['latitude (degrees_north)'], linewidth=2, color='red', transform=transform)
-    return ax
-
-# import matplotlib.ticker as mticker
-
-# # function to define major and minor tick locations and major tick labels
-# def get_ticks(bounds, dirs, otherbounds):
-#     dirs = dirs.lower()
-#     l0 = np.float(bounds[0])
-#     l1 = np.float(bounds[1])
-#     r = np.max([l1 - l0, np.float(otherbounds[1]) - np.float(otherbounds[0])])
-#     if r <= 1.5:
-#         # <1.5 degrees: 15' major ticks, 5' minor ticks
-#         minor_int = 1.0 / 12.0
-#         major_int = 1.0 / 4.0
-#     elif r <= 3.0:
-#         # <3 degrees: 30' major ticks, 10' minor ticks
-#         minor_int = 1.0 / 6.0
-#         major_int = 0.5
-#     elif r <= 7.0:
-#         # <7 degrees: 1d major ticks, 15' minor ticks
-#         minor_int = 0.25
-#         major_int = np.float(1)
-#     elif r <= 15:
-#         # <15 degrees: 2d major ticks, 30' minor ticks
-#         minor_int = 0.5
-#         major_int = np.float(2)
-#     elif r <= 30:
-#         # <30 degrees: 3d major ticks, 1d minor ticks
-#         minor_int = np.float(1)
-#         major_int = np.float(3)
-#     else:
-#         # >=30 degrees: 5d major ticks, 1d minor ticks
-#         minor_int = np.float(1)
-#         major_int = np.float(5)
-
-#     minor_ticks = np.arange(np.ceil(l0 / minor_int) * minor_int, np.ceil(l1 / minor_int) * minor_int + minor_int,
-#                             minor_int)
-#     minor_ticks = minor_ticks[minor_ticks <= l1]
-#     major_ticks = np.arange(np.ceil(l0 / major_int) * major_int, np.ceil(l1 / major_int) * major_int + major_int,
-#                             major_int)
-#     major_ticks = major_ticks[major_ticks <= l1]
-
-#     if major_int < 1:
-#         d, m, s = dd2dms(np.array(major_ticks))
-#         if dirs == 'we' or dirs == 'ew' or dirs == 'lon' or dirs == 'long' or dirs == 'longitude':
-#             n = 'W' * sum(d < 0)
-#             p = 'E' * sum(d >= 0)
-#             dir = n + p
-#             major_tick_labels = [str(np.abs(int(d[i]))) + u"\N{DEGREE SIGN}" + str(int(m[i])) + "'" + dir[i] for i in
-#                                  range(len(d))]
-#         elif dirs == 'sn' or dirs == 'ns' or dirs == 'lat' or dirs == 'latitude':
-#             n = 'S' * sum(d < 0)
-#             p = 'N' * sum(d >= 0)
-#             dir = n + p
-#             major_tick_labels = [str(np.abs(int(d[i]))) + u"\N{DEGREE SIGN}" + str(int(m[i])) + "'" + dir[i] for i in
-#                                  range(len(d))]
-#         else:
-#             major_tick_labels = [str(int(d[i])) + u"\N{DEGREE SIGN}" + str(int(m[i])) + "'" for i in range(len(d))]
-#     else:
-#         d = major_ticks
-#         if dirs == 'we' or dirs == 'ew' or dirs == 'lon' or dirs == 'long' or dirs == 'longitude':
-#             n = 'W' * sum(d < 0)
-#             p = 'E' * sum(d >= 0)
-#             dir = n + p
-#             major_tick_labels = [str(np.abs(int(d[i]))) + u"\N{DEGREE SIGN}" + dir[i] for i in range(len(d))]
-#         elif dirs == 'sn' or dirs == 'ns' or dirs == 'lat' or dirs == 'latitude':
-#             n = 'S' * sum(d < 0)
-#             p = 'N' * sum(d >= 0)
-#             dir = n + p
-#             major_tick_labels = [str(np.abs(int(d[i]))) + u"\N{DEGREE SIGN}" + dir[i] for i in range(len(d))]
-#         else:
-#             major_tick_labels = [str(int(d[i])) + u"\N{DEGREE SIGN}" for i in range(len(d))]
-
-#     return minor_ticks, major_ticks, major_tick_labels
-
-# def map_add_ticks(ax, extent, fontsize=13):
-#     xl = [extent[0], extent[1]]
-#     yl = [extent[2], extent[3]]
-
-#     tick0x, tick1, ticklab = get_ticks(xl, 'we', yl)
-#     ax.set_xticks(tick0x, minor=True, crs=ccrs.PlateCarree())
-#     ax.set_xticks(tick1, crs=ccrs.PlateCarree())
-#     ax.set_xticklabels(ticklab, fontsize=fontsize)
-
-#     # get and add latitude ticks/labels
-#     tick0y, tick1, ticklab = get_ticks(yl, 'sn', xl)
-#     ax.set_yticks(tick0y, minor=True, crs=ccrs.PlateCarree())
-#     ax.set_yticks(tick1, crs=ccrs.PlateCarree())
-#     ax.set_yticklabels(ticklab, fontsize=fontsize)
-
-#     gl = ax.gridlines(draw_labels=False, linewidth=.5, color='gray', alpha=0.75, linestyle='--', crs=ccrs.PlateCarree())
-#     gl.xlocator = mticker.FixedLocator(tick0x)
-#     gl.ylocator = mticker.FixedLocator(tick0y)
-
-#     ax.tick_params(which='major',
-#                    direction='out',
-#                    bottom=True, top=True,
-#                    labelbottom=True, labeltop=False,
-#                    left=True, right=True,
-#                    labelleft=True, labelright=False,
-#                    length=5, width=2)
-
-#     ax.tick_params(which='minor',
-#                    direction='out',
-#                    bottom=True, top=True,
-#                    labelbottom=True, labeltop=False,
-#                    left=True, right=True,
-#                    labelleft=True, labelright=False,
-#                    width=1)
-#     return ax
-
-fig, ax = plt.subplots(
-                figsize=(11, 8),
-                subplot_kw=dict(projection=map_projection)
-            )
-
-map_add_features(ax, extent)
+        h = ax.plot(x['lon'], x['lat'], linewidth=2, color='red', transform=transform, zorder=100)
+    return h
 
 
-# gliders = active_gliders(extent, t0, t1)
-# gliders.to_csv('/Users/mikesmith/Documents/gliders_2020.csv')
+argo = pd.read_csv(f'/Users/mikesmith/Documents/argo_2023_{rstr}.csv')
+gliders = pd.read_csv(f'/Users/mikesmith/Documents/gliders_2023_{rstr}.csv')
 
-# argo = active_argo_floats(extent, t0, t1)
-# argo.to_csv('/Users/mikesmith/Documents/argo_2020.csv')
+# GoM
+# argo = argo.loc[argo.lon <= -80.9]
+# gliders = gliders.loc[gliders.lon <= -80.9]
+# argo = argo.loc[argo.lat >= 19]
 
-# ax.plot(test.lon, test.lat, 'k-', linewidth=1, transform=projection, zorder=20)
-# ax.scatter(test.lon, test.lat, c=test['strength'].map(colors), s=test['strength'].map(size)*4, transform=projection, zorder=20)
+# Caribbean
+# argo = argo.loc[(argo.lon <= -58) & (argo.lon >= -89) & (argo.lat >= 10)]
+# argo = argo.loc[(argo.lon >= -87)]
+# argo = argo.loc[(argo.lat >= 9)]
+# argo = argo.loc[~((argo.lat > 22) & (argo.lon <=-83))]
+
+# SaB
+# argo = argo.loc[argo.lat <= 35]
+# gliders = gliders.loc[gliders.lat <= 35]
+
+# MaB
+# argo = argo.loc[(argo.lat <= 42.5) & (argo.lat >= 35)]
+# gliders = gliders.loc[(gliders.lat <= 42.5) & (gliders.lat >= 35)]
+
+# Pacific
+# argo = argo[~np.logical_and(argo.lon >= -97, argo.lat > 17)]
+# gliders = gliders[~np.logical_and(gliders.lon >= -97, gliders.lat > 17)]
+
+# if np.logical_and(lon_check, lat_check).any():
+    # n = n + 1
+
+# ugos_projects = [x for x in argo["project_name"].unique() if 'UGOS' in x]
+# other_projects = [x for x in argo["project_name"].unique() if 'UGOS' not in x]
+# ugos_projects = [x for x in argo["pi_name"].unique() if 'BOWER' in x]
+# other_projects = [x for x in argo["pi_name"].unique() if 'BOWER' not in x]
+
+# ugos_df = pd.concat([argo.loc[argo['pi_name'] == x] for x in ugos_projects], axis=0)
+# other_df = pd.concat([argo.loc[argo['pi_name'] == x] for x in other_projects], axis=0)
+
+unique_floats = argo.argo.unique().shape[0]
+# ugos_floats = ugos_df.argo.unique().shape[0]
+# other_floats = other_df.argo.unique().shape[0]
+
+argo_profiles_all = argo.time.unique().shape[0]
+# argo_profiles_ugos = ugos_df.time.unique().shape[0]
+# argo_profiles_other = other_df.time.unique().shape[0]
+
+# unique_gliders = gliders.glider.unique().shape[0]
+# glider_profiles = gliders.profile_id.unique().shape[0]
+
+from scipy.io import loadmat
+import cartopy.feature as cfeature
+import xarray as xr
+# fname = '/Users/mikesmith/Downloads/GMOG_CICESE_Trajectories_0024_0025_0026.mat'
+# data = loadmat(fname)
+
+# lat1 = data['lat_0024']
+# lon1 = data['lon_0024']
+
+# lat2 = data['lat_0025']
+# lon2 = data['lon_0025']
+
+# lat3 = data['lat_0026']
+# lon3 = data['lon_0026']
+
+fig, ax = cplt.create(extent, bathymetry=False, gridlines=True, labelsize=16)
+
+levels = [-8000, -1000, -100, 0]  # Contour levels (depths)
+colors = ['cornflowerblue', cfeature.COLORS['water'],
+          'lightsteelblue',]  # contour colors
+
+# Get bathymetry from srtm15
+# bs = cplt.get_bathymetry(extent)
+bs = xr.open_dataset('/Users/mikesmith/Documents/data/SRTM15_V2.4.nc')
+bs = bs.sel(lon=slice(extent[0], extent[1]), lat=slice(extent[2], extent[3]))
+bs = bs.rename({'lon': 'longitude', 'lat': 'latitude'})
+
+# add filled contour to map
+cs = ax.contourf(bs['longitude'], bs['latitude'], bs['z'], levels,
+                 colors=colors, transform=ccrs.PlateCarree(), ticks=False)
+
+# h1 = map_add_all_gliders(ax, gliders, transform=data_projection)
+
+# h = ax.plot(lon1, lat1, linewidth=2, color='maroon', transform=data_projection, zorder=100)
+# h = ax.plot(lon2, lat2, linewidth=2, color='maroon', transform=data_projection, zorder=100)
+# h = ax.plot(lon3, lat3, linewidth=2, color='maroon', transform=data_projection, zorder=100)
+
+# h2 = map_add_all_argo(ax, ugos_df, transform=data_projection, color='blue')
+# h3 = map_add_all_argo(ax, other_df, transform=data_projection, color='green')
+# argo = argo.groupby('argo').first()
+
+h2 = map_add_all_argo(ax, argo, transform=data_projection, color='green')
+
+from matplotlib.patches import Rectangle
+
+h_n = []
+# h_n.append(h1[0])
+# h_n.append(Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0))
+
+# h_n.append(h[0])
+# h_n.append(Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0))
+
+h_n.append(h2[0])
+h_n.append(Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0))
+
+# h_n.append(h3[0])
+# h_n.append(Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0))
+
+l_n = []
+
+# l_n.append(f'Gliders (#): {unique_gliders}')
+# l_n.append(f'Profiles: {glider_profiles}')
+
+# l_n.append(f'Gliders/CICESE (#): {3}')
+# l_n.append(f'Profiles: {1083}')
+l_n.append(f'Argo (#): {unique_floats}')
+l_n.append(f'Profiles: {argo_profiles_all}')
+
+# l_n.append(f'Argo/UGOS (#): {ugos_floats}')
+# l_n.append(f'Profiles: {argo_profiles_ugos}')
+
+# l_n.append(f'Argo/Other (#): {other_floats}')
+# l_n.append(f'Profiles: {argo_profiles_other}')
 
 
-# map_add_gliders(ax, gliders, transform=data_projection)
-argo = pd.read_csv('/Users/mikesmith/Documents/argo_2020.csv')
-map_add_all_argo(ax, argo, transform=data_projection)
+# ax.legend(legend_1, ["Rectangle", "mlines"], loc='lower right') 
+leg = ax.legend(h_n, l_n, loc='upper right', fontsize=7, 
+                title="Profile Statistics",
+                # title_fontsize=8,
+                title_fontproperties={'size': 7, 'weight':'bold'}
+                ).set_zorder(1000)
+# plt.setp(leg.get_title(), fontsize=7, fontweight="bold")
 
-gliders = pd.read_csv('/Users/mikesmith/Documents/gliders_2020.csv')
-map_add_all_gliders(ax, gliders, transform=data_projection)
+# plt.legend()
 
-# map_add_legend(ax)
-bathymetry = '/Users/mikesmith/Documents/github/rucool/hurricanes/data/bathymetry/GEBCO_2014_2D_-100.0_0.0_-10.0_50.0.nc'
-bathy = xr.open_dataset(bathymetry)
-bathy = bathy.sel(
-    lon=slice(extent[0] - 1, extent[1] + 1),
-    lat=slice(extent[2] - 1, extent[3] + 1)
-)
-# Plot title
+ax.set_title(title_str, fontsize=18, fontweight='bold')
+# plt.gcf().text(0.08, 0.0, 'Sources\nGlider: IOOS National Glider DAC\nArgo: Global Data Assembly Centre (Argo GDAC)', fontsize=8, fontstyle='italic')
 
-map_add_ticks(ax, extent)
-map_add_bathymetry(ax, bathy, data_projection)
-
-# Path.clip_to_bbox(extent)
-ax.set_xlabel('Longitude', fontsize=14)
-ax.set_ylabel('Latitude', fontsize=14)
-
-ax.set_title('2020 Hurricane Season\n2020-06-01 to 2020-11-30', fontsize=18, fontweight='bold')
-plt.savefig('/Users/mikesmith/Documents/hurricane_season_assets_2020.png', bbox_inches='tight', pad_inches=0.1, dpi=300)
+plt.savefig(f'/Users/mikesmith/Documents/hurricane_season_assets_2022_{rstr}_pacific.png', bbox_inches='tight', pad_inches=0.1, dpi=300)
 # plt.show()
 plt.close()
+ 

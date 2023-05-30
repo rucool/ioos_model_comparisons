@@ -16,8 +16,7 @@ from ioos_model_comparisons.calc import find_nearest, lon180to360, lon360to180
 from ioos_model_comparisons.models import gofs, rtofs
 from ioos_model_comparisons.platforms import (get_active_gliders, get_argo_floats_by_time,
                                   get_bathymetry)
-from ioos_model_comparisons.plotting import (export_fig, map_add_bathymetry,
-                                 map_add_features, map_add_ticks)
+from ioos_model_comparisons.plotting import export_fig #map_add_bathymetry, map_add_features, map_add_ticks)
 from ioos_model_comparisons.regions import region_config
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
@@ -44,10 +43,10 @@ os.makedirs(path_plot_maps, exist_ok=True)
 os.makedirs(path_plot_script, exist_ok=True)
 
 # User defined variables
-# models = ["rtofs", "gofs"] # Which model: rtofs or gofs.. or both?
-models = ["gofs"] # Which model: rtofs or gofs.. or both?
-t0 = dt.datetime(2021, 5, 1)
-t1 = dt.datetime(2021, 12, 1)
+models = ["rtofs", "gofs"] # Which model: rtofs or gofs.. or both?
+# models = ["gofs"] # Which model: rtofs or gofs.. or both?
+t0 = dt.datetime(2022, 5, 1)
+t1 = dt.datetime(2022, 12, 1)
 # t0 = dt.datetime(2021, 8, 1)
 # t1 = dt.datetime(2021, 8, 7)
 freq = '1D' # time interval for each plot
@@ -58,8 +57,8 @@ projection_data = ccrs.PlateCarree() # Projection the data is in
 projection_map = ccrs.Mercator() # Projection to plot the map in
 
 # Plot the following: True or False
-temp = True 
-salinity = False 
+temp = False 
+salinity = True 
 bathy = True
 argo = True
 eez = False
@@ -73,13 +72,13 @@ overwrite = True
 # depth = 0
 # temp_range = [22, 31, .25] # [min, max, step]
 # haline_range = [34, 36.5, .1]
-# depth = 100
-# temp_range = [17, 28, .5] # [min, max, step]
-# haline_range = [36, 36.9, .1]
+depth = 150
+temp_range = [17, 28, .5] # [min, max, step]
+haline_range = [35.7, 36.8, .1]
 # depth = 200
 # temp_range = [12, 24, .5] # [min, max, step]
 # haline_range = [35.5, 37, .1] # [min, max, step]
-
+# 
 # Caribbean
 # region_key = "caribbean" # specify the region in order to grab the extents of that region
 # subdir = "2021_hurricane_season_caribbean"
@@ -108,14 +107,15 @@ overwrite = True
 # haline_range = [35.5, 37, .1] # [min, max, step]
 
 # Caribbean PR/VI
-region_key = "prvi" # specify the region in order to grab the extents of that region
-subdir = "puerto_rico-us_virgin_islands"
-# depth = 0
-# temp_range = [24, 30, .5] # [min, max, step]
-# haline_range = [36 , 37, .05]
-depth = 100
-temp_range = [20, 28, .5] # [min, max, step]
-haline_range = [36, 37.2, .1]
+# region_key = "prvi" # specify the region in order to grab the extents of that region
+subdir = "gom"
+region_key = 'gom'
+# # depth = 0
+# # temp_range = [24, 30, .5] # [min, max, step]
+# # haline_range = [36 , 37, .05]
+# depth = 100
+# temp_range = [20, 28, .5] # [min, max, step]
+# haline_range = [36, 37.2, .1]
 # depth = 150
 # temp_range = [18.5, 26, .5] # [min, max, step]
 # haline_range = [36.1, 37.2, .1]
@@ -293,29 +293,34 @@ if eez:
     sfig = (path_plot_maps / f"{region_key}_eez_fig.pkl")
 else:
     sfig = (path_plot_maps / f"{region_key}_fig.pkl")
-
-if not sfig.exists():    
+import cool_maps.plot as cplt
+if sfig.exists():    
     # Create figure 
-    fig, ax = plt.subplots(
-        figsize=(12, 9),
-        subplot_kw=dict(projection=projection_map)
-    )
+    # fig, ax = plt.subplots(
+    #     figsize=(12, 9),
+    #     subplot_kw=dict(projection=projection_map)
+    # )
+    fig, ax = cplt.create(extent,
+                          bathymetry=True, 
+                          isobaths=(-1000, -100), 
+                          figsize=(16,9)
+                          )
 
-    # Make the map pretty
-    map_add_features(ax, extent)# zorder=0)
-    if bathy:
-        # Load bathymetry
-        bathy = get_bathymetry(extent)
-        map_add_bathymetry(ax,
-                        bathy['longitude'],
-                        bathy['latitude'],
-                        bathy['elevation'], 
-                        [-1000, -100], 
-                        zorder=1.5)
-    map_add_ticks(ax, extent)
+    # # Make the map pretty
+    # map_add_features(ax, extent)# zorder=0)
+    # if bathy:
+    #     # Load bathymetry
+    #     bathy = get_bathymetry(extent)
+    #     map_add_bathymetry(ax,
+    #                     bathy['longitude'],
+    #                     bathy['latitude'],
+    #                     bathy['elevation'], 
+    #                     [-1000, -100], 
+    #                     zorder=1.5)
+    # map_add_ticks(ax, extent)
     
-    if eez:
-        ax.add_feature(shape_feature, zorder=10)
+    # if eez:
+    #     ax.add_feature(shape_feature, zorder=10)
 
     ax.set_xlabel('Longitude', fontsize=14, fontweight='bold')
     ax.set_ylabel('Latitude', fontsize=14, fontweight='bold')

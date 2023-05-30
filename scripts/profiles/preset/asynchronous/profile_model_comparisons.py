@@ -19,26 +19,34 @@ save_dir = conf.path_plots / 'profiles' / 'preset'
 
 dpi = conf.dpi
 depths = slice(0, 1000)
-ctime = pd.Timestamp(2022, 10, 5, 12, 0, 0)
+ctime = pd.Timestamp(2023, 5, 17, 6, 0, 0)
 temp_save_dir = Path('/Users/mikesmith/Documents/')
 
-# St Lucia Passage
-lat = 14 + 15.669/60
-lon = -60 - 58.580/60
+# # St Lucia Passage
+# lat = 14 + 15.669/60
+# lon = -60 - 58.580/60
 
-# St Vincent Passage
-lat = 13 + 34.002/60
-lon = -61 - 11.456/60
+# # St Vincent Passage
+# lat = 13 + 34.002/60
+# lon = -61 - 11.456/60
 
-# Furthest South WPT
-lat = 12 + 35.593/60
-lon = -61 - 36.940/60
-# 
-extent = region_config('windward')['extent']
+# # Furthest South WPT
+# lat = 12 + 35.593/60
+# lon = -61 - 36.940/60
+
+# Western Carib -north 
+lat = 13
+lon = -78
+
+# # Western Carib - South 
+lat = 20
+lon = -83
+
+extent = region_config('caribbean')['extent']
 
 include_rtofs = True
 include_gofs = True
-include_copernicus = True
+include_copernicus = False
 include_amseas = True
 
 tstr = ctime.strftime("%Y-%m-%d %H:%M:%S") # create time string
@@ -162,23 +170,27 @@ if not profile_exist:
     glat = gdsi.lat.data.round(2)
     rlon = rdsi.lon.data.round(2)
     rlat = rdsi.lat.data.round(2)
-    clon = cdsi.lon.data.round(2)
-    clat = cdsi.lat.data.round(2)
-    alon = adsi.lon.data.round(2)
-    alat = adsi.lat.data.round(2)
+
+    if include_copernicus:
+        clon = cdsi.lon.data.round(2)
+        clat = cdsi.lat.data.round(2)
+        clabel = f"Copernicus [{ clon }, { clat }]"
+
+    if include_amseas:
+        alon = adsi.lon.data.round(2)
+        alat = adsi.lat.data.round(2)
+        alabel = f"AMSEAS [{ alon }, { alat }]"
 
     # Legend labels
     # alabel = f'{wmo} [{alon}, {alat}]'
     glabel = f'GOFS [{ glon }, { glat }]'
     rlabel = f'RTOFS [{ rlon }, { rlat }]'
-    clabel = f"Copernicus [{ clon }, { clat }]"
-    alabel = f"AMSEAS [{ alon }, { alat }]"
 
     # Temperature 
     # ax1.plot(df['temp (degree_Celsius)'], df['depth'], 'b-o', label=alabel)
     ax1.plot(gdsi['temperature'], gdsi['depth'], 'g-o', label=glabel)
     ax1.plot(rdsi['temperature'], rdsi['depth'], 'r-o', label=rlabel)
-    ax1.plot(cdsi['temperature'], cdsi['depth'], 'm-o', label=clabel)
+    # ax1.plot(cdsi['temperature'], cdsi['depth'], 'm-o', label=clabel)
     ax1.plot(adsi['temperature'], adsi['depth'], 'k-o', label=alabel)
 
     ax1.set_ylim([400, 0])
@@ -191,7 +203,7 @@ if not profile_exist:
     # ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
     ax2.plot(gdsi['salinity'], gdsi['depth'],'g-o', label=glabel)
     ax2.plot(rdsi['salinity'], rdsi['depth'], 'r-o', label=rlabel)
-    ax2.plot(cdsi['salinity'], cdsi['depth'],  'm-o', label=clabel)
+    # ax2.plot(cdsi['salinity'], cdsi['depth'],  'm-o', label=clabel)
     ax2.plot(adsi['salinity'], adsi['depth'],  'k-o', label=alabel)
 
     ax2.set_ylim([400, 0])
@@ -204,7 +216,7 @@ if not profile_exist:
     # ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
     ax3.plot(gdsi['density'], gdsi['depth'],'g-o', label=glabel)
     ax3.plot(rdsi['density'], rdsi['depth'], 'r-o', label=rlabel)
-    ax3.plot(cdsi['density'], cdsi['depth'], 'm-o', label=clabel)
+    # ax3.plot(cdsi['density'], cdsi['depth'], 'm-o', label=clabel)
     ax3.plot(adsi['density'], adsi['depth'], 'k-o', label=alabel)
 
     ax3.set_ylim([400, 0])
@@ -216,7 +228,7 @@ if not profile_exist:
     text = ax4.text(0.125, 1.0, 
                     f'RTOFS: {pd.to_datetime(rdsi.time.data)}\n'
                     f'GOFS : {pd.to_datetime(gdsi.time.data)}\n'
-                    f'CMEMS: {pd.to_datetime(cdsi.time.data)}\n'
+                    # f'CMEMS: {pd.to_datetime(cdsi.time.data)}\n'
                     f'AMSEAS: {pd.to_datetime(adsi.time.data)}\n',
                     ha='left', va='top', size=15, fontweight='bold')
 

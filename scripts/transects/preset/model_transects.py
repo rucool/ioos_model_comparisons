@@ -20,15 +20,15 @@ from ioos_model_comparisons.models import (rtofs as r,
 
 # %%
 # Select time we want to look at
-t0 = pd.Timestamp(2022, 9, 20, 12, 0, 0)
-t1 = pd.Timestamp(2022, 9, 28, 12, 0, 0)
-times = pd.date_range(t0, t1, freq='24H')
+t0 = pd.Timestamp(2022, 11, 1, 0, 0, 0)
+t1 = pd.Timestamp(2022, 11, 2, 0, 0, 0)
+times = pd.date_range(t0, t1, freq='10H')
 # times = [pd.Timestamp(2022, 9, 25, 12)]
 
 # Select models
 include_rtofs = True
-include_gofs = False
-include_cmems = False
+include_gofs = True
+include_cmems = True
 include_amseas = True
 
 # Isla Contoy to Cuba
@@ -41,7 +41,7 @@ start = -86.79, 21.46
 end = -84.95, 21.86
 points = 500
 depth_spacing = 1
-depth_limits = [0, 1000]
+depth_limits = [0, 1000] #min, max
 
 # # Straits of Florida
 # lons = [-83.77, -79.64]
@@ -142,98 +142,7 @@ def calculate_transect(start, end, npts):
     pts = g.inv_intermediate(start[0], start[1], end[0], end[1], npts) 
     return np.column_stack([pts.lons, pts.lats])
 
-def plot_map(da, cmap, vrange=None, title=None, figsize=(20,12), sname=None, dpi=300):   
-    ctime = pd.to_datetime(da.time.values)
-    ctimestr = ctime.strftime("%Y%m%dT%H%M%SZ")
-    
-    fig, ax = plt.subplots(
-        figsize=figsize,
-        subplot_kw=dict(projection=ccrs.Mercator())
-    )
-    
-    edgecolor = 'black'
-    landcolor = 'tan'
-    
-    state_lines = cfeature.NaturalEarthFeature(
-        category='cultural',
-        name='admin_1_states_provinces_lines',
-        scale='50m',
-        facecolor='none'
-    )
-    
-    LAND = cfeature.GSHHSFeature(scale='full')
-    
-    # Axes properties and features
-    # ax.set_extent(extent)
-    ax.add_feature(cfeature.OCEAN)
-    ax.add_feature(LAND, edgecolor=edgecolor, facecolor=landcolor)
-    ax.add_feature(cfeature.RIVERS)
-    ax.add_feature(cfeature.LAKES)
-    ax.add_feature(state_lines, edgecolor=edgecolor)
-    ax.add_feature(cfeature.BORDERS)
-    
-    # Fill dictionary for keyword arguments
-    cargs = {}
-    cargs['transform'] = ccrs.PlateCarree()
-    cargs['extend'] = 'both'
-    cargs['cmap'] = cmap
-    
-    if vrange:
-        vmin = vrange[0]
-        vmax = vrange[1]
-        vstep = vrange[2]
-    else:
-        vmin = np.floor(np.nanpercentile(da, 2))
-        vmax = np.ceil(np.nanpercentile(da, 98))
-        vstep = (vmax-vmin)/12
-
-    cargs['vmin'] = vmin
-    cargs['vmax'] = vmax
-    cargs['levels'] = np.arange(vmin, vmax+vstep, vstep)
-
-    # Plot filled contour of data variable
-    h = ax.contourf(da['lon'], da['lat'], da.squeeze(), **cargs)
-    axins = inset_axes(ax,  # here using axis of the lowest plot
-    width="2.5%",  # width = 5% of parent_bbox width
-    height="100%",  # height : 340% good for a (4x4) Grid
-    loc='lower left',
-    bbox_to_anchor=(1.05, 0., 1, 1),
-    bbox_transform=ax.transAxes,
-    borderpad=0
-    )
-    
-    # ax.plot(tlons_1, tlats_1, 'r-.', transform=ccrs.PlateCarree(), linewidth=4)
-    # ax.plot(tlons_2, tlats_2, 'r-.', transform=ccrs.PlateCarree(), linewidth=4)
-    # ax.grid(zorder=40)
-    # ax.grid(draw_labels=True)
-    
-    # Colorbar
-    cb = fig.colorbar(h, cax=axins)
-    cb.ax.tick_params(labelsize=15)
-    cb.set_label(f'{da.name.title()} ({da.units})', fontsize=16, weight='bold')
-    
-    # Title and axes
-    if title:
-        title = f"{title}: {da.name.title()} ({int(da.depth.values)} m) - {pd.to_datetime(da.time.values)}"
-    else:
-        title = f"{da.name.title()} ({int(da.depth.values)} m) - {pd.to_datetime(da.time.values)}"   
-        
-    ax.set_title(title, fontsize=18, fontweight='bold')
-    ax.set_xlabel("Longitude", fontsize=18, fontweight="bold")
-    ax.set_ylabel("Latitude", fontsize=18, fontweight="bold")
-    
-    # Ticks
-    plt.setp(ax.get_xticklabels(), fontsize=18)
-    plt.setp(ax.get_yticklabels(), fontsize=18)
-    add_ticks(ax, [da["lon"].min(), da["lon"].max(), da["lat"].min(), da["lat"].max()])
-    
-    if sname:
-        sname = f"{sname}_{da.name}_map_{ctimestr}.png"
-        plt.savefig(sname, dpi=dpi, facecolor='w', transparent=False, bbox_inches='tight', pad_inches=0.1)
-        
-    return ax
-
-def plot_transect(ds, var, cmap, levels=None, xaxis="lon", title=None, ax=None, cbar=False, fontfrac=1, contour=None, xlabel=None, ylabel=None, sname=None, dpi=300):
+def plot_transect(ds, var, cmap, levels=None, xaxis="lon", title=None, ax=None, cbar=False, fontfrac=1, contour=None, xlabel=None, ylabel=None, sname=None, dpi=300, cbar_label=None):
     var = ds[var]
     # var_name = ' '.join(var.standard_name.split("_")).title()
     try:
@@ -256,17 +165,24 @@ def plot_transect(ds, var, cmap, levels=None, xaxis="lon", title=None, ax=None, 
     if cbar:
         # cb = plt.colorbar(h, ax=ax, orientation="vertical")
         cb = plt.colorbar(h, **cbar)
-        cb.set_label(label=f"{var.name.title()} ({var_units})", size=14*fontfrac, weight='bold')
-        cb.ax.tick_params(labelsize=12*fontfrac)
 
-    ax.set_ylim([100, 0])
+        if cbar_label:
+            cb.set_label(label=cbar_label, size=14*fontfrac, weight='bold')
+            cb.ax.tick_params(labelsize=13*fontfrac)
+        else:
+            cb.set_label(label=f"{var.name.title()} ({var_units})", size=14*fontfrac, weight='bold')
+            cb.ax.tick_params(labelsize=13*fontfrac)
+
+    ax.axvline(-85.87044879876521, color='red', linestyle='-.', linewidth=5)
+
+    ax.set_ylim([1000, 0])
     plt.setp(ax.get_xticklabels(), fontsize=16*fontfrac)
     plt.setp(ax.get_yticklabels(), fontsize=16*fontfrac)
     if xlabel:
-        ax.set_xlabel(xlabel, fontsize=18*fontfrac, fontweight="bold")
+        ax.set_xlabel(xlabel, fontsize=20*fontfrac, fontweight="bold")
     
     if ylabel:
-        ax.set_ylabel(ylabel, fontsize=18*fontfrac, fontweight="bold")
+        ax.set_ylabel(ylabel, fontsize=20*fontfrac, fontweight="bold")
     
     if title:
         ax.set_title(title, fontsize=24*fontfrac, fontweight="bold")
@@ -321,6 +237,8 @@ if include_cmems:
 pts = calculate_transect(start, end, points)
 
 # Iterate through times
+times = [pd.Timestamp(2022, 11, 1, 12, 0, 0)]
+
 for ctime in times:
     ctime_str = ctime.strftime("%Y-%m-%d %H:%M:%S")
     ctime_save_str = ctime.strftime("%Y-%m-%dT%H%M%SZ")
@@ -330,8 +248,8 @@ for ctime in times:
         trtofs = rtofs.sel(time=ctime)
 
         # Use xr.apply_ufunc to apply a function over all dimensions
-        trtofs["pressure"] = xr.apply_ufunc(seawater.eos80.pres, trtofs.depth, trtofs.lat)
-        trtofs["density"] = xr.apply_ufunc(seawater.eos80.dens, trtofs.salinity, trtofs.temperature, trtofs.pressure)
+        # trtofs["pressure"] = xr.apply_ufunc(seawater.eos80.pres, trtofs.depth, trtofs.lat)
+        # trtofs["density"] = xr.apply_ufunc(seawater.eos80.dens, trtofs.salinity, trtofs.temperature, trtofs.pressure)
 
         # Convert to the x, y indexes so we can work with the RTOFS model
         grid_lons = trtofs.lon.values[0,:]
@@ -350,8 +268,8 @@ for ctime in times:
     if include_gofs:
         # GOFS
         tgofs = gofs.sel(time=ctime)
-        tgofs["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tgofs.depth, tgofs.lat)
-        tgofs["density"] = xr.apply_ufunc(seawater.eos80.dens, tgofs.salinity, tgofs.temperature, tgofs.pressure)
+        # tgofs["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tgofs.depth, tgofs.lat)
+        # tgofs["density"] = xr.apply_ufunc(seawater.eos80.dens, tgofs.salinity, tgofs.temperature, tgofs.pressure)
 
         # Interpolate GOFS Transect
         gds = tgofs.interp(
@@ -363,8 +281,8 @@ for ctime in times:
     if include_amseas:
         # AMSEAS
         tam = am.sel(time=ctime)
-        tam["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tam.depth, tam.lat)
-        tam["density"] = xr.apply_ufunc(seawater.eos80.dens, tam.salinity, tam.temperature, tam.pressure)
+        # tam["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tam.depth, tam.lat)
+        # tam["density"] = xr.apply_ufunc(seawater.eos80.dens, tam.salinity, tam.temperature, tam.pressure)
 
         # Interpolate AMSEAS Transect
         ads = tam.interp(
@@ -376,8 +294,8 @@ for ctime in times:
     if include_cmems:
         # Copernicus
         tcmems = cmems.sel(time=ctime, method='nearest')
-        tcmems["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tcmems.depth, tcmems.lat)
-        tcmems["density"] = xr.apply_ufunc(seawater.eos80.dens, tcmems.salinity, tcmems.temperature, tcmems.pressure)
+        # tcmems["pressure"] = xr.apply_ufunc(seawater.eos80.pres, tcmems.depth, tcmems.lat)
+        # tcmems["density"] = xr.apply_ufunc(seawater.eos80.dens, tcmems.salinity, tcmems.temperature, tcmems.pressure)
 
         # Interpolate Copernicus Transect
         cds = tcmems.interp(
@@ -385,81 +303,111 @@ for ctime in times:
             lat=xr.DataArray(pts[:,1], dims="point"),
             depth=xr.DataArray(np.arange(0, tcmems.depth.max()+depth_spacing, depth_spacing), dims="depth")
         )
- 
-    # # Create map plot
-    # ax = plot_map(trtofs["salinity"].sel(depth=0), cm.haline, (35, 37, .1), title="RTOFS", figsize=(30,20))
-    # ax.plot(pts[:,0], pts[:,1], 'r-.', linewidth=4, transform=ccrs.PlateCarree())
-    # plt.savefig(f'{rstr}_transect_map_salinity_{ctime_save_str}.png', dpi=300, facecolor='w', transparent=False, bbox_inches='tight', pad_inches=0.1)
-    # plt.close()
 
-    # Create map plot
-    # ax = plot_map(trtofs["temperature"].sel(depth=0), cm.haline, (36, 36.4, .05), title="RTOFS", figsize=(30,20))
-    # ax.plot(pts[:,0], pts[:,1], 'r-.', linewidth=4, transform=ccrs.PlateCarree())
-    # plt.savefig(f'{rstr}_transect_map_salinity_{ctime_save_str}.png', dpi=300, facecolor='w', transparent=False, bbox_inches='tight', pad_inches=0.1)
+    import cool_maps.plot as cplt
+    import cartopy.feature as cfeature
+    from cartopy.io.shapereader import Reader
 
-    # fig, ax = plt.subplots(3, 1, figsize=(16,10))
+
+    def map_add_eez(ax, zorder=1, color='white', linewidth=0.75):
+        shape_feature = cfeature.ShapelyFeature(
+            Reader('/Users/mikesmith/Documents/data/eez/World_EEZ_v11_20191118/eez_boundaries_v11.shp').geometries(), 
+            ccrs.PlateCarree(),
+            linestyle='-.',
+            linewidth=linewidth,
+            edgecolor=color, 
+            facecolor='none'
+            )
+        h = ax.add_feature(shape_feature, zorder=zorder)
+        return h
     
-    # grid = [["temperature"], ["salinity"], ["density"],]
+    # Create map plot
+    map = ccrs.Mercator()
+    proj = ccrs.PlateCarree()
+    extent_map = [-87.5, -84.5, 19.5, 23]
 
-    # fig, axs = plt.subplot_mosaic(grid,
-    #                               constrained_layout=True,
-    #                               figsize=(16,10)
-    #                               )
+    # fig, ax = plt.subplots(1, 2, figsize=(16,8), subplot_kw=dict(projection=map))
+    # cplt.create(extent=extent_map, ax=ax[0], gridlines=True)
+    # trtofs['temperature'].sel(depth=0).plot.contourf(x='lon', y='lat', ax=ax[0], cmap=cm.thermal, levels=np.arange(27, 29.5, .25), extend='both', transform=proj)
+    # ax[0].plot(pts[:,0], pts[:,1], 'k-.', linewidth=4, transform=proj)
+    # map_add_eez(ax[0], color='red', linewidth=1.5)
+
+    # cplt.create(extent=extent_map, ax=ax[1], gridlines=True)
+    # trtofs['salinity'].sel(depth=0).plot.contourf(x='lon', y='lat', ax=ax[1], cmap=cm.haline, levels=np.arange(35.8, 36.2, .05), extend='both', transform=proj)
+    # ax[1].plot(pts[:,0], pts[:,1], 'k-.', linewidth=4, transform=proj)
+    # map_add_eez(ax[1], color='red', linewidth=1.5)
+    # plt.suptitle('RTOFS', fontweight='bold', fontsize=20)
+    from oceans.ocfis import uv2spdir
+
+    tds = trtofs.sel(depth=0)
+    _, speed = uv2spdir(tds.u, tds.v)
+    tds['speed'] = (('y', 'x'), speed)
+    tds['speed'] = tds['speed']*100
+    
+    
+    fig, ax = plt.subplots(figsize=(16,8), subplot_kw=dict(projection=map))
+    cplt.create(extent=extent_map, ax=ax, gridlines=True)
+    tds['speed'].plot.contourf(x='lon', y='lat', ax=ax, cmap=cm.speed, levels=np.arange(0, 170, 10), extend='both', transform=proj)
+    ax.plot(pts[:,0], pts[:,1], 'k-.', linewidth=4, transform=proj)
+    map_add_eez(ax, color='red', linewidth=1.5)
+
+    plt.savefig(f'/Users/mikesmith/Documents/{rstr}_transect_maps_1000m_{ctime_save_str}.png', dpi=300, facecolor='w', transparent=False, bbox_inches='tight', pad_inches=0.1)
+    plt.close()
     
     if xaxis =='lon':
         xlabel = "Longitude"
     elif xaxis == 'lat':
         xlabel = "Latitude"
 
-    fig, ax = plt.subplots(4, 3, figsize=(40,30))
+    # fig, ax = plt.subplots(4, 3, figsize=(40,30))
 
-    if include_rtofs:
-        plot_transect(rds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, title="Temperature", ax=ax[0,0], cbar=dict(ax=ax[0,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="RTOFS\nDepth (m)")
-        plot_transect(rds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, title="Salinity", ax=ax[0,1], cbar=dict(ax=ax[0,1], orientation='vertical', pad=0.01), fontfrac=1.5)
-        plot_transect(rds, "density", cm.dense, levels=levels_density, xaxis=xaxis, title="Density", ax=ax[0,1], cbar=dict(ax=ax[0,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+    # if include_rtofs:
+    #     plot_transect(rds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, title="Temperature", ax=ax[0,0], cbar=dict(ax=ax[0,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="RTOFS\nDepth (m)")
+    #     plot_transect(rds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, title="Salinity", ax=ax[0,1], cbar=dict(ax=ax[0,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+    #     plot_transect(rds, "density", cm.dense, levels=levels_density, xaxis=xaxis, title="Density", ax=ax[0,1], cbar=dict(ax=ax[0,1], orientation='vertical', pad=0.01), fontfrac=1.5)
 
-    if include_gofs:
-        plot_transect(gds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[1,0], cbar=dict(ax=ax[1,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="GOFS\nDepth (m)")
-        plot_transect(gds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[1,1], cbar=dict(ax=ax[1,1], orientation='vertical', pad=0.01), fontfrac=1.5)
-        plot_transect(gds, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[1,1], cbar=dict(ax=ax[1,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+    # if include_gofs:
+    #     plot_transect(gds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[1,0], cbar=dict(ax=ax[1,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="GOFS\nDepth (m)")
+    #     plot_transect(gds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[1,1], cbar=dict(ax=ax[1,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+    #     plot_transect(gds, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[1,1], cbar=dict(ax=ax[1,1], orientation='vertical', pad=0.01), fontfrac=1.5)
 
-    if include_amseas:
-        plot_transect(ads, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="AMSEAS\nDepth (m)")
-        plot_transect(ads, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.5)
-        plot_transect(ads, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+    # if include_amseas:
+    #     plot_transect(ads, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="AMSEAS\nDepth (m)")
+    #     plot_transect(ads, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+    #     plot_transect(ads, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.5)
 
-    if include_cmems:
-        plot_transect(cds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[3,0], cbar=dict(ax=ax[3,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="Copernicus\nDepth (m)", xlabel=xlabel)
-        plot_transect(cds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[3,1], cbar=dict(ax=ax[3,1], orientation='vertical', pad=0.01), fontfrac=1.5, xlabel=xlabel)
-        plot_transect(cds, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[3,1], cbar=dict(ax=ax[3,1], orientation='vertical', pad=0.01), fontfrac=1.5, xlabel=xlabel)
+    # if include_cmems:
+    #     plot_transect(cds, "temperature", cm.thermal, levels=levels_temperature, xaxis=xaxis, ax=ax[3,0], cbar=dict(ax=ax[3,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="Copernicus\nDepth (m)", xlabel=xlabel)
+    #     plot_transect(cds, "salinity", cm.haline, levels=levels_salinity, xaxis=xaxis, ax=ax[3,1], cbar=dict(ax=ax[3,1], orientation='vertical', pad=0.01), fontfrac=1.5, xlabel=xlabel)
+    #     plot_transect(cds, "density", cm.dense, levels=levels_density, xaxis=xaxis, ax=ax[3,1], cbar=dict(ax=ax[3,1], orientation='vertical', pad=0.01), fontfrac=1.5, xlabel=xlabel)
 
-    plt.suptitle(f"{title}\n{ctime_str}", fontsize=32, fontweight="bold")
-    plt.subplots_adjust(left=0.1,
-                        bottom=0.1, 
-                        top=0.94, 
-                        wspace=0.005, 
-                        hspace=0.1)
-    plt.savefig(f'{rstr}_tsd_{ctime_save_str}.png', dpi=300, facecolor='w', transparent=False, bbox_inches='tight', pad_inches=0.1)
-    plt.close()
+    # plt.suptitle(f"{title}\n{ctime_str}", fontsize=32, fontweight="bold")
+    # plt.subplots_adjust(left=0.1,
+    #                     bottom=0.1, 
+    #                     top=0.94, 
+    #                     wspace=0.005, 
+    #                     hspace=0.1)
+    # plt.savefig(f'{rstr}_tsd_{ctime_save_str}.png', dpi=300, facecolor='w', transparent=False, bbox_inches='tight', pad_inches=0.1)
+    # plt.close()
     
     fig, ax = plt.subplots(4, 2, figsize=(40,30))
     if include_rtofs:
-        plot_transect(rds, "u", cm.balance, levels=levels_u, xaxis=xaxis, title="Eastward Velocity", ax=ax[0,0], cbar=dict(ax=ax[0,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="RTOFS\nDepth (m)")
-        plot_transect(rds, "v", cm.balance, levels=levels_v, xaxis=xaxis, title="Northward Velocity", ax=ax[0,1], cbar=dict(ax=ax[0,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+        plot_transect(rds, "u", cm.balance, levels=levels_u, xaxis=xaxis, title="Eastward Velocity", ax=ax[0,0], cbar=dict(ax=ax[0,0], orientation='vertical', pad=0.01), cbar_label='U (m/s)', fontfrac=1.5, ylabel="RTOFS\nDepth (m)")
+        plot_transect(rds, "v", cm.balance, levels=levels_v, xaxis=xaxis, title="Northward Velocity", ax=ax[0,1], cbar=dict(ax=ax[0,1], orientation='vertical', pad=0.01), cbar_label='V (m/s)', fontfrac=1.5)
 
     if include_gofs:
-        plot_transect(gds, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[1,0], cbar=dict(ax=ax[1,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="GOFS\nDepth (m)")
-        plot_transect(gds, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[1,1], cbar=dict(ax=ax[1,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+        plot_transect(gds, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[1,0], cbar=dict(ax=ax[1,0], orientation='vertical', pad=0.01), cbar_label='U (m/s)', fontfrac=1.5, ylabel="GOFS\nDepth (m)")
+        plot_transect(gds, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[1,1], cbar=dict(ax=ax[1,1], orientation='vertical', pad=0.01), cbar_label='V (m/s)', fontfrac=1.5)
 
     if include_amseas:
-        plot_transect(ads, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="AMSEAS\nDepth (m)")
-        plot_transect(ads, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), fontfrac=1.5)
+        plot_transect(ads, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[2,0], cbar=dict(ax=ax[2,0], orientation='vertical', pad=0.01), cbar_label='U (m/s)', fontfrac=1.5, ylabel="AMSEAS\nDepth (m)")
+        plot_transect(ads, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[2,1], cbar=dict(ax=ax[2,1], orientation='vertical', pad=0.01), cbar_label='V (m/s)', fontfrac=1.5)
 
     if include_cmems:
-        plot_transect(cds, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[3,0], cbar=dict(ax=ax[3,0], orientation='vertical', pad=0.01), fontfrac=1.5, ylabel="Copernicus\nDepth (m)", xlabel=xlabel)
-        plot_transect(cds, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[3,1], cbar=dict(ax=ax[3,1], orientation='vertical', pad=0.01), fontfrac=1.5, xlabel=xlabel)
+        plot_transect(cds, "u", cm.balance, levels=levels_u, xaxis=xaxis, ax=ax[3,0], cbar=dict(ax=ax[3,0], orientation='vertical', pad=0.01), cbar_label='U (m/s)', fontfrac=1.5, ylabel="Copernicus\nDepth (m)", xlabel=xlabel)
+        plot_transect(cds, "v", cm.balance, levels=levels_v, xaxis=xaxis, ax=ax[3,1], cbar=dict(ax=ax[3,1], orientation='vertical', pad=0.01), cbar_label='V (m/s)', fontfrac=1.5, xlabel=xlabel)
 
-    plt.suptitle(f"{title}\n{ctime_str}", fontsize=32, fontweight="bold")
+    plt.suptitle(f"{title} - {ctime_str}", fontsize=40, fontweight="bold")
     plt.subplots_adjust(left=0.1,
                         bottom=0.1, 
                         top=0.94, 
@@ -467,17 +415,3 @@ for ctime in times:
                         hspace=0.1)
     plt.savefig(f'{rstr}_velocities_{ctime_save_str}.png', dpi=300, facecolor='w', transparent=False, bbox_inches='tight', pad_inches=0.1)
     plt.close()
-    
-#     # 0m
-#     d = 0
-#     # Salinity
-#     plot_map(rtofs["salinity"].sel(depth=0), cm.haline, (36, 36.4, .05), title="RTOFS", figsize=(30,20), sname=f"{rstr}_rtofs_{d}m")
-#     plot_map(gofs["salinity"].sel(depth=0), cm.haline, (36, 36.4, .05), title="GOFS", figsize=(30,20), sname=f"{rstr}_gofs_{d}m")
-#     plot_map(am["salinity"].sel(depth=0), cm.haline, (36, 36.4, .05), title="AMSEAS", figsize=(30,20), sname=f"{rstr}_amseas_{d}m")
-#     plot_map(cmems["salinity"].sel(depth=0, method='nearest'), cm.haline, (36, 36.4, .05), title="CMEMS", figsize=(30,20), sname=f"{rstr}_cmems_{d}m")
-
-#     # Temperature
-#     plot_map(rtofs["temperature"].sel(depth=0), cm.thermal, (24, 29, .5), title="RTOFS", figsize=(30,20), sname=f"{rstr}_rtofs_{d}m")
-#     plot_map(gofs["temperature"].sel(depth=0), cm.thermal, (24, 29, .5), title="GOFS", figsize=(30,20), sname=f"{rstr}_gofs_{d}m")
-#     plot_map(am["temperature"].sel(depth=0), cm.thermal, (24, 29, .5), title="AMSEAS", figsize=(30,20), sname=f"{rstr}_amseas_{d}m")
-#     plot_map(cmems["temperature"].sel(depth=0, method='nearest'), cm.thermal, (24, 29, .5), title="CMEMS", figsize=(30,20), sname=f"{rstr}_cmems_{d}m")
