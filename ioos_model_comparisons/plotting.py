@@ -100,10 +100,10 @@ def map_add_argo(ax, df, transform=proj['data']):
         n = n + 1
 
 
-def map_add_all_argo(ax, df, transform=proj['data']):
-    grouped = df.groupby(['longitude (degrees_east)', 'latitude (degrees_north)'])
+def map_add_all_argo(ax, df, transform=proj['data'], markersize=7):
+    grouped = df.groupby(['lon', 'lat'])
     for i, x in grouped:
-        ax.plot(i[0], i[1], marker='o', markersize=7, markeredgecolor='black', color='green', transform=transform)
+        ax.plot(i[0], i[1], marker='o', markersize=markersize, markeredgecolor='black', color='green', transform=transform)
 
 
 def map_add_currents(ax, ds, coarsen=None, ptype="quiver",
@@ -362,23 +362,23 @@ def plot_model_region(ds, region,
             os.makedirs(path_maps, exist_ok=True)
             sfig = (path_maps / f"{region_name}_fig.pkl")
 
-            if not sfig.exists():
+            # if not sfig.exists():
                 # Create an empty projection within set extent
-                fig, ax = create(extent, proj=transform['map'])
+            fig, ax = create(extent, proj=transform['map'])
 
-                # Add bathymetry
-                if bathy:
-                    add_bathymetry(ax,
-                                    bathy.longitude.values, 
-                                    bathy.latitude.values, 
-                                    bathy.elevation.values,
-                                    levels=(-1000, -100),
-                                    zorder=1.5)
+            # Add bathymetry
+            if bathy:
+                add_bathymetry(ax,
+                                bathy.longitude.values, 
+                                bathy.latitude.values, 
+                                bathy.elevation.values,
+                                levels=(-1000, -100),
+                                zorder=1.5)
 
-                save_fig(fig, path_maps, f"{region_name}_fig.pkl")       
-            else:
-                fig = load_fig(sfig)
-                ax = fig.axes[0]
+            #     save_fig(fig, path_maps, f"{region_name}_fig.pkl")       
+            # else:
+            #     fig = load_fig(sfig)
+            #     ax = fig.axes[0]
                                
             rargs = {}
             rargs['argo'] = argo
@@ -447,7 +447,478 @@ def plot_model_region(ds, region,
             
             plt.close()
 
+def plot_model_region_currents(ds, region,
+                      bathy=None,
+                      argo=None,
+                      gliders=None,
+                      currents=dict(bool=False),
+                      transform=dict(
+                          map=proj['map'],
+                          data=proj['data']
+                          ),
+                      legend=True,
+                      model='rtofs',
+                      path_save=os.getcwd(),
+                      dpi=150,
+                      t0=None,
+                      ):
+    """
 
+    :param lon: longitude
+    :param lat: latitude
+    :param variable: data variable you want to plot
+    :param kwargs:
+    :return:
+    """
+    region_name = region["name"]
+    extent = region["extent"]
+    time = pd.to_datetime(ds.time.values)
+
+    # Create subdirectory for region
+    region_file_str = '_'.join(region_name.lower().split(' '))
+    path_save_region = path_save / 'regions' / region_file_str
+
+    if not isinstance(gliders, pd.DataFrame):
+        gliders = pd.DataFrame()
+    
+    if not isinstance(argo, pd.DataFrame):
+        argo = pd.DataFrame()
+
+    tds = ds.sel(depth=0)
+
+    # Convert u and v radial velocities to magnitude
+    _, mag = uv2spdir(tds['u'], tds['v'])
+
+    # Create subdirectory for depth under variable subdirectory
+    save_dir_final = path_save_region / f"currents_0m" / time.strftime('%Y/%m')
+    os.makedirs(save_dir_final, exist_ok=True)
+
+    # Create a string for the title of the plot
+    title_time = time.strftime("%Y-%m-%d %H:%M:%S UTC")
+    title = f"{model.upper()} - Currents (0 m) - {title_time}\n"
+ 
+    # Create a file name to save the plot as
+    sname = f'{model}-currents_0m-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
+    save_file = save_dir_final / f"{sname}.png"
+
+
+    fig, ax = create(extent, proj=transform['map'], bathymetry=True, figsize=(16,9))
+                               
+    rargs = {}
+    rargs['argo'] = argo
+    rargs['gliders'] = gliders
+    rargs['transform'] = transform['data']  
+    plot_regional_assets(ax, **rargs)
+
+    # Initialize qargs dictionary for input into contour plot of magnitude
+    qargs = {}
+    qargs['transform'] = transform['data']
+    qargs['cmap'] = cmocean.cm.speed
+    qargs['extend'] = "max"
+    # qargs['zorder'] = 2000
+
+    # try:
+    #     cargs.pop('vmin'), cargs.pop('vmax')
+    # except KeyError:
+    #     pass
+    
+    # h = ax.contourf(tds['lon'], tds['lat'], mag, **qargs)
+    # cb = fig.colorbar(h, ax=ax, orientation="vertical", shrink=.95)#, shrink=0.7, aspect=20*0.7)
+    # cb = add_colorbar(axs[:2], m1, location="bottom")
+    # cb.ax.tick_params(labelsize=12)
+    # cb.set_label(f'Current Speed (m/s)', fontsize=12, fontweight="bold")
+    url = 'https://encdirect.noaa.gov/arcgis/services/encdirect/enc_overview/MapServer/WMSServer?request=GetCapabilities&service=WMS'
+    url2 = 'https://encdirect.noaa.gov/arcgis/services/encdirect/enc_general/MapServer/WMSServer?request=GetCapabilities&service=WMS'
+    # url = 'https://encdirect.noaa.gov/arcgis/services/encdirect/enc_coastal/MapServer/WMSServer?request=GetCapabilities&service=WMS'
+
+    layers2 = [
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        #  '6',
+        '7',
+        '8',
+        # '9',
+        '10',
+        '11',
+        '12',
+        '13',
+        # '14',
+        '15',
+        '16',
+        '17',
+        '18',
+        '19',
+        # '20',
+        '21',
+        # '22',
+        '23',
+        '24',
+        '25',
+        '26',
+        '27',
+        '28',
+        '29',
+        '30',
+        '31',
+        # '32',
+        '33',
+        '34',
+        # '35',
+        '36',
+        '37',
+        # '38',
+        '39',
+        # '40',
+        '41',
+        '42',
+        '43',
+        # '44',
+        '45',
+        '46',
+        '47',
+        '48',
+        # '49',
+        '50',
+        '51',
+        '52',
+        # '53',
+        '54',
+        # '55',
+        '56',
+        # '57',
+        '58',
+        '59',
+        # '60',
+        '61',
+        # '62',
+        # '63',
+        '64',
+        # '65',
+        '66',
+        '67',
+        # '68',
+        '69',
+        # '70',
+        '71',
+        '72',
+        '73',
+        # '74',
+        '75',
+        # '76',
+        '77',
+        '78',
+        # '79',
+        '80',
+        '81',
+        # '82',
+        '83',
+        '84',
+        '85',
+        '86',
+        # '87',
+        '88',
+        # '89',
+        '90',
+        '91',
+        '92',
+        '93',
+        '94',
+        # '95',
+        '96',
+        '97',
+        '98',
+        '99',
+        '100',
+        # '101',
+        '102',
+        '103',
+        '104',
+        '105',
+        '106',
+        '107',
+        '108',
+        # '109',
+        '110',
+        # '111',
+        '112',
+        '113',
+        '114',
+        '115',
+        '116',
+        '117',
+        '118',
+        '119',
+        '120',
+        '121',
+        '122',
+        '123',
+        '124']
+
+    layers = [
+        '1',
+        '2',
+        '3',
+        '4',
+        '5',
+        # '6',
+        '7',
+        '8',
+        # '9',
+        '10',
+        '11',
+        '12',
+        '13',
+        '14',
+        '15',
+        # '16',
+        '17',
+        # '18',
+        '19',
+        # '20',
+        '21',
+        # '22',
+        '23',
+        '24',
+        # '25',
+        '26',
+        # '27',
+        '28',
+        '29',
+        # '30',
+        '31',
+        # '32',
+        '33',
+        # '34',
+        '35',
+        '36',
+        # '37',
+        '38',
+        '39',
+        # '40',
+        '41',
+        '42',
+        # '43',
+        '44',
+        # '45',
+        '46',
+        # '47',
+        '48',
+        '49',
+        # '50',
+        '51',
+        '52',
+        # '53',
+        '54',
+        # '55',
+        '56',
+        # '57',
+        '58',
+        '59',
+        # '60',
+        '61',
+        '62',
+        '63',
+        # '64',
+        '65',
+        # '66',
+        '67',
+        '68',
+        '69',
+        '70',
+        '71',
+        # '72',
+        '73',
+        '74',
+        '75',
+        # '76',
+        '77',
+        # '78',
+        '79',
+        '80',
+        '81',
+        '82',
+        '83',
+        '84',
+        # '85',
+        '86',
+        '87',
+        '88',
+        '89',
+        '90',
+        '91',
+        '92',
+        '93',
+        '94',
+        '95',
+        '96',]
+
+
+    
+    # ax.add_wms(wms=url2, layers=layers2)
+    
+    # map_add_eez(ax, color='red')
+
+        # # Create the colorbar
+        # axins = inset_axes(ax,  # here using axis of the lowest plot
+        #     width="2.5%",  # width = 5% of parent_bbox width
+        #     height="100%",  # height : 340% good for a (4x4) Grid
+        #     loc='lower left',
+        #     bbox_to_anchor=(1.05, 0., 1, 1),
+        #     bbox_transform=ax.transAxes,
+        #     borderpad=0
+        #     )
+        # cb = plt.colorbar(h, cax=axins)
+        # cb.ax.tick_params(labelsize=12)
+        # cb.set_label(f'{da.name.title()} ({da.units})', fontsize=13)
+
+    # ax.set_title(title, fontsize=16, fontweight='bold')
+
+    if legend:
+        h, l = ax.get_legend_handles_labels()  # get labels and handles from ax1
+
+        if (len(h) > 0) & (len(l) > 0):
+            # Shrink current axis's height by 10% on the bottom
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0 + box.height * 0.1,
+                            box.width, box.height * 0.9])
+
+            # Put a legend below current axis
+            ax.legend(h, l, loc='upper center', bbox_to_anchor=(0.5, -0.05),
+                    fancybox=True, shadow=True, ncol=5)
+            legstr = f'Glider/Argo Search Window: {str(t0)} to {str(time)}'
+            plt.figtext(0.5, -0.07, legstr, ha="center", fontsize=10, fontweight='bold')
+
+    # fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+    
+    # Add currents
+    # coarsen = currents['coarsen']
+    # map_add_currents(ax, tds, coarsen=coarsen[model], **currents['kwargs'])
+
+    # field_lon = [-86.6021, -85.5144,-84.9706, -84.9102, -85.1849, -85.5144, -86.6076]
+    # field_lat = [21.2004, 22.5968, 21.8544, 21.0056, 20.1880, 19.7544, 21.1901]
+    # ax.fill(field_lon, field_lat, color='coral', edgecolor='black', transform=ccrs.PlateCarree(), alpha=0.6, zorder=3000)
+
+    style = "Simple, tail_width=0.5, head_width=8, head_length=8"
+
+    import matplotlib.patches as patches
+
+    # Triangle
+    kw = dict(arrowstyle=style, color="red", linewidth=4, transform=ccrs.PlateCarree(), zorder=3000)
+    a1 = patches.FancyArrowPatch((-87, 19.25), (-84.5, 21.5), **kw)
+    a2 = patches.FancyArrowPatch((-84.5, 21.5), (-85.25, 19.25), **kw)
+    a3 = patches.FancyArrowPatch((-85.25, 19.25), (-87, 19.25), **kw)
+
+    plt.gca().add_patch(a1)
+    plt.gca().add_patch(a2)
+    plt.gca().add_patch(a3)
+
+    # # Triangle 2
+    # kw = dict(arrowstyle=style, color="green", linewidth=4, transform=ccrs.PlateCarree(), zorder=3000)
+    # a4 = patches.FancyArrowPatch((-86.25, 19.5), (-82.75, 21), **kw)
+    # a5 = patches.FancyArrowPatch((-82.6, 21), (-83.5, 18.5), **kw)
+    # a6 = patches.FancyArrowPatch((-83.5, 18.25), (-86.25, 19), **kw)
+    
+    # plt.gca().add_patch(a4)
+    # plt.gca().add_patch(a5)
+    # plt.gca().add_patch(a6)
+
+    # Curvy area
+    kw = dict(arrowstyle=style, color="magenta", linewidth=4, transform=ccrs.PlateCarree(), zorder=3000)
+    a1 = patches.FancyArrowPatch((-86.5, 20.5), (-86, 21.25), **kw)
+    # a2 = patches.FancyArrowPatch((-85.75, 21.5), (-88, 25), connectionstyle="angle3, angleA=90, angleB=20", **kw)
+    a2 = patches.FancyArrowPatch((-85.75, 21.5), (-88, 25), connectionstyle="angle3, angleA=70, angleB=15", **kw)
+    a3 = patches.FancyArrowPatch((-85.75, 21.5), (-84, 23.5), connectionstyle="angle3, angleA=75, angleB=-20", **kw)
+    a4 = patches.FancyArrowPatch((-85.75, 21.5), (-84, 24.5), connectionstyle="angle3, angleA=75, angleB=-40", **kw)
+    a5 = patches.FancyArrowPatch((-84, 24), (-82.25, 24), **kw)
+    # a6 = patches.FancyArrowPatch((-82, 24), (-81.25, 23.5), **kw)
+    # a7 = patches.FancyArrowPatch((-80.75, 24), (-80, 25), **kw)
+    # a3 = patches.FancyArrowPatch((-0.4, -0.6), (0.4, -0.6), connectionstyle="arc3,rad=.5", **kw)
+
+    # for a in [a1, a2, a3]:
+        # plt.gca().add_patch(a)
+    plt.gca().add_patch(a1)
+    plt.gca().add_patch(a2)
+    plt.gca().add_patch(a3)
+    plt.gca().add_patch(a4)
+    plt.gca().add_patch(a5)
+    # plt.gca().add_patch(a6)
+    # plt.gca().add_patch(a7)
+
+    # Area 1
+    field_lon = [-86.5, -86.5, -87.3, -87.3, -86.5]
+    field_lat = [19, 20, 20, 19, 19]
+    # ax.fill(field_lon, field_lat, color='coral', edgecolor='black', transform=ccrs.PlateCarree(), alpha=0.6, zorder=3000)
+    ax.plot(field_lon, field_lat, color='maroon', linewidth=4, zorder=3000, transform=ccrs.PlateCarree())
+    
+    # Area 2
+    field_lon = [-86.75, -86, -85.5, -86.25, -86.75]
+    field_lat = [20.75, 20.75, 21.5, 21.5, 20.75]
+    # # ax.fill(field_lon, field_lat, color='coral', edgecolor='black', transform=ccrs.PlateCarree(), alpha=0.6, zorder=3000)
+    ax.plot(field_lon, field_lat, color='maroon', linewidth=4, zorder=3000, transform=ccrs.PlateCarree())
+
+    # # Florida
+    ax.text(-82, 27.5, 'Florida', fontsize=14, transform=ccrs.PlateCarree(), zorder=3000)
+    
+    # # Cuba
+    ax.text(-81, 22.4, 'Cuba', fontsize=14, transform=ccrs.PlateCarree(), zorder=3000)
+    
+    # # Mexico
+    ax.text(-89.5, 19, 'Mexico', fontsize=14, transform=ccrs.PlateCarree(), zorder=3000)
+    
+    # # Yucatan/Quintana Roo
+    ax.text(-89.9, 21, 'Yucatan/Quintana Roo', fontsize=11, transform=ccrs.PlateCarree(), zorder=3000)
+
+
+    # Add loop current contour from WHO Group
+    fname = '/Users/mikesmith/Downloads/GOM front/2023-01-31_fronts.mat'
+    data = loadmat(fname)
+ 
+    fronts = []
+    for item in data['BZ_all'][0]:
+        loop_y = item['y'].T
+        loop_x = item['x'].T
+
+        hf = ax.plot(loop_x, loop_y,
+                     linestyle=item['LineStyle'][0],
+                     color='black',
+                     linewidth=3, 
+                     transform=ccrs.PlateCarree(), 
+                     zorder=120
+                     )
+        fronts.append(hf)
+
+        # Add arrows
+        start_lon = item['bx'].T
+        start_lat = item['by'].T
+        end_lon = item['tx'].T
+        end_lat = item['ty'].T
+
+        for count, _ in enumerate(start_lon):
+            ax.arrow(
+                start_lon[count][0],
+                start_lat[count][0],
+                end_lon[count][0]-start_lon[count][0],
+                end_lat[count][0]-start_lat[count][0],
+                linewidth=0, 
+                head_width=0.2,
+                shape='full', 
+                fc='black', 
+                ec='black',
+                transform=ccrs.PlateCarree(),
+                zorder=130,
+                )
+    fronts.reverse()
+    url = 'https://gis.charttools.noaa.gov/arcgis/rest/services/MarineChart_Services/NOAACharts/MapServer/WMTS'
+    w = ax.add_wmts(wmts=url, layer_name='MarineChart_Services_NOAACharts')
+
+    fig.savefig(save_file, dpi=150, bbox_inches='tight', pad_inches=0.1)
+
+
+    plt.close()
+ 
 def remove_quiver_handles(ax):
     for art in ax.get_children():
         if isinstance(art, matplotlib.patches.FancyArrowPatch):
@@ -528,18 +999,21 @@ def plot_model_region_comparison(ds1, ds2, region,
 
     # Add bathymetry lines
     if bathy:
-        add_bathymetry(ax1,
-                           bathy.longitude.values, 
-                           bathy.latitude.values, 
-                           bathy.elevation.values,
-                           levels=(-1000, -100),
-                           zorder=1.5)
-        add_bathymetry(ax2,
-                           bathy.longitude.values, 
-                           bathy.latitude.values, 
-                           bathy.elevation.values,
-                           levels=(-1000, -100),
-                           zorder=1.5)
+        try:
+            add_bathymetry(ax1,
+                            bathy.longitude.values, 
+                            bathy.latitude.values, 
+                            bathy.elevation.values,
+                            levels=(-1000, -100),
+                            zorder=1.5)
+            add_bathymetry(ax2,
+                            bathy.longitude.values, 
+                            bathy.latitude.values, 
+                            bathy.elevation.values,
+                            levels=(-1000, -100),
+                            zorder=1.5)
+        except ValueError:
+            print("Bathymetry deeper than specified levels.")
 
     # Add ticks
     add_ticks(ax1, extent, label_left=True)
@@ -825,8 +1299,8 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
     LL
     """
     # Add loop current contour from WHO Group
-    fname = '/Users/mikesmith/Downloads/GOM22 Fronts/2022-09-04_fronts.mat'
-    data = loadmat(fname)
+    # fname = '/Users/mikesmith/Downloads/GOM22 Fronts/2022-09-04_fronts.mat'
+    # data = loadmat(fname)
 
     # Iterate through the variables to be plotted for each region. 
     # This dict contains information on what variables and depths to plot. 
@@ -897,21 +1371,24 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         add_features(ax1)# zorder=0)
         add_features(ax2)# zorder=0)
         if bathy:       
-            add_bathymetry(ax1,
-                           bathy.longitude.values, 
-                           bathy.latitude.values, 
-                           bathy.elevation.values,
-                           levels=(-1000, -100),
-                           zorder=1.5
-                           )
+            try:
+                add_bathymetry(ax1,
+                            bathy.longitude.values, 
+                            bathy.latitude.values, 
+                            bathy.elevation.values,
+                            levels=(-1000, -100),
+                            zorder=1.5
+                            )
 
-            add_bathymetry(ax2,
-                           bathy.longitude.values, 
-                           bathy.latitude.values, 
-                           bathy.elevation.values,
-                           levels=(-1000, -100),
-                           zorder=1.5
-                           )
+                add_bathymetry(ax2,
+                            bathy.longitude.values, 
+                            bathy.latitude.values, 
+                            bathy.elevation.values,
+                            levels=(-1000, -100),
+                            zorder=1.5
+                            )
+            except ValueError:
+                print("Bathymetry deeper than specified levels.")
         add_ticks(ax1, extent)
         add_ticks(ax2, extent, label_left=False, label_right=True)
 
@@ -1365,18 +1842,18 @@ def salinity_max_comparison(ds1, ds2, extent, region_name,
         add_features(ax)
 
         # Add bathymetry lines
-        if bathy:
-            add_bathymetry(ax,
-                           bathy.longitude.values, 
-                           bathy.latitude.values, 
-                           bathy.elevation.values,
-                           levels=(-1000, -100),
-                           zorder=1.5
-                           )
+        # if bathy:
+        #     add_bathymetry(ax,
+        #                    bathy.longitude.values, 
+        #                    bathy.latitude.values, 
+        #                    bathy.elevation.values,
+        #                    levels=(-1000, -100),
+        #                    zorder=1.5
+        #                    )
             
         # Add eez lines
         if eez:
-            map_add_eez(ax1, color='white', zorder=10, linewidth=1)
+            map_add_eez(ax, color='white', zorder=10, linewidth=1)
 
         # Plot gliders and argo floats 
         plot_regional_assets(ax, **rargs)

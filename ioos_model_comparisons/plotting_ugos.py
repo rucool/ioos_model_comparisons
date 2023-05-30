@@ -28,6 +28,7 @@ from ioos_model_comparisons.plotting import (add_features,
                                  map_add_eez, map_add_currents, 
                                  remove_quiver_handles,
                                  plot_regional_assets)
+import cool_maps.plot as cplt
 # Suppresing warnings for a "pretty output."
 warnings.simplefilter("ignore")
 
@@ -330,7 +331,7 @@ def surface_current_fronts_single(ds1, region,
                        bathy.latitude.values, 
                        bathy.elevation.values,
                        levels=(-1000, -100),
-                       zorder=1.5)
+                       zorder=102)
     add_ticks(ax, extent, gridlines=True)
 
     if eez:
@@ -340,31 +341,36 @@ def surface_current_fronts_single(ds1, region,
     plot_regional_assets(ax, **rargs)
 
     # Plot ARGO
-    ha = ax.plot(argo['lon'], argo['lat'], 
-                 marker='o', linestyle="None",
-                 markersize=7, markeredgecolor='black', 
-                 color='lime',
-                 transform=transform['data'],
-                 label='Argo (past 5 days)',
-                 zorder=10000)
+    try:
+        ha = ax.plot(argo['lon'], argo['lat'], 
+                    marker='o', linestyle="None",
+                    markersize=7, markeredgecolor='black', 
+                    color='lime',
+                    transform=transform['data'],
+                    label='Argo (past 5 days)',
+                    zorder=10000)
+    except:
+        pass
 
-    # Plot Gliders
-    for g, new_df in gliders.groupby(level=0):
-        q = new_df.iloc[-1]
-        ax.plot(new_df['lon'], new_df['lat'], 
-                color='purple', 
-                linewidth=1.5,
-                transform=transform['data'], 
-                zorder=10000)
-        hg = ax.plot(q['lon'], q['lat'], 
-                     marker='^',
-                     markeredgecolor='black',
-                     color="purple",
-                     markersize=8.5, 
-                     transform=transform['data'], 
-                     label = "Glider (past 5 days)",
-                     zorder=10000)
-
+    try:
+        # Plot Gliders
+        for g, new_df in gliders.groupby(level=0):
+            q = new_df.iloc[-1]
+            ax.plot(new_df['lon'], new_df['lat'], 
+                    color='purple', 
+                    linewidth=1.5,
+                    transform=transform['data'], 
+                    zorder=10000)
+            hg = ax.plot(q['lon'], q['lat'], 
+                        marker='^',
+                        markeredgecolor='black',
+                        color="purple",
+                        markersize=8.5, 
+                        transform=transform['data'], 
+                        label = "Glider (past 5 days)",
+                        zorder=10000)
+    except:
+        pass
     # Plot gridlines
     # gl = ax.gridlines(draw_labels=False, linewidth=.5, color='gray', alpha=0.75, linestyle='--', crs=ccrs.PlateCarree(), zorder=150)
 
@@ -373,11 +379,14 @@ def surface_current_fronts_single(ds1, region,
     levels = [0.3858, 0.77166, 1.1575, 10]
     colors = ['yellow', 'orange', 'firebrick']
     cs = ax.contourf(ds1['lon'], ds1['lat'], mag_r, levels, colors=colors, transform=ccrs.PlateCarree(), zorder=100)
+
+    # Add contour line at 1.5 knots
+    test = ax.contour(ds1['lon'], ds1['lat'], mag_r, [.772], linestyles='-', colors=['black'], linewidths=1, alpha=.75, transform=ccrs.PlateCarree(), zorder=101)
         
     # Add loop current contour from WHO Group
-    # fname = '/Users/mikesmith/Downloads/GOM22 Fronts/2022-09-04_fronts.mat'
+    # fname = '/Users/mikesmith/Downloads/GOM front/2023-01-31_fronts.mat'
     # data = loadmat(fname)
-
+ 
     # fronts = []
     # for item in data['BZ_all'][0]:
     #     loop_y = item['y'].T
@@ -386,7 +395,7 @@ def surface_current_fronts_single(ds1, region,
     #     hf = ax.plot(loop_x, loop_y,
     #                  linestyle=item['LineStyle'][0],
     #                  color='black',
-    #                  linewidth=3, 
+    #                  linewidth=4, 
     #                  transform=ccrs.PlateCarree(), 
     #                  zorder=120
     #                  )
@@ -399,7 +408,7 @@ def surface_current_fronts_single(ds1, region,
     #     end_lat = item['ty'].T
 
     #     for count, _ in enumerate(start_lon):
-    #         ax.arrow(
+    #         ah = ax.arrow(
     #             start_lon[count][0],
     #             start_lat[count][0],
     #             end_lon[count][0]-start_lon[count][0],
@@ -414,25 +423,35 @@ def surface_current_fronts_single(ds1, region,
     #             )
     # fronts.reverse()
 
-    # Legend 1   
-    legend_1 = [plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in cs.collections]
-    # legend_1.append(fronts[0][0])
-    # legend_1.append(fronts[1][0])
-    legend_1.append(Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0))
-    legend_1.append(ha[0])
-    legend_1.append(hg[0])
-    legend_1.append(mlines.Line2D([], [], linestyle='--', color='k', alpha=.5, linewidth=.75))
+    # Legend 1
     legend_1_text = [
         "0.75 - 1.50 knots",
         "1.50 - 2.25 knots",
         "> 2.25 knots", 
-        # "EddyWatch - 1.5 knots (Active)", 
-        # "EddyWatch - Eddy Remnants", 
         "1.5 knots = 0.77 m/s",
-        "ARGO (Past 5 days)", 
-        "Glider (Past 5 days)",
-        "Bathymetry",
-        ]
+        # "EddyWatch - 1.5 knots",
+        "Bathymetry"
+        ] 
+     
+    legend_1 = [plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in cs.collections]
+    # legend_1.append(fronts[1][0])
+    # legend_1.append(Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0))
+    legend_1.append(mlines.Line2D([], [], linestyle='-', color='k', alpha=.75, linewidth=.75))
+    # legend_1.append(fronts[0][0])
+    # legend_1.append(ah)
+    legend_1.append(mlines.Line2D([], [], linestyle='--', color='k', alpha=.5, linewidth=.75))
+
+    try:
+        legend_1.append(ha[0])
+        legend_1_text.append("ARGO (Past 5 days)")
+    except NameError:
+        print("No Argo detected at this time.")
+
+    try:
+        legend_1.append(hg[0])
+        legend_1_text.append("Glider (Past 5 days)")
+    except NameError:
+        print("No gliders detected at this time.")
     
     if eez:
         legend_1.append(eez_line)
@@ -459,6 +478,261 @@ def surface_current_fronts_single(ds1, region,
 
     # Save figure
     fig.savefig(save_file_q, dpi=500, bbox_inches='tight', pad_inches=0.1)
+    # plt.show()
+    # plt.close()
+
+def surface_current_15knot_all(ds1, 
+                               ds2,
+                               ds3,
+                               ds4,
+                               ds5,
+                               region,
+                               bathy=None,
+                               argo=None,
+                               gliders=None,
+                               eez=False,
+                               cols=6,
+                               transform=dict(
+                                   map=proj['map'], 
+                                   data=proj['data']
+                                   ),
+                               path_save=os.getcwd(),
+                               figsize=(14,8),
+                               dpi=150,
+                               overwrite=False
+                               ):
+    time = pd.to_datetime(ds1.time.data)
+    model = ds1.model.upper()
+    
+    extent = region['extent']
+    
+    # Plot currents with magnitude and direction
+    quiver_dir = path_save / f"surface_currents_fronts" / time.strftime('%Y/%m')
+    os.makedirs(quiver_dir, exist_ok=True)
+
+    # Generate filename
+    sname = f'gom_{time.strftime("%Y-%m-%dT%H%M%SZ")}_surface_current_fronts-{model}'
+    save_file_q = quiver_dir / f"{sname}.png"
+
+    # Check if filename already exists
+    if save_file_q.is_file():
+        if not overwrite:
+            print(f"{sname} exists. Overwrite: False. Skipping.")
+            return
+        else:
+            print(f"{sname} exists. Overwrite: True. Replotting.")
+
+    # Convert u and v radial velocities to magnitude
+    _, mag_1 = uv2spdir(ds1['u'], ds1['v'])
+    _, mag_2 = uv2spdir(ds2['u'], ds2['v'])
+    _, mag_3 = uv2spdir(ds3['u'], ds3['v'])
+    _, mag_4 = uv2spdir(ds4['u'], ds4['v'])
+    _, mag_5 = uv2spdir(ds5['u'], ds5['v'])
+
+
+    # Initialize single plot
+    fig, ax = cplt.create(extent, bathymetry=False)
+    bds = cplt.get_bathymetry(extent)
+    bh = cplt.add_bathymetry(ax, bds['longitude'], bds['latitude'], bds['z'],
+                             levels=(-1000, -100)
+                             )
+
+    levels = [-8000, -1000, -100, 0] # Contour levels (depths)
+    colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue',] # contour colors
+
+    # add filled contour to map
+    cs = ax.contourf(bds['longitude'], bds['latitude'], bds['z'], levels, colors=colors, transform=ccrs.PlateCarree(), ticks=False)
+    
+    proxy = [plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in cs.collections]
+    proxy.reverse()
+    # fig, ax = plt.subplots(
+    #     figsize=(16,9),
+    #     layout="constrained",
+    #     subplot_kw={
+    #         'projection': proj['map']
+    #         },
+    #     )
+    # ax.set_extent(extent)
+    
+    # Plot gliders and argo floats
+    rargs = {}
+    # rargs['argo'] = argo
+    # rargs['gliders'] = gliders
+    rargs['transform'] = transform['data']  
+
+    # Make the map pretty
+    # add_features(ax)
+    # if bathy:    
+    #     add_bathymetry(ax,
+    #                    bathy.longitude.values, 
+    #                    bathy.latitude.values, 
+    #                    bathy.elevation.values,
+    #                    levels=(-1000, -100),
+    #                    zorder=102)
+    # add_ticks(ax, extent, gridlines=True)
+
+    # if eez:
+    #     map_add_eez(ax, zorder=99, color='red', linewidth=1)
+    #     eez_line = mlines.Line2D([], [], linestyle='-.', color='r', linewidth=1)
+
+    # plot_regional_assets(ax, **rargs)
+
+    # # Plot ARGO
+    # ha = ax.plot(argo['lon'], argo['lat'], 
+    #              marker='o', linestyle="None",
+    #              markersize=7, markeredgecolor='black', 
+    #              color='lime',
+    #              transform=transform['data'],
+    #              label='Argo (past 5 days)',
+    #              zorder=10000)
+
+    # # Plot Gliders
+    # for g, new_df in gliders.groupby(level=0):
+    #     q = new_df.iloc[-1]
+    #     ax.plot(new_df['lon'], new_df['lat'], 
+    #             color='purple', 
+    #             linewidth=1.5,
+    #             transform=transform['data'], 
+    #             zorder=10000)
+    #     hg = ax.plot(q['lon'], q['lat'], 
+    #                  marker='^',
+    #                  markeredgecolor='black',
+    #                  color="purple",
+    #                  markersize=8.5, 
+    #                  transform=transform['data'], 
+    #                  label = "Glider (past 5 days)",
+    #                  zorder=10000)
+
+    # Plot gridlines
+    # gl = ax.gridlines(draw_labels=False, linewidth=.5, color='gray', alpha=0.75, linestyle='--', crs=ccrs.PlateCarree(), zorder=150)
+
+    # Plot velocity fronts
+    # levels = [0.257, 0.771667, 1.28611, 3]
+    # levels = [0.3858, 0.77166, 1.1575, 10]
+    # colors = ['yellow', 'orange', 'firebrick']
+    # cs = ax.contourf(ds1['lon'], ds1['lat'], mag_r, levels, colors=colors, transform=ccrs.PlateCarree(), zorder=100)
+
+    # Add contour line at 1.5 knots
+    test1 = ax.contour(ds1['lon'], ds1['lat'], mag_1, [.772], linestyles='-', colors=['red'], linewidths=2,  alpha=.75, transform=ccrs.PlateCarree(), zorder=101, label='RTOFS')
+    test2 = ax.contour(ds2['lon'], ds2['lat'], mag_2, [.772], linestyles='-', colors=['green'], linewidths=2,  alpha=.75,transform=ccrs.PlateCarree(), zorder=101, label='GOFS')
+    test3 = ax.contour(ds3['lon'], ds3['lat'], mag_3, [.772], linestyles='-', colors=['purple'], linewidths=2, alpha=.75,transform=ccrs.PlateCarree(), zorder=101, label='CMEMS')
+    test4 = ax.contour(ds4['lon'], ds4['lat'], mag_4, [.772], linestyles='-', colors=['blue'], linewidths=2,  alpha=.75,transform=ccrs.PlateCarree(), zorder=101, label='AMSEAS')
+    test5 = ax.contour(ds5['lon'], ds5['lat'], mag_5, [.772], linestyles='-', colors=['orange'], linewidths=2,  alpha=.75,transform=ccrs.PlateCarree(), zorder=101, label='AMSEAS')
+
+    # # Add loop current contour from WHO Group
+    fname = '/Users/mikesmith/Downloads/GOM front/2023-01-31_fronts.mat'
+    data = loadmat(fname)
+ 
+    fronts = []
+    for item in data['BZ_all'][0]:
+        loop_y = item['y'].T
+        loop_x = item['x'].T
+
+        hf = ax.plot(loop_x, loop_y,
+                     linestyle=item['LineStyle'][0],
+                     color='black',
+                     linewidth=4,
+                    #  alpha=.75,
+                     transform=ccrs.PlateCarree(), 
+                     zorder=120
+                     )
+        fronts.append(hf)
+
+        # Add arrows
+        start_lon = item['bx'].T
+        start_lat = item['by'].T
+        end_lon = item['tx'].T
+        end_lat = item['ty'].T
+
+        for count, _ in enumerate(start_lon):
+            ah = ax.arrow(
+                start_lon[count][0],
+                start_lat[count][0],
+                end_lon[count][0]-start_lon[count][0],
+                end_lat[count][0]-start_lat[count][0],
+                linewidth=0, 
+                head_width=0.2,
+                shape='full', 
+                fc='black', 
+                ec='black',
+                transform=ccrs.PlateCarree(),
+                zorder=130,
+                )
+    fronts.reverse()
+
+    # Legend 1
+    # legend_1_text = [
+    #     "0.75 - 1.50 knots",
+    #     "1.50 - 2.25 knots",
+    #     "> 2.25 knots", 
+    #     "1.5 knots = 0.77 m/s",
+    #     "EddyWatch - 1.5 knots",
+    #     "Bathymetry",
+    #     "ARGO (Past 5 days)"
+    #     ] 
+    h1, _  = test1.legend_elements()
+    h2, _  = test2.legend_elements()
+    h3, _  = test3.legend_elements()
+    h4, _  = test4.legend_elements()
+    h5, _  = test5.legend_elements()
+     
+    # proxy.append(plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in test1.collections)
+    # proxy.append(plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in test2.collections)
+    # proxy.append(plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in test3.collections)
+    # proxy.append(plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in test4.collections)
+    # proxy.append(plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in test5.collections)
+    proxy.append(h1[0])
+    proxy.append(h2[0])
+    proxy.append(h3[0])
+    proxy.append(h4[0])
+    proxy.append(h5[0])
+    proxy.append(mlines.Line2D([], [], linestyle='-', color='k', linewidth=5))
+
+    # # legend_1.append(fronts[1][0])
+    
+    # # legend_1.append(Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0))
+    # legend_1.append(mlines.Line2D([], [], linestyle='-', color='k', alpha=.75, linewidth=.75))
+    # legend_1.append(fronts[0][0])
+    # # legend_1.append(ah)
+    # legend_1.append(mlines.Line2D([], [], linestyle='--', color='k', alpha=.5, linewidth=.75))
+    # legend_1.append(ha[0])
+
+    # try:
+    #     legend_1.append(hg[0])
+    #     legend_1_text.append("Glider (Past 5 days)")
+    # except NameError:
+    #     print("No gliders detected at this time.")
+    
+    # if eez:
+    #     legend_1.append(eez_line)
+    #     legend_1_text.append('EEZ')
+
+    # leg = ax.legend(legend_1, legend_1_text,
+    #                 fontsize=9,
+    #                 #   title="1 knot = 0.51444 m/s",
+    #                 # loc='lower left',
+    #                 # bbox_transform=ccrs.PlateCarree()
+    #                 )
+    # plt.legend(proxy, [], loc='lower left').set_zorder(10000)
+    leg = ax.legend(proxy, 
+                    ["0-100m", "100-1000m", "1000+m", 'RTOFS', 'GOFS', 'CMEMS', 'AMSEAS', 'CNAPS', 'Eddywatch 1.5 knot'],
+                    loc='upper right', 
+                    fontsize=10).set_zorder(10001)
+    
+    # change the line width for the legend
+    # for line in leg.get_lines():
+        # line.set_linewidth(4.0)
+
+    # for legobj in leg.legendHandles:
+        # legobj.set_linewidth(2.0)
+    # leg.set_zorder(10001)
+    # Create a string for the title of the plot
+    title_time = time.strftime("%Y-%m-%d %H:%M")
+    title = f"1.5 knot Surface Current Comparisons\n{title_time} UTC"
+    ax.set_title(title, fontsize=18, fontweight="bold", loc='left')
+
+    # Save figure
+    fig.savefig(save_file_q, dpi=300, bbox_inches='tight', pad_inches=0.1)
     # plt.show()
     # plt.close()
 

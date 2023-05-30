@@ -4,7 +4,7 @@ import ioos_model_comparisons.configs as conf
 import numpy as np
 import pandas as pd
 from ioos_model_comparisons.calc import lon180to360, lon360to180
-from ioos_model_comparisons.models import gofs, rtofs, cmems, amseas, cnaps
+from ioos_model_comparisons.models import gofs, rtofs, cmems, cnaps
 from ioos_model_comparisons.platforms import (get_active_gliders, 
                                   get_argo_floats_by_time,
                                   get_bathymetry)
@@ -25,7 +25,6 @@ path_save = (conf.path_plots / "maps")
 plot_rtofs = True
 plot_gofs = True
 plot_cmems = True
-plot_amseas = True
 plot_cnaps = False
 
 # initialize keyword arguments for map plots
@@ -37,13 +36,17 @@ kwargs['colorbar'] = True
 
 # For debug purposes. Comment this out when commiting to repo.
 # conf.regions = ['tropical_western_atlantic']
-# conf.days = 1
+conf.regions = ['passengers']
+
+conf.days = 2
 
 # Get today and yesterday dates
 today = dt.date.today()
+# today = dt.date(2023, 4, 18)
+
 date_end = today + dt.timedelta(days=1)
 date_start = today - dt.timedelta(days=conf.days)
-freq = '6H'
+freq = '24H'
 
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
@@ -81,17 +84,19 @@ if conf.gliders:
 else:
     glider_data = pd.DataFrame()
 
+conf.bathy = False
 if conf.bathy:
     bathy_data = get_bathymetry(global_extent)
 
-# Load RTOFS DataSet
-rds = rtofs() 
+if plot_rtofs:
+    # Load RTOFS DataSet
+    rds = rtofs() 
 
-# Save rtofs lon and lat as variables to speed up indexing calculation
-grid_lons = rds.lon.values[0,:]
-grid_lats = rds.lat.values[:,0]
-grid_x = rds.x.values
-grid_y = rds.y.values
+    # Save rtofs lon and lat as variables to speed up indexing calculation
+    grid_lons = rds.lon.values[0,:]
+    grid_lats = rds.lat.values[:,0]
+    grid_x = rds.x.values
+    grid_y = rds.y.values
 
 if plot_gofs:
     # Load GOFS DataSet
@@ -100,10 +105,6 @@ if plot_gofs:
 if plot_cmems:
     # Load Copernicus
     cds = cmems(rename=True)
-
-if plot_amseas:
-    # Load AMSEAS
-    am = amseas(rename=True)
 
 if plot_cnaps:
     # Load CNAPS
@@ -146,17 +147,6 @@ def main():
                 cdt_flag = False
         else:
             cdt_flag = False
-
-        if plot_amseas:
-            try:
-                amt = am.sel(time=ctime)
-                print(f"AMSEAS: True")
-                amt_flag = True
-            except KeyError as error:
-                print(f"AMSEAS: False - {error}")
-                amt_flag = False
-        else:
-            amt_flag = False
 
         if plot_cnaps:
             try:
@@ -217,11 +207,12 @@ def main():
                 np.ceil(lats_ind[1]).astype(int)
                 ]
             
-            # Use .isel selector on x/y since we know indexes that we want to slice
-            rds_sub = rdt.isel(
-                x=slice(extent_ind[0], extent_ind[1]), 
-                y=slice(extent_ind[2], extent_ind[3])
-                ).set_coords(['u', 'v'])
+            if rdt_flag:
+                # Use .isel selector on x/y since we know indexes that we want to slice
+                rds_sub = rdt.isel(
+                    x=slice(extent_ind[0], extent_ind[1]), 
+                    y=slice(extent_ind[2], extent_ind[3])
+                    ).set_coords(['u', 'v'])
 
             if cnt_flag:
                 # CNAPS
@@ -260,12 +251,6 @@ def main():
                     lat=slice(extended[2], extended[3])
                 ).set_coords(['u', 'v'])
 
-            if amt_flag:
-                am_sub = amt.sel(
-                    lon=slice(lon360[0], lon360[1]),
-                    lat=slice(extended[2], extended[3])
-                ).set_coords(['u', 'v'])
-
             # Check if any asset data was downloaded and subset it to the 
             # region and time being plotted
             # ARGO
@@ -301,28 +286,13 @@ def main():
                 print(f"Failed to process RTOFS vs GOFS at {ctime}")
                 print(f"Error: {e}")
 
+
             try:
-                if rdt_flag and cdt_flag:
+                if rdt_flag and gdt_flag:
                     plot_model_region_comparison(rds_sub, cds_sub, region, **kwargs)
                     plot_model_region_comparison_streamplot(rds_sub, cds_sub, region, **kwargs)
             except Exception as e:
                 print(f"Failed to process RTOFS vs CMEMS at {ctime}")
-                print(f"Error: {e}")
-                
-            try:
-                if rdt_flag and amt_flag:
-                    plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
-                    plot_model_region_comparison_streamplot(rds_sub, am_sub, region, **kwargs) 
-            except Exception as e:
-                print(f"Failed to process RTOFS vs AMSEAS at {ctime}")
-                print(f"Error: {e}")
-                
-            try:
-                if rdt_flag and cnt_flag:
-                    plot_model_region_comparison(rds_sub, gds_sub, region, **kwargs)
-                    plot_model_region_comparison_streamplot(rds_sub, cnt_sub, region, **kwargs)
-            except Exception as e:
-                print(f"Failed to process RTOFS vs GOFS at {ctime}")
                 print(f"Error: {e}")
  
 

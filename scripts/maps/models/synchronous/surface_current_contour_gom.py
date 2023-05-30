@@ -10,6 +10,7 @@ from ioos_model_comparisons.platforms import (get_active_gliders,
                                   get_bathymetry)
 from ioos_model_comparisons.plotting_ugos import (surface_current_fronts, 
                                       surface_current_fronts_single,
+                                      surface_current_15knot_all
                                     #   plot_model_region_comparison_streamplot
                                       )
 from ioos_model_comparisons.plotting import plot_model_region_comparison_streamplot
@@ -23,6 +24,13 @@ matplotlib.use('agg')
 # Set path to save plots
 path_save = (conf.path_plots / "maps")
 
+# Which models should we plot?
+plot_rtofs = True
+plot_gofs = True
+plot_cmems = True
+plot_amseas = True
+plot_cnaps = False
+
 # initialize keyword arguments for map plots
 kwargs = dict()
 kwargs['transform'] = conf.projection
@@ -35,7 +43,6 @@ conf.days = 2
 # Get today and yesterday dates
 target_time = dt.time(12, 0, 0)
 today = dt.date.today()
-# today = dt.date(2022, 9, 5)
 date_start = dt.datetime.combine(today - dt.timedelta(days=conf.days), target_time)
 date_end = dt.datetime.combine(today + dt.timedelta(days=1), target_time)
 
@@ -52,13 +59,11 @@ region = region_config('gom') #gom, loop_current, yucatan
 extent = region['extent']
 print(f'Region: {region["name"]}, Extent: {extent}')
 kwargs['path_save'] = path_save / region['folder']
-
 if conf.argo:
     argo_data = get_argo_floats_by_time(extent, search_start, date_list[-1])
 else:
     argo_data = pd.DataFrame()
 
-# conf.gliders = False
 if conf.gliders:
     glider_data = get_active_gliders(extent, search_start, date_list[-1], parallel=False)
 else:
@@ -67,24 +72,27 @@ else:
 if conf.bathy:
     bathy_data = get_bathymetry(extent)
 
-# Load RTOFS DataSet
-rds = rtofs() 
+if plot_rtofs:
+    # Load RTOFS DataSet
+    rds = rtofs() 
 
-# Save rtofs lon and lat as variables to speed up indexing calculation
-grid_lons = rds.lon.values[0,:]
-grid_lats = rds.lat.values[:,0]
-grid_x = rds.x.values
-grid_y = rds.y.values
+    # Save rtofs lon and lat as variables to speed up indexing calculation
+    grid_lons = rds.lon.values[0,:]
+    grid_lats = rds.lat.values[:,0]
+    grid_x = rds.x.values
+    grid_y = rds.y.values
 
-# Load GOFS DataSet
-gds = gofs(rename=True)
-# gds = amseas(rename=True)
+if plot_gofs:
+    # Load GOFS DataSet
+    gds = gofs(rename=True)
 
-# Load Copernicus
-cds = cmems(rename=True)
+if plot_cmems:
+    # Load Copernicus
+    cds = cmems(rename=True)
 
-# Load AMSEAS
-am = amseas(rename=True)
+if plot_amseas:
+    # Load AMSEAS
+    am = amseas(rename=True)
 
 # Load TOPS
 # import xarray as xr
@@ -105,7 +113,7 @@ for ctime in date_list:
         rdt = rds.sel(time=ctime, depth=0)
         print(f"RTOFS: True")
         rdt_flag = True
-    except KeyError as error:
+    except (KeyError, NameError) as error:
         print(f"RTOFS: False - {error}")
         rdt_flag = False
 
@@ -113,7 +121,7 @@ for ctime in date_list:
         gdt = gds.sel(time=ctime, depth=0)
         print(f"GOFS: True")
         gdt_flag = True
-    except KeyError as error:
+    except (KeyError, NameError) as error:
         print(f"GOFS: False - {error}")
         gdt_flag = False
 
@@ -121,7 +129,7 @@ for ctime in date_list:
         cdt = cds.sel(time=ctime, depth=0, method='nearest')
         print(f"CMEMS: True")
         cdt_flag = True
-    except KeyError as error:
+    except (KeyError, NameError) as error:
         print(f"CMEMS: False - {error}")
         cdt_flag = False
 
@@ -129,7 +137,7 @@ for ctime in date_list:
         amt = am.sel(time=ctime, depth=0)
         print(f"AMSEAS: True")
         amt_flag = True
-    except KeyError as error:
+    except (KeyError, NameError) as error:
         print(f"AMSEAS: False - {error}")
         amt_flag = False
 
@@ -161,10 +169,12 @@ for ctime in date_list:
         pass
             
     extended = np.add(extent, [-1, 1, -1, 1]).tolist()
-
     # Find x, y indexes of the area we want to subset
     lons_ind = np.interp(extended[:2], grid_lons, grid_x)
     lats_ind = np.interp(extended[2:], grid_lats, grid_y)
+    
+    # convert from 360 to 180 lon
+    lon360 = lon180to360(extended[:2]) 
 
     # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice 
     # in order to widen the area of the extent slightly.
@@ -175,32 +185,34 @@ for ctime in date_list:
         np.ceil(lats_ind[1]).astype(int)
         ]
 
+    
+    if rdt_flag:
+        # Subset each model to the proper extent
+        # Use .isel selector on x/y since we know indexes that we want to slice
+        rds_sub = rdt.isel(
+            x=slice(extent_ind[0], extent_ind[1]), 
+            y=slice(extent_ind[2], extent_ind[3])
+            ).set_coords(['u', 'v'])
 
-    # Subset each model to the proper extent
-    # Use .isel selector on x/y since we know indexes that we want to slice
-    rds_sub = rdt.isel(
-        x=slice(extent_ind[0], extent_ind[1]), 
-        y=slice(extent_ind[2], extent_ind[3])
+    if gdt_flag:
+        # subset dataset to the proper extents for each region
+        gds_sub = gdt.sel(
+            lon=slice(lon360[0], lon360[1]),
+            lat=slice(extended[2], extended[3])
+        ).set_coords(['u', 'v'])
+        gds_sub['lon'] = lon360to180(gds_sub['lon']) # Convert from 0,360 lon to -180,180
+
+    if cdt_flag:
+        cds_sub = cdt.sel(
+            lon=slice(extended[0], extended[1]),
+            lat=slice(extended[2], extended[3])
         ).set_coords(['u', 'v'])
 
-    # subset dataset to the proper extents for each region
-    lon360 = lon180to360(extended[:2]) # convert from 360 to 180 lon
-    gds_sub = gdt.sel(
-        lon=slice(lon360[0], lon360[1]),
-        lat=slice(extended[2], extended[3])
-    ).set_coords(['u', 'v'])
-    gds_sub['lon'] = lon360to180(gds_sub['lon']) # Convert from 0,360 lon to -180,180
-
-    # if cdt_flag:
-    cds_sub = cdt.sel(
-        lon=slice(extended[0], extended[1]),
-        lat=slice(extended[2], extended[3])
-    ).set_coords(['u', 'v'])
-
-    am_sub = amt.sel(
-        lon=slice(lon360[0], lon360[1]),
-        lat=slice(extended[2], extended[3])
-    ).set_coords(['u', 'v'])
+    if amt_flag:
+        am_sub = amt.sel(
+            lon=slice(lon360[0], lon360[1]),
+            lat=slice(extended[2], extended[3])
+        ).set_coords(['u', 'v'])
 
     # tops_sub = topst.sel(
     #     lon=slice(extended[0], extended[1]),
@@ -242,15 +254,58 @@ for ctime in date_list:
         #         gds_sub,
         #         cds_sub,
         #         tops_sub,
-        #         region,
+        #         region,ummus
         #         **kwargs
         #         )
-    surface_current_fronts_single(rds_sub, region, **kwargs)
-    surface_current_fronts_single(gds_sub, region, **kwargs)
-    surface_current_fronts_single(cds_sub, region, **kwargs)
-    surface_current_fronts_single(am_sub, region, **kwargs)
-    # surface_current_fronts_single(tops_sub, region, **kwargs)
+    try:
+        surface_current_fronts_single(rds_sub, region, **kwargs)
+    except Exception as e:
+        print(f"Failed to process RTOFS at {ctime}")
+        print(f"Error: {e}")
 
-    # except Exception as e:
-        # print(f"Failed to process RTOFS vs GOFS vs CMEMS vs AMSEAS at {ctime}")
-        # print(f"Error: {e}")
+    try:
+        surface_current_fronts_single(gds_sub, region, **kwargs)
+    except Exception as e:
+        print(f"Failed to process GOFS at {ctime}")
+        print(f"Error: {e}")
+
+    try:
+        surface_current_fronts_single(cds_sub, region, **kwargs)
+    except Exception as e:
+        print(f"Failed to process CMEMS at {ctime}")
+        print(f"Error: {e}")
+    try:
+        surface_current_fronts_single(am_sub, region, **kwargs)
+    except Exception as e:
+        print(f"Failed to process AMSEAS at {ctime}")
+        print(f"Error: {e}")
+        
+        # surface_current_15knot_all(rds_sub, gds_sub, cds_sub, am_sub, region, **kwargs)
+
+    # url = 'http://3.236.148.88:8080/thredds/dodsC/fmrc/useast_coawst_roms/COAWST-ROMS_SWAN_Forecast_Model_Run_Collection_best.ncd'
+    # import xarray as xr
+    # # 
+    # ds = xr.open_dataset(url)
+    # # ds.attrs['model'] = 'CNAPS'
+    # tds = ds.sel(time=ctime).isel(eta_rho=slice(100, 300), xi_rho=slice(0, 220))
+    # from oceans.ocfis import uv2spdir
+    # ang, spd = uv2spdir(tds['u_eastward'], tds['v_northward'])
+    # tds['speed'] = (('s_rho', 'eta_rho', 'xi_rho'), spd)
+    # tds = tds.drop('ocean_time').squeeze()
+
+    # tds = tds.rename({
+    #     "lat_rho": "lat",
+    #     "lon_rho": "lon", 
+    #     "u_eastward": "u",
+    #     "v_northward": "v"
+    #     }
+    #                  )
+    # surface_current_15knot_all(rds_sub, gds_sub, cds_sub, am_sub, tds, region, **kwargs)
+
+    # surface_current_fronts_single(tds, region, **kwargs)
+    # # surface_current_fronts_single(tops_sub, region, **kwargs)
+
+    # # except Exception as e:
+    #     # print(f"Failed to process RTOFS vs GOFS vs CMEMS vs AMSEAS at {ctime}")
+    #     # print(f"Error: {e}")
+ 

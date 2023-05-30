@@ -525,6 +525,52 @@ def region_config(regions=None, model=None):
             figsize = (12, 8.5),
             legend = dict(columns=9),
             )
+        
+    key = "passengers"
+    if key in regions:
+        # Mid Atlantic Bight Limits
+        name = 'Atlantis II Seamounts'
+        folder = "passengers"
+        # 38.404525, -63.994369
+        # 37.514475, -62.8
+        # 39.316911, -62.852942
+        # 38.406367, -61.714686
+
+        extent = [-68, -58, 36, 41]
+        sea_water_temperature = [
+            dict(depth=0, limits=[15, 28, 1]),
+            dict(depth=150, limits=[11, 22, 1]),
+            dict(depth=300, limits=[9, 21, 1])
+            ]
+        salinity = [
+            dict(depth=0, limits=[31, 36.5, .25]),
+            dict(depth=150, limits=[35.3, 36.6, .1]),
+            dict(depth=300, limits=[35.2, 36.6, .1])
+            ]
+        sea_surface_height = [
+            dict(depth=0, limits=[-.6, .7, .1]),
+            ]
+        ocean_heat_content = dict(
+            limits= [0, 120, 10]
+            )
+        salinity_max = dict(
+            figsize=(14, 8.5),
+            limits=[34.4, 37, .2]
+            )
+        currents = dict(
+            bool=True,
+            depths = [0, 150, 300],
+            limits = [0, 1.5, .1],
+            coarsen=dict(rtofs=5, gofs=6),
+            kwargs=dict(
+                ptype="streamplot",
+                color="black"
+                )
+            )
+        figure = dict(
+            legend = dict(columns=5),
+            figsize = (16, 9)
+            )
 
     # Create subdirectory for data variables
     vars = {}
