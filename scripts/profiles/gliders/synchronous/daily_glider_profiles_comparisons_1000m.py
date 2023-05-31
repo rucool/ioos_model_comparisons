@@ -23,12 +23,12 @@ from ioos_model_comparisons.regions import region_config
 path_save = (configs.path_plots / "profiles" / "gliders")
 
 # dac access
-parallel = True
+parallel = False
 timeout = 60
 
 # Get extent for all configured regions to download argo/glider data one time
 extent_list = []
-conf.regions= ['mab']
+# conf.regions= ['mab']
 for region in conf.regions:
     extent_list.append(region_config(region)["extent"])
 
@@ -37,7 +37,7 @@ extent_df = pd.DataFrame(
     columns=['lonmin', 'lonmax', 'latmin', 'latmax']
     )
 
-days = 3
+days = 1
 today = dt.date.today()
 interp = False
 
@@ -45,7 +45,7 @@ interp = False
 plot_rtofs = True
 plot_gofs = True
 plot_cmems = True
-plot_amseas = False
+plot_amseas = True
 
 # Subplot selection
 plot_temperature = True
@@ -59,6 +59,7 @@ time_threshold = 6 # hours
 # Create a date list.
 date_list = [today + dt.timedelta(days=x+1) for x in range(days)]
 date_list.insert(0, today)
+# date_list.reverse()
 
 # Get time bounds for the current day
 t0 = date_list[0]
@@ -74,9 +75,7 @@ global_extent = [
     extent_df.latmin.min(),
     extent_df.latmax.max()
     ]
-# lon_lim = [-62.27, -59.84]
-# lat_lon = [13.94, 15.80]
-# global_extent = [-62.27, -59.84, 13.94, 15.90]
+
 gliders = get_active_gliders(global_extent, t0, t1, 
                              variables=vars,
                              timeout=timeout, 
@@ -85,12 +84,12 @@ gliders = get_active_gliders(global_extent, t0, t1,
 # %% Load models
 if plot_gofs:
     # Read GOFS 3.1 output
-    gofs = gofs(rename=True).sel(depth=slice(0,400))
+    gofs = gofs(rename=True).sel(depth=slice(0,1000))
     glabel = f'GOFS' # Legend labels
 
 if plot_rtofs:
     # Read RTOFS grid and time
-    rtofs = rtofs().sel(depth=slice(0,400))
+    rtofs = rtofs().sel(depth=slice(0,1000))
     rlabel = f'RTOFS' # Legend labels
 
     # Setting RTOFS lon and lat to their own variables speeds up the script
@@ -101,7 +100,7 @@ if plot_rtofs:
 
 if plot_cmems:
     # Read Copernicus
-    cmems = cmems(rename=True).sel(depth=slice(0,400))
+    cmems = cmems(rename=True).sel(depth=slice(0,1000))
     clabel = f"CMEMS" # Legend labels
 
 # Convert time threshold to a Timedelta so that we can compare timedeltas.
@@ -128,10 +127,14 @@ os.makedirs(spath, exist_ok=True)
 
 def plot_glider_profiles(id):
     print('Plotting ' + id)
+    
+    split = id.split('-')
+    glid = split[0]
+    deployed = pd.to_datetime(split[1]).strftime('%Y-%m-%dT%H:%MZ')
     df = gliders[gliders['glider'] == id]
-
-    alabel = f'{id}'
-    fullfile = spath / f"{id}_{t0.strftime('%Y%m%d')}_to_{t1.strftime('%Y%m%d')}.png"
+    
+    alabel = f'{glid}'
+    fullfile = spath / f"{id}_{t0.strftime('%Y%m%d')}_to_{t1.strftime('%Y%m%d')}_1000m.png"
 
     # Initialize plot
     fig = plt.figure(constrained_layout=True, figsize=(16, 8))
@@ -154,9 +157,10 @@ def plot_glider_profiles(id):
     lat_track = []
     
     # Filter glider depth
-    df = df[df["depth"] <= 400]
+    df = df[df["depth"] <= 1000]
 
     # Groupby glider profiles
+    maxd = []
     for name, pdf in df.groupby(['profile_id', 'time', 'lon', 'lat']):
         pid = name[0]
         time_glider = name[1] 
@@ -167,11 +171,11 @@ def plot_glider_profiles(id):
         
         print(f"Glider: {id}, Profile ID: {pid}, Time: {time_glider}")
         
-        # Filter salinity and temperature that are more than 3 standard deviations
+        # Filter salinity and temperature that are more than 4 standard deviations
         # from the mean
         try:
-            pdf = pdf[np.abs(stats.zscore(df['salinity'])) < 3]  #  salinity
-            pdf = pdf[np.abs(stats.zscore(df['temperature'])) < 3]  #  temperature
+            pdf = pdf[np.abs(stats.zscore(df['salinity'])) < 4]  #  salinity
+            pdf = pdf[np.abs(stats.zscore(df['temperature'])) < 4]  #  temperature
         except KeyError:
             pass
 
@@ -181,88 +185,94 @@ def plot_glider_profiles(id):
         salinity_glider = pdf['salinity']
         density_glider = pdf['density']
 
-        
-        # GOFS3.1
-        # Convert glider lon from -180,180 to 0,359
-        lon_glider_gofs = lon180to360(lon_glider)
-
-        if plot_gofs:
-            # Select the nearest model time to the glider time for this profile
-            gds = gofs.sel(time=time_glider, method="nearest")
-
-            # Interpolate the model to the nearest point
-            if interp:
-                gds = gds.interp(
-                    lon=lon_glider_gofs,
-                    lat=lat_glider,
-                    )
-            else:
-                # select nearest neighbor grid point
-                gds = gds.sel(
-                    lon=lon_glider_gofs,
-                    lat=lat_glider,
-                    method="nearest"
-                )
-            
-            # Convert lon from 0,259 to -180,180
-            gds['lon'] = lon360to180(gds['lon'])
-
-            # Calculate density
-            gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
-
-            print(f"GOFS - Time: {pd.to_datetime(gds.time.values)}")
-
-        if plot_rtofs:
-            # RTOFS
-            rds = rtofs.sel(time=time_glider, method="nearest")
-            print(f"RTOFS - Time: {pd.to_datetime(rds.time.values)}")
-
-            # interpolating lon and lat to x and y index of the rtofs grid
-            rlonI = np.interp(lon_glider, rlon, rx) # lon -> x
-            rlatI = np.interp(lat_glider, rlat, ry) # lat -> y
-
-            if interp:
-                rds = rds.interp(
-                    x=rlonI,
-                    y=rlatI,
-                )
-            else:
-                rds = rds.sel(
-                    x=np.round(rlonI),
-                    y=np.round(rlatI),
-                    method='nearest'
-                    )
-            
-            # Calculate density 
-            rds['density'] = density(rds['temperature'].values, -rds['depth'].values, rds['salinity'].values, rds['lat'].values, rds['lon'].values)
-
-        if plot_cmems:
-            # CMEMS
-            cds = cmems.sel(time=time_glider, method="nearest")
-            print(f"CMEMS - Time: {pd.to_datetime(cds.time.values)}")
-            # delta_time = np.abs(time_glider - pd.to_datetime(cds.time.values))
-            # print(f"Threshold time: {delta_time}")
-            # if delta_time < time_threshold:
-            #     print(f"Difference between profile and nearest CMEMS time is {delta_time}. Interpolating to profile")
-
-            if interp:
-                cds = cds.interp(
-                    lon=lon_glider,
-                    lat=lat_glider
-                )
-            else:
-                cds = cds.sel(
-                    lon=lon_glider,
-                    lat=lat_glider,
-                    method='nearest'
-                )
-            # Calculate density
-            cds['density'] = density(cds['temperature'].values, -cds['depth'].values, cds['salinity'].values, cds['lat'].values, cds['lon'].values)
-
         # Plot glider profiles
-        tax.plot(temp_glider, depth_glider, '.-', color='cyan', label='_nolegend_')
-        sax.plot(salinity_glider, depth_glider, '.-', color='cyan', label='_nolegend_')
-        dax.plot(density_glider, depth_glider, '.-', color='cyan', label='_nolegend_')
+        tax.plot(temp_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+        sax.plot(salinity_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+        dax.plot(density_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+        maxd.append(np.nanmax(depth_glider))
+
+    if np.nanmax(maxd) < 400:
+        plt.close()
+        return
+    
+    mlon = df['lon'].mean()
+    mlat = df['lat'].mean()
+    
+    if plot_gofs:
+        # Convert glider lon from -180,180 to 0,359
+        lon_glider_gofs = lon180to360(mlon)
+    
+        # Select the nearest model time to the glider time for this profile
+        gds = gofs.sel(time=time_glider, method="nearest")
+
+        # Interpolate the model to the nearest point
+        if interp:
+            gds = gds.interp(
+                lon=lon_glider_gofs,
+                lat=mlat,
+                )
+        else:
+            # select nearest neighbor grid point
+            gds = gds.sel(
+                lon=lon_glider_gofs,
+                lat=mlat,
+                method="nearest"
+            )
+        
+        # Convert lon from 0,259 to -180,180
+        gds['lon'] = lon360to180(gds['lon'])
+
+        # Calculate density
+        gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
+
+        print(f"GOFS - Time: {pd.to_datetime(gds.time.values)}")
+
+    if plot_rtofs:
+        # RTOFS
+        rds = rtofs.sel(time=time_glider, method="nearest")
+        print(f"RTOFS - Time: {pd.to_datetime(rds.time.values)}")
+
+        # interpolating lon and lat to x and y index of the rtofs grid
+        rlonI = np.interp(mlon, rlon, rx) # lon -> x
+        rlatI = np.interp(mlat, rlat, ry) # lat -> y
+
+        if interp:
+            rds = rds.interp(
+                x=rlonI,
+                y=rlatI,
+            )
+        else:
+            rds = rds.sel(
+                x=np.round(rlonI),
+                y=np.round(rlatI),
+                method='nearest'
+                )
+        
+        # Calculate density 
+        rds['density'] = density(rds['temperature'].values, -rds['depth'].values, rds['salinity'].values, rds['lat'].values, rds['lon'].values)
+
+    if plot_cmems:
+        # CMEMS
+        cds = cmems.sel(time=time_glider, method="nearest")
+        print(f"CMEMS - Time: {pd.to_datetime(cds.time.values)}")
+        # delta_time = np.abs(time_glider - pd.to_datetime(cds.time.values))
+        # print(f"Threshold time: {delta_time}")
+        # if delta_time < time_threshold:
+        #     print(f"Difference between profile and nearest CMEMS time is {delta_time}. Interpolating to profile")
+
+        if interp:
+            cds = cds.interp(
+                lon=mlon,
+                lat=mlat
+            )
+        else:
+            cds = cds.sel(
+                lon=mlon,
+                lat=mlat,
+                method='nearest'
+            )
+        # Calculate density
+        cds['density'] = density(cds['temperature'].values, -cds['depth'].values, cds['salinity'].values, cds['lat'].values, cds['lon'].values)
 
         # Plot model profiles
         if plot_rtofs:
@@ -297,33 +307,34 @@ def plot_glider_profiles(id):
         dax.plot(gds['density'], gds["depth"], '-o', color="green", label=glabel)
 
     if plot_cmems:        
-        tax.plot(cds['temperature'], cds["depth"], '-o', color="purple", label=clabel)
-        sax.plot(cds['salinity'], cds["depth"], '-o', color="purple", label=clabel)    
-        dax.plot(cds['density'], cds["depth"], '-o', color="purple", label=clabel)
+        tax.plot(cds['temperature'], cds["depth"], '-o', color="magenta", label=clabel)
+        sax.plot(cds['salinity'], cds["depth"], '-o', color="magenta", label=clabel)    
+        dax.plot(cds['density'], cds["depth"], '-o', color="magenta", label=clabel)
 
     # Get min and max of each plot. Add a delta to each for x limits
     tmin, tmax = line_limits(tax, delta=.5)
     smin, smax = line_limits(sax, delta=.25)
     dmin, dmax = line_limits(dax, delta=.5)
-    
-    # Adjust plots
-    tax.set_xlim([tmin, tmax])
 
-    # if df.depth.max() < 100:
-    #     tax.set_ylim([30, 1])
-    # else:
-    tax.set_ylim([50, 1])
+    if np.nanmax(maxd) < 1000:
+        xlim = [np.nanmax(maxd) * 1.1, 0]
+    else:
+        xlim = [1000, 0]
+        
+    # Adjust plots
+    tax.set_xlim([tmax, tmin])
+    tax.set_ylim(xlim)
     tax.set_ylabel('Depth (m)', fontsize=13, fontweight="bold")
     tax.set_xlabel('Temperature ($^oC$)', fontsize=13, fontweight="bold")
     tax.grid(True, linestyle='--', linewidth=0.5)
 
-    sax.set_xlim([smin, smax])
-    sax.set_ylim([50, 1])  
+    sax.set_xlim([smax, smin])
+    sax.set_ylim(xlim)  
     sax.set_xlabel('Salinity', fontsize=13, fontweight="bold")
     sax.grid(True, linestyle='--', linewidth=0.5)
 
-    dax.set_xlim([dmin, dmax])
-    dax.set_ylim([50, 1])
+    dax.set_xlim([dmax, dmin])
+    dax.set_ylim(xlim)
     dax.set_xlabel('Density (kg m-3)', fontsize=13, fontweight="bold")
     dax.grid(True, linestyle='--', linewidth=0.5)
 
@@ -331,8 +342,9 @@ def plot_glider_profiles(id):
         method = "Interpolation"
     else:
         method = "Nearest-Neighbor"
-        
-    title_str = (f'Glider {id}\n'
+
+    title_str = (f'Glider: {glid}\n'
+                 f'Deployed: {deployed}\n'
                  f'Profiles: { df["profile_id"].nunique() }\n'
                  f'First: { str(df["time"].min()) }\n'
                  f'Last: { str(df["time"].max()) }\n'
@@ -349,7 +361,8 @@ def plot_glider_profiles(id):
 
     lon_track = np.array(lon_track)
     lat_track = np.array(lat_track)
-    dx = dy = 2.25
+    dx = 2
+    dy = 1.25
     # extent_inset = [lon_track.min(), lon_track.max(), lat_track.min(), lat_track.max()]
     extent_main = [lon_track.min() - dx, lon_track.max() + dx, lat_track.min() - dy, lat_track.max() + dy]
     # lonmin, lonmax, latmin, latmax = extent_inset
