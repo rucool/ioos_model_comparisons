@@ -206,7 +206,7 @@ def map_add_gliders(ax, df, transform=proj['data'], color='white'):
         # map_add_legend(ax)
 
 
-def map_add_inset(ax, x=.8, y=.3, size=.5, extent=None):
+def map_add_inset(ax, x=.8, y=.3, size=.5, extent=None, zoom_extent=None):
     """_summary_
 
     Args:
@@ -218,14 +218,19 @@ def map_add_inset(ax, x=.8, y=.3, size=.5, extent=None):
     Returns:
         _type_: _description_
     """
+    import cartopy
     # Inset Axis
-    axin = plt.axes([0, 0, 1, 1], projection=ccrs.Mercator())
-    position = [x - size / 2, y - size / 2, size, size]
-    ip = InsetPosition(ax, position)
-    axin.set_axes_locator(ip)
+    # axin = plt.axes([0, 0, 1, 1], projection=ccrs.Mercator())
+    # position = [x - size / 2, y - size / 2, size, size]
+    # ip = InsetPosition(ax, position)
+    # axin.set_axes_locator(ip)
+    axins = inset_axes(ax, width="40%", height="40%", loc="lower left", 
+                       axes_class=cartopy.mpl.geoaxes.GeoAxes, 
+                       axes_kwargs=dict(map_projection=ccrs.Mercator()))
+    axins.set_extent(extent)
 
-    if extent:
-        lonmin, lonmax, latmin, latmax = extent
+    if zoom_extent:
+        lonmin, lonmax, latmin, latmax = zoom_extent
 
         nvert = 100
         lons = np.r_[np.linspace(lonmin, lonmin, nvert),
@@ -236,8 +241,8 @@ def map_add_inset(ax, x=.8, y=.3, size=.5, extent=None):
                     np.linspace(latmax, latmin, nvert)].tolist()
         
         ring = LinearRing(list(zip(lons, lats)))
-        axin.add_geometries([ring], ccrs.PlateCarree(), facecolor='none', edgecolor='red', linewidth=0.75)
-    return axin
+        axins.add_geometries([ring], ccrs.PlateCarree(), facecolor='none', edgecolor='red', linewidth=1, zorder=1000)
+    return axins
 
 
 def map_add_legend(ax):
@@ -447,18 +452,13 @@ def plot_model_region(ds, region,
             
             plt.close()
 
-def plot_model_region_currents(ds, region,
-                      bathy=None,
-                      argo=None,
-                      gliders=None,
-                      currents=dict(bool=False),
+def plot_model_region_currents(region,
                       transform=dict(
                           map=proj['map'],
                           data=proj['data']
                           ),
                       legend=True,
-                      model='rtofs',
-                      path_save=os.getcwd(),
+                      path_save=Path(os.getcwd()),
                       dpi=150,
                       t0=None,
                       ):
@@ -472,61 +472,22 @@ def plot_model_region_currents(ds, region,
     """
     region_name = region["name"]
     extent = region["extent"]
-    time = pd.to_datetime(ds.time.values)
 
     # Create subdirectory for region
     region_file_str = '_'.join(region_name.lower().split(' '))
     path_save_region = path_save / 'regions' / region_file_str
-
-    if not isinstance(gliders, pd.DataFrame):
-        gliders = pd.DataFrame()
     
-    if not isinstance(argo, pd.DataFrame):
-        argo = pd.DataFrame()
-
-    tds = ds.sel(depth=0)
-
-    # Convert u and v radial velocities to magnitude
-    _, mag = uv2spdir(tds['u'], tds['v'])
-
     # Create subdirectory for depth under variable subdirectory
-    save_dir_final = path_save_region / f"currents_0m" / time.strftime('%Y/%m')
+    save_dir_final = path_save_region 
     os.makedirs(save_dir_final, exist_ok=True)
 
     # Create a string for the title of the plot
-    title_time = time.strftime("%Y-%m-%d %H:%M:%S UTC")
-    title = f"{model.upper()} - Currents (0 m) - {title_time}\n"
  
     # Create a file name to save the plot as
-    sname = f'{model}-currents_0m-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
-    save_file = save_dir_final / f"{sname}.png"
+    save_file = save_dir_final / f"passengers.png"
 
-
-    fig, ax = create(extent, proj=transform['map'], bathymetry=True, figsize=(16,9))
+    fig, ax = create(extent, proj=transform['map'], bathymetry=False, figsize=(16,9))
                                
-    rargs = {}
-    rargs['argo'] = argo
-    rargs['gliders'] = gliders
-    rargs['transform'] = transform['data']  
-    plot_regional_assets(ax, **rargs)
-
-    # Initialize qargs dictionary for input into contour plot of magnitude
-    qargs = {}
-    qargs['transform'] = transform['data']
-    qargs['cmap'] = cmocean.cm.speed
-    qargs['extend'] = "max"
-    # qargs['zorder'] = 2000
-
-    # try:
-    #     cargs.pop('vmin'), cargs.pop('vmax')
-    # except KeyError:
-    #     pass
-    
-    # h = ax.contourf(tds['lon'], tds['lat'], mag, **qargs)
-    # cb = fig.colorbar(h, ax=ax, orientation="vertical", shrink=.95)#, shrink=0.7, aspect=20*0.7)
-    # cb = add_colorbar(axs[:2], m1, location="bottom")
-    # cb.ax.tick_params(labelsize=12)
-    # cb.set_label(f'Current Speed (m/s)', fontsize=12, fontweight="bold")
     url = 'https://encdirect.noaa.gov/arcgis/services/encdirect/enc_overview/MapServer/WMSServer?request=GetCapabilities&service=WMS'
     url2 = 'https://encdirect.noaa.gov/arcgis/services/encdirect/enc_general/MapServer/WMSServer?request=GetCapabilities&service=WMS'
     # url = 'https://encdirect.noaa.gov/arcgis/services/encdirect/enc_coastal/MapServer/WMSServer?request=GetCapabilities&service=WMS'
@@ -806,7 +767,7 @@ def plot_model_region_currents(ds, region,
     import matplotlib.patches as patches
 
     # Triangle
-    kw = dict(arrowstyle=style, color="red", linewidth=4, transform=ccrs.PlateCarree(), zorder=3000)
+    kw = dict(arrowstyle=style, color="red", linewidth=4, transform=ccrs.PlateCarree(), zorder=3000, label='Fixed')
     a1 = patches.FancyArrowPatch((-87, 19.25), (-84.5, 21.5), **kw)
     a2 = patches.FancyArrowPatch((-84.5, 21.5), (-85.25, 19.25), **kw)
     a3 = patches.FancyArrowPatch((-85.25, 19.25), (-87, 19.25), **kw)
@@ -826,24 +787,24 @@ def plot_model_region_currents(ds, region,
     # plt.gca().add_patch(a6)
 
     # Curvy area
-    kw = dict(arrowstyle=style, color="magenta", linewidth=4, transform=ccrs.PlateCarree(), zorder=3000)
-    a1 = patches.FancyArrowPatch((-86.5, 20.5), (-86, 21.25), **kw)
+    kw = dict(arrowstyle=style, color="magenta", linewidth=4, transform=ccrs.PlateCarree(), zorder=3000, label='Expected')
+    a4 = patches.FancyArrowPatch((-86.5, 20.5), (-86, 21.25), **kw)
     # a2 = patches.FancyArrowPatch((-85.75, 21.5), (-88, 25), connectionstyle="angle3, angleA=90, angleB=20", **kw)
-    a2 = patches.FancyArrowPatch((-85.75, 21.5), (-88, 25), connectionstyle="angle3, angleA=70, angleB=15", **kw)
-    a3 = patches.FancyArrowPatch((-85.75, 21.5), (-84, 23.5), connectionstyle="angle3, angleA=75, angleB=-20", **kw)
-    a4 = patches.FancyArrowPatch((-85.75, 21.5), (-84, 24.5), connectionstyle="angle3, angleA=75, angleB=-40", **kw)
-    a5 = patches.FancyArrowPatch((-84, 24), (-82.25, 24), **kw)
+    a5 = patches.FancyArrowPatch((-85.75, 21.5), (-88, 25), connectionstyle="angle3, angleA=70, angleB=15", **kw)
+    a6 = patches.FancyArrowPatch((-85.75, 21.5), (-84, 23.5), connectionstyle="angle3, angleA=75, angleB=-20", **kw)
+    a7 = patches.FancyArrowPatch((-85.75, 21.5), (-84, 24.5), connectionstyle="angle3, angleA=75, angleB=-40", **kw)
+    a8 = patches.FancyArrowPatch((-84, 24), (-82.25, 24), **kw)
     # a6 = patches.FancyArrowPatch((-82, 24), (-81.25, 23.5), **kw)
     # a7 = patches.FancyArrowPatch((-80.75, 24), (-80, 25), **kw)
     # a3 = patches.FancyArrowPatch((-0.4, -0.6), (0.4, -0.6), connectionstyle="arc3,rad=.5", **kw)
 
     # for a in [a1, a2, a3]:
         # plt.gca().add_patch(a)
-    plt.gca().add_patch(a1)
-    plt.gca().add_patch(a2)
-    plt.gca().add_patch(a3)
     plt.gca().add_patch(a4)
     plt.gca().add_patch(a5)
+    plt.gca().add_patch(a6)
+    plt.gca().add_patch(a7)
+    plt.gca().add_patch(a8)
     # plt.gca().add_patch(a6)
     # plt.gca().add_patch(a7)
 
@@ -851,7 +812,7 @@ def plot_model_region_currents(ds, region,
     field_lon = [-86.5, -86.5, -87.3, -87.3, -86.5]
     field_lat = [19, 20, 20, 19, 19]
     # ax.fill(field_lon, field_lat, color='coral', edgecolor='black', transform=ccrs.PlateCarree(), alpha=0.6, zorder=3000)
-    ax.plot(field_lon, field_lat, color='maroon', linewidth=4, zorder=3000, transform=ccrs.PlateCarree())
+    l1 = ax.plot(field_lon, field_lat, color='maroon', linewidth=4, zorder=3000, transform=ccrs.PlateCarree(), label='Fixed')
     
     # Area 2
     field_lon = [-86.75, -86, -85.5, -86.25, -86.75]
@@ -872,50 +833,58 @@ def plot_model_region_currents(ds, region,
     ax.text(-89.9, 21, 'Yucatan/Quintana Roo', fontsize=11, transform=ccrs.PlateCarree(), zorder=3000)
 
 
-    # Add loop current contour from WHO Group
-    fname = '/Users/mikesmith/Downloads/GOM front/2023-01-31_fronts.mat'
-    data = loadmat(fname)
+    # # Add loop current contour from WHO Group
+    # fname = '/Users/mikesmith/Downloads/GOM front/2023-01-31_fronts.mat'
+    # data = loadmat(fname)
  
-    fronts = []
-    for item in data['BZ_all'][0]:
-        loop_y = item['y'].T
-        loop_x = item['x'].T
+    # fronts = []
+    # for item in data['BZ_all'][0]:
+    #     loop_y = item['y'].T
+    #     loop_x = item['x'].T
 
-        hf = ax.plot(loop_x, loop_y,
-                     linestyle=item['LineStyle'][0],
-                     color='black',
-                     linewidth=3, 
-                     transform=ccrs.PlateCarree(), 
-                     zorder=120
-                     )
-        fronts.append(hf)
+    #     hf = ax.plot(loop_x, loop_y,
+    #                  linestyle=item['LineStyle'][0],
+    #                  color='black',
+    #                  linewidth=1, 
+    #                  transform=ccrs.PlateCarree(), 
+    #                  zorder=120
+    #                  )
+    #     fronts.append(hf)
 
-        # Add arrows
-        start_lon = item['bx'].T
-        start_lat = item['by'].T
-        end_lon = item['tx'].T
-        end_lat = item['ty'].T
+    #     # Add arrows
+    #     start_lon = item['bx'].T
+    #     start_lat = item['by'].T
+    #     end_lon = item['tx'].T
+    #     end_lat = item['ty'].T
 
-        for count, _ in enumerate(start_lon):
-            ax.arrow(
-                start_lon[count][0],
-                start_lat[count][0],
-                end_lon[count][0]-start_lon[count][0],
-                end_lat[count][0]-start_lat[count][0],
-                linewidth=0, 
-                head_width=0.2,
-                shape='full', 
-                fc='black', 
-                ec='black',
-                transform=ccrs.PlateCarree(),
-                zorder=130,
-                )
-    fronts.reverse()
+    #     for count, _ in enumerate(start_lon):
+    #         ax.arrow(
+    #             start_lon[count][0],
+    #             start_lat[count][0],
+    #             end_lon[count][0]-start_lon[count][0],
+    #             end_lat[count][0]-start_lat[count][0],
+    #             linewidth=0, 
+    #             head_width=0.1,
+    #             shape='full', 
+    #             fc='black', 
+    #             ec='black',
+    #             transform=ccrs.PlateCarree(),
+    #             zorder=130,
+    #             )
+    # fronts.reverse()
     url = 'https://gis.charttools.noaa.gov/arcgis/rest/services/MarineChart_Services/NOAACharts/MapServer/WMTS'
     w = ax.add_wmts(wmts=url, layer_name='MarineChart_Services_NOAACharts')
+    # ax.legend([a1, l1[0], a6], ['Fixed', 'Fixed', 'Expected'], loc='upper left', title='Glider Tracks')
+    legend_h = []
+    import matplotlib.lines as mlines
+    legend_h.append(mlines.Line2D([], [], linestyle='-', color='red', linewidth=6))
+    legend_h.append(mlines.Line2D([], [], linestyle='-', color='maroon', linewidth=6))
+    legend_h.append(mlines.Line2D([], [], linestyle='-', color='magenta', linewidth=6))
+
+    ax.legend(legend_h, ['Fixed', 'Fixed', 'Expected'], loc='upper left', title='Glider Tracks', title_fontproperties={'weight':'bold'})
+    plt.figtext(0.25, 0.01, 'Fixed tracks will be followed as shown.\nExpected tracks will approximately follow tracks as shown but may be affected by currents in unpredictable way.', ha="left", fontsize=9, fontstyle='italic')
 
     fig.savefig(save_file, dpi=150, bbox_inches='tight', pad_inches=0.1)
-
 
     plt.close()
  
@@ -2134,6 +2103,17 @@ def plot_ohc(ds1, ds2, extent, region_name,
                       extend="max",
                       cmap=cmap,
                       transform=transform['data'])
+    ax1.contour(ds1['lon'], 
+                ds1['lat'], 
+                ds1['ohc'], 
+                [60],
+                linestyles='-',
+                colors=['darkorange'],
+                linewidths=1,
+                alpha=.75,
+                transform=ccrs.PlateCarree(),
+                zorder=101)
+
 
     # Ocean Heat Content Plot
     h2 = ax2.contourf(ds2['lon'], ds2['lat'], ds2['ohc'], 
@@ -2142,6 +2122,16 @@ def plot_ohc(ds1, ds2, extent, region_name,
                       cmap=cmap,
                       transform=transform['data']
                       )
+    ax2.contour(ds1['lon'], 
+                ds1['lat'], 
+                ds1['ohc'], 
+                [60],
+                linestyles='-',
+                colors=['darkorange'],
+                linewidths=1,
+                alpha=.75,
+                transform=ccrs.PlateCarree(),
+                zorder=101)
     
     # Add colorbar to first axes
     cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)

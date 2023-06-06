@@ -326,12 +326,26 @@ def surface_current_fronts_single(ds1, region,
     # Make the map pretty
     add_features(ax)
     if bathy:    
-        add_bathymetry(ax,
-                       bathy.longitude.values, 
-                       bathy.latitude.values, 
-                       bathy.elevation.values,
-                       levels=(-1000, -100),
-                       zorder=102)
+        # add_bathymetry(ax,
+        #                bathy.longitude.values, 
+        #                bathy.latitude.values, 
+        #                bathy.elevation.values,
+        #                levels=(-1000, -100),
+        #                zorder=102)
+        # bds = cplt.get_bathymetry(extent)
+        bh = cplt.add_bathymetry(ax,
+                                 bathy['longitude'],
+                                 bathy['latitude'],
+                                 bathy['elevation'], 
+                                 levels=(-1000, -100)
+                                 )
+        levels = [-8000, -1000, -100, 0]
+        colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
+        cs1 = ax.contourf(bathy['longitude'],
+                         bathy['latitude'],
+                         bathy['elevation'],
+                         levels, colors=colors, transform=ccrs.PlateCarree(), ticks=False)
+
     add_ticks(ax, extent, gridlines=True)
 
     if eez:
@@ -381,7 +395,7 @@ def surface_current_fronts_single(ds1, region,
     cs = ax.contourf(ds1['lon'], ds1['lat'], mag_r, levels, colors=colors, transform=ccrs.PlateCarree(), zorder=100)
 
     # Add contour line at 1.5 knots
-    test = ax.contour(ds1['lon'], ds1['lat'], mag_r, [.772], linestyles='-', colors=['black'], linewidths=1, alpha=.75, transform=ccrs.PlateCarree(), zorder=101)
+    test = ax.contour(ds1['lon'], ds1['lat'], mag_r, [.772], linestyles='-', colors=['red'], linewidths=1, alpha=.75, transform=ccrs.PlateCarree(), zorder=101)
         
     # Add loop current contour from WHO Group
     # fname = '/Users/mikesmith/Downloads/GOM front/2023-01-31_fronts.mat'
@@ -460,7 +474,7 @@ def surface_current_fronts_single(ds1, region,
     leg = ax.legend(legend_1, legend_1_text,
                     fontsize=9,
                     #   title="1 knot = 0.51444 m/s",
-                    # loc='lower left',
+                    loc='upper right',
                     # bbox_transform=ccrs.PlateCarree()
                     )
     
@@ -471,6 +485,13 @@ def surface_current_fronts_single(ds1, region,
     for legobj in leg.legendHandles:
         legobj.set_linewidth(2.0)
     leg.set_zorder(10001)
+
+    # Create legend for contours 
+    proxy = [plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in cs1.collections]
+    proxy.reverse()
+    ax.legend(proxy, ["0-100m", "100-1000m", "1000+m"], loc='upper left').set_zorder(10001)
+    plt.gca().add_artist(leg)
+
     # Create a string for the title of the plot
     title_time = time.strftime("%Y-%m-%d %H:%M")
     title = f"Surface Current Comparisons - {title_time} UTC - {model}\n"
