@@ -7,13 +7,20 @@ import pandas as pd
 import scipy.stats as stats
 import seawater
 import xarray as xr
-from ioos_model_comparisons.calc import depth_interpolate, lon180to360, lon360to180, difference, density
+from ioos_model_comparisons.calc import (depth_interpolate, lon180to360, 
+                                         lon360to180, difference, density,
+                                         ocean_heat_content)
 from ioos_model_comparisons.models import gofs, rtofs, cmems, amseas
-from ioos_model_comparisons.platforms import get_argo_floats_by_time
+from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_bathymetry
 from ioos_model_comparisons.regions import region_config
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
 from gsw import z_from_p
+import glob
+import cartopy.feature as cfeature
+import re
+from datetime import datetime
+
 save_dir = conf.path_plots / 'profiles' / 'argo'
 
 # Configs
@@ -29,7 +36,7 @@ plot_amseas = True
 # argos = ["4902350", "4903250", "6902854", "4903224", "4903227"]
 # argos = [4903227]
 # conf.regions = ['caribbean-leeward'] # For debug purposes
-days = 2
+days = 7
 dpi = conf.dpi
 vars = ['platform_number', 'time', 'longitude', 'latitude', 'pres', 'temp', 'psal']
 
@@ -52,9 +59,15 @@ if plot_amseas:
 date_end = pd.Timestamp.utcnow().tz_localize(None)
 date_start = (date_end - pd.Timedelta(days=days)).floor('1d')
 
+# For symlink folder
+then = pd.Timestamp.today() - pd.Timedelta(days=14) # get the date 14 days ago
+then = pd.Timestamp(then.strftime('%Y-%m-%d')) # convert back to timestamp
+
 # Get extent for all configured regions to download argo/glider data one time
 extent_list = []
-for region in ['carib', 'gom', 'sab', 'mab']:
+conf.regions = ['caribbean', 'gom', 'sab', 'mab', 'passengers']
+conf.regions = ['gom']
+for region in conf.regions:
     extent_list.append(region_config(region)["extent"])
 
 extent_df = pd.DataFrame(
@@ -86,6 +99,9 @@ floats['depth'] = seawater.dpth(floats['pres (decibar)'], floats['lat'])
 # Mask argo float based off of the maximum depth
 depth_mask = floats['depth'] <= depth
 floats = floats[depth_mask]
+
+levels = [-8000, -1000, -100, 0]
+colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
         
 def process_argo(region):    
     # Loop through regions
@@ -95,6 +111,32 @@ def process_argo(region):
     # extended = np.add(extent, [-1, 1, -1, 1]).tolist()
     temp_save_dir = save_dir / region['folder']
     os.makedirs(temp_save_dir, exist_ok=True)
+
+    # Create symlink directory
+    symlink_dir = temp_save_dir / 'last_14_days'
+    os.makedirs(symlink_dir, exist_ok=True)
+
+    # Cleanup symlink directory
+    for f in sorted(glob.glob(os.path.join(symlink_dir, '*.png'))):
+        # Extract date and time from string
+        match = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}\d{2}\d{2}', f)
+        if match:
+            date_time_str = match.group()
+
+            # Convert string to datetime object
+            date_time_obj = datetime.strptime(date_time_str, '%Y-%m-%dT%H%M%S')
+
+            # Check if the date in the string is older than 14 days
+            if (datetime.now() - date_time_obj).days > 14:
+                print(f"The file {f} is older than 14 days.")
+                # Uncomment the following line to delete the file
+                os.remove(f)
+    try:
+        bathy = get_bathymetry(extent)
+        bathy_flag = True
+    except:
+        bathy_flag = False
+        pass
 
     # Filter to region
     if floats.empty:
@@ -124,7 +166,7 @@ def process_argo(region):
         ctime = gname[1] # time from gname
         print(f"Checking ARGO {wmo} for new profiles")
         
-        tstr = ctime.strftime("%Y-%m-%d %H:%M:%S") # create time string
+        tstr = ctime.strftime("%Y-%m-%d %H:%M:%S") # create time string            
         save_str = f'{wmo}-profile-{ctime.strftime("%Y-%m-%dT%H%M%SZ")}.png'
         tdir = temp_save_dir / ctime.strftime("%Y") / ctime.strftime("%m") / ctime.strftime("%d") 
         os.makedirs(tdir, exist_ok=True)
@@ -155,14 +197,7 @@ def process_argo(region):
 
         if not (profile_exist) or not (profile_diff_exist):
             # # Calculate depth from pressure and lat
-            # df = df.assign(
-            #     depth=seawater.eos80.dpth(
-            #         df['pres (decibar)'],
-            #         df['lat']
-            #         )
-            # )
             df = df.assign(depth=-z_from_p(df['pres (decibar)'].values, df['lat'].values))
-            # df['depth'] = z_from_p(df['pres (decibar)'], df['lat'])
 
             # Filter out the dataframe
             salinity_mask = np.abs(stats.zscore(df['psal (PSU)'])) < 4
@@ -173,15 +208,6 @@ def process_argo(region):
             if df.empty:
                 continue
             
-            # Calculate density. Use .assign to avoid SettingWithCopyWarning
-            # df = df.assign(
-            #     density=seawater.eos80.dens(
-            #         df['psal (PSU)'], 
-            #         df['temp (degree_Celsius)'], 
-            #         df['pres (decibar)']
-            #         )
-            #     )
-
             df = df.assign(
                 density=density(
                     df['temp (degree_Celsius)'].values,
@@ -191,6 +217,13 @@ def process_argo(region):
                     df['lon'].values    
                 )
             )
+
+            ohc_float = ocean_heat_content(
+                df['depth'],
+                df['temp (degree_Celsius)'],
+                df['density']
+                )
+
 
             # Interpolate argo profile to configuration depths
             # df = depth_interpolate(df, 
@@ -235,6 +268,14 @@ def process_argo(region):
                     # gdsi["density"] = xr.apply_ufunc(seawater.eos80.dens, gdsi.salinity, gdsi.temperature, gdsi.pressure)
 
                     gdsi['density'] = density(gdsi.temperature, -gdsi.depth, gdsi.salinity, gdsi.lat, gdsi.lon)
+
+                    # Calculate ocean heat content for profile
+                    ohc_gofs = ocean_heat_content(
+                        gdsi['depth'].values,
+                        gdsi['temperature'].values,
+                        gdsi['density'].values
+                        )
+                    
                     glon = gdsi.lon.data.round(2)
                     glat = gdsi.lat.data.round(2)
                     glabel = f'GOFS [{ glon }, { glat }]'
@@ -265,6 +306,13 @@ def process_argo(region):
                     # rdsi['density'] = xr.apply_ufunc(seawater.eos80.dens, rdsi.salinity, rdsi.temperature, rdsi.pressure)
 
                     rdsi['density'] = density(rdsi.temperature, -rdsi.depth, rdsi.salinity, rdsi.lat, rdsi.lon)
+
+                    # Calculate ocean heat content for profile
+                    ohc_rtofs = ocean_heat_content(
+                        rdsi['depth'].values,
+                        rdsi['temperature'].values,
+                        rdsi['density'].values
+                        )
                     rlon = rdsi.lon.data.round(2)
                     rlat = rdsi.lat.data.round(2)
                     rlabel = f'RTOFS [{ rlon }, { rlat }]'
@@ -306,6 +354,14 @@ def process_argo(region):
 
                     clon = cdsi.lon.data.round(2)
                     clat = cdsi.lat.data.round(2)
+                    
+                    # Calculate ocean heat content for profile
+                    ohc_cmems = ocean_heat_content(
+                        cdsi['depth'].values,
+                        cdsi['temperature'].values,
+                        cdsi['density'].values
+                        )
+                    
                     clabel = f"Copernicus [{ clon }, { clat }]"
                     leg_str += f'CMEMS: {pd.to_datetime(cdsi.time.data)}\n'
                     cmems_flag = True
@@ -330,6 +386,13 @@ def process_argo(region):
                     adsi['density'] = density(adsi.temperature, -adsi.depth, adsi.salinity, adsi.lat, adsi.lon)
                     amlon = adsi.lon.data.round(2)
                     amlat = adsi.lat.data.round(2)
+
+                    # Calculate ocean heat content for profile
+                    ohc_amseas = ocean_heat_content(
+                        adsi['depth'].values,
+                        adsi['temperature'].values,
+                        adsi['density'].values
+                        )
                     amlabel = f'AMSEAS [{ amlon }, { amlat }]'
                     leg_str += f'AMSEAS : {pd.to_datetime(adsi.time.data)}\n'
                     print(f"AMSEAS: True")
@@ -409,21 +472,81 @@ def process_argo(region):
             text.set_path_effects([path_effects.Normal()])
             ax4.set_axis_off()
 
-            cplt.create(extent, ax=ax5)
-            cplt.add_ticks(ax5, extent, fontsize=10)
+            cplt.create(extent, ax=ax5, bathymetry=False)
+            cplt.add_ticks(ax5, extent, fontsize=8)
             ax5.plot(lon, lat, 'bo', transform=conf.projection['data'], zorder=101)
-            ax5.streamplot(tmp.lon.data, tmp.lat.data, tmp.u.data, tmp.v.data, transform=conf.projection['data'], density=2, linewidth=1, color='lightgray', zorder=100)
+            ax5.streamplot(tmp.lon.data, tmp.lat.data, tmp.u.data, tmp.v.data, transform=conf.projection['data'], density=1.5, linewidth=1, color='lightgray', zorder=100)
 
+            if bathy_flag:
+                ax5.contourf(
+                    bathy['longitude'],
+                    bathy['latitude'],
+                    bathy['elevation'],
+                    levels,
+                    colors=colors,
+                    transform=conf.projection['data'],
+                    ticks=False,
+                    zorder=98
+                    )
+        
             h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
 
             ax6.legend(h, l, ncol=1, loc='center', fontsize=12)
             ax6.set_axis_off()
 
             fig.tight_layout()
-            fig.subplots_adjust(top=0.9) 
+            fig.subplots_adjust(top=0.9)
+
+            ohc_string = 'Ocean Heat Content (kJ/cm^2) - '
+            try:
+                if np.isnan(np.nanmean(ohc_float)):
+                    ohc_string += 'Argo: N/A,  '
+                else:
+                    ohc_string += f"Argo: {np.nanmean(ohc_float):.4f},  "
+            except:
+                pass
+            
+            try:
+                if np.isnan(ohc_rtofs):
+                    ohc_string += 'RTOFS: N/A,  '
+                else:
+                    ohc_string += f"RTOFS: {ohc_rtofs:.4f},  "
+            except:
+                pass
+            
+            try:           
+                if np.isnan(ohc_gofs):
+                    ohc_string += 'GOFS: N/A,  '
+                else:
+                    ohc_string += f"GOFS: {ohc_gofs:.4f},  "
+            except:
+                pass
+                
+            try:
+                if np.isnan(ohc_cmems):
+                    ohc_string += 'CMEMS: N/A,  '
+                else:
+                    ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
+            except:
+                pass
+            
+            try:
+                if np.isnan(ohc_amseas):
+                    ohc_string += 'AMSEAS: N/A,  '
+                else:
+                    ohc_string += f"AMSEAS: {ohc_amseas:.4f},  "
+            except:
+                pass
+            
+            plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
+ 
 
             plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
+            
+            # Create a symlink directory
+            if ctime > then:
+                os.symlink(full_file, symlink_dir / save_str)
 
         # # Plot the profile differences 
         # if not profile_diff_exist:
@@ -545,7 +668,7 @@ def main():
     if parallel: 
         import concurrent.futures
         if isinstance(parallel, bool):
-            workers = 2
+            workers = 5
         elif isinstance(parallel, int):
             workers = parallel
 

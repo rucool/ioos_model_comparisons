@@ -19,7 +19,6 @@ from ioos_model_comparisons.plotting import map_add_inset
 from ioos_model_comparisons.regions import region_config
 
 import matplotlib.pyplot as plt
-import cmocean 
 import re
 from datetime import datetime
 import cartopy.feature as cfeature
@@ -495,12 +494,12 @@ def plot_glider_profiles(id, gliders):
     fig.tight_layout()
     fig.subplots_adjust(top=0.9)
      
-    ohc_string = 'Ocean Heat Content (Profiles) - '
+    ohc_string = 'Ocean Heat Content (kJ/cm^2) - '
     try:
         if np.isnan(np.nanmean(ohc_glider)):
             ohc_string += 'Glider: N/A,  '
         else:
-            ohc_string += f"Glider: {np.nanmean(ohc_glider):.4f} kJ/cm^2,  "
+            ohc_string += f"Glider: {np.nanmean(ohc_glider):.4f},  "
     except:
         pass
     
@@ -508,7 +507,7 @@ def plot_glider_profiles(id, gliders):
         if np.isnan(ohc_rtofs):
             ohc_string += 'RTOFS: N/A,  '
         else:
-            ohc_string += f"RTOFS: {ohc_rtofs:.4f} kJ/cm^2,  "
+            ohc_string += f"RTOFS: {ohc_rtofs:.4f},  "
     except:
         pass
     
@@ -516,7 +515,7 @@ def plot_glider_profiles(id, gliders):
         if np.isnan(ohc_gofs):
             ohc_string += 'GOFS: N/A,  '
         else:
-            ohc_string += f"GOFS: {ohc_gofs:.4f} kJ/cm^2,  "
+            ohc_string += f"GOFS: {ohc_gofs:.4f},  "
     except:
         pass
            
@@ -524,7 +523,7 @@ def plot_glider_profiles(id, gliders):
         if np.isnan(ohc_cmems):
             ohc_string += 'CMEMS: N/A,  '
         else:
-            ohc_string += f"CMEMS: {ohc_cmems:.4f} kJ/cm^2,  "
+            ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
     except:
         pass
     
