@@ -66,7 +66,7 @@ then = pd.Timestamp(then.strftime('%Y-%m-%d')) # convert back to timestamp
 # Get extent for all configured regions to download argo/glider data one time
 extent_list = []
 conf.regions = ['caribbean', 'gom', 'sab', 'mab', 'passengers']
-conf.regions = ['gom']
+# conf.regions = ['gom']
 for region in conf.regions:
     extent_list.append(region_config(region)["extent"])
 
