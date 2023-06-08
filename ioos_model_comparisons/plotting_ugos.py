@@ -284,13 +284,16 @@ def surface_current_fronts_single(ds1, region,
                                   overwrite=False
                                   ):
     time = pd.to_datetime(ds1.time.data)
+
+    if isinstance(time, pd.core.indexes.datetimes.DatetimeIndex):
+        time = time[0]
+        
     model = ds1.model.upper()
-    
     extent = region['extent']
     
     # Plot currents with magnitude and direction
     quiver_dir = path_save / f"surface_currents_fronts" / time.strftime('%Y/%m')
-    os.makedirs(quiver_dir, exist_ok=True)
+    quiver_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate filename
     sname = f'gom_{time.strftime("%Y-%m-%dT%H%M%SZ")}_surface_current_fronts-{model}'
