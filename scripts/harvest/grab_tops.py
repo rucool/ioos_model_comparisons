@@ -32,15 +32,19 @@ now = dt.datetime.now()
 
 # Subtract one day from the current date to get yesterday's date
 yesterday = now - dt.timedelta(days=1)
+tomorrow = now + dt.timedelta(days=1)
 
-# Format the date
-formatted_date = yesterday.strftime('%Y%m%d')
 
-# The name we want to give to the downloaded file
-file_name = f'tops_compositem_{formatted_date}_{formatted_date}.nc'
+for d in [yesterday, now, tomorrow]:
+    # Format the date
+    formatted_date_1 = yesterday.strftime('%Y%m%d')
+    formatted_date_2 = d.strftime('%Y%m%d')
 
-# Directory where the file should be downloaded
-# ddir = Path('/home/hurricaneadm/data/rtofs_west/')
-ddir = Path('/home/hurricaneadm/data/tops/')
+    # The name we want to give to the downloaded file
+    file_name = f'tops_compositem_{formatted_date_1}_{formatted_date_2}.nc'
 
-download_file(url, file_name, ddir / yesterday.strftime('%Y/%m'))
+    # Directory where the file should be downloaded
+    ddir = Path('/home/hurricaneadm/data/tops/')
+    # ddir = Path('/Users/mikesmith/data/tops/')
+
+    download_file(url, file_name, ddir / d.strftime('%Y/%m'))
