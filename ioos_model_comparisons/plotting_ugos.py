@@ -398,7 +398,7 @@ def surface_current_fronts_single(ds1, region,
     cs = ax.contourf(ds1['lon'], ds1['lat'], mag_r, levels, colors=colors, transform=ccrs.PlateCarree(), zorder=100)
 
     # Add contour line at 1.5 knots
-    test = ax.contour(ds1['lon'], ds1['lat'], mag_r, [.772], linestyles='-', colors=['red'], linewidths=1, alpha=.75, transform=ccrs.PlateCarree(), zorder=101)
+    test = ax.contour(ds1['lon'], ds1['lat'], mag_r, [.772], linestyles='-', colors=['black'], linewidths=1, alpha=.75, transform=ccrs.PlateCarree(), zorder=101)
         
     # Add loop current contour from WHO Group
     # fname = '/Users/mikesmith/Downloads/GOM front/2023-01-31_fronts.mat'
