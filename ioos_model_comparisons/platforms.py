@@ -12,6 +12,7 @@ from erddapy import ERDDAP
 from joblib import Parallel, delayed
 from numpy import isin
 from requests.exceptions import HTTPError as rHTTPError
+import requests 
 
 Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
@@ -413,3 +414,38 @@ def get_bathymetry(bbox=None):
 
     # return xarray dataset
     return e.to_xarray()
+
+
+def get_ohc(bbox=None, time=None):
+    bbox = bbox or [-100, -45, 5, 46]
+
+    lons = bbox[:2]
+    lats = bbox[2:]
+
+    time = time or dt.date.today()
+
+    e = ERDDAP(
+        server="https://coastwatch.noaa.gov/erddap/",
+        protocol="griddap"
+    )
+
+    e.dataset_id = "noaacwOHCna"
+
+    e.griddap_initialize()
+
+    # Modify constraints
+    e.constraints["latitude<="] = max(lats)
+    e.constraints["latitude>="] = min(lats)
+    e.constraints["longitude>="] = max(lons)
+    e.constraints["longitude<="] = min(lons)
+    e.constraints['time>='] = time.strftime(time_formatter)
+    e.constraints['time<='] = time.strftime(time_formatter)
+    
+    # e.griddap_initialize()
+
+    # return xarray dataset
+    try:
+        return e.to_xarray()
+    except requests.exceptions.HTTPError:
+        print("No data available for this time period.")
+        return

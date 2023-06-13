@@ -2024,11 +2024,14 @@ def plot_ohc(ds1, ds2, extent, region_name,
     rargs['transform'] = transform['data']  
     
     for ax in [ax1, ax2]:
+        create(extent, ax=ax1, ticks=False)
+        create(extent, ax=ax2, ticks=False)
+        
         # Make the map pretty  
-        add_features(ax)# zorder=0)
+        # add_features(ax)# zorder=0)
 
         # Add features to both map axes. Land, water, coastlines, etc.
-        add_features(ax)
+        # add_features(ax)
 
         # Add bathymetry lines
         if bathy:       
@@ -2108,9 +2111,9 @@ def plot_ohc(ds1, ds2, extent, region_name,
                 ds1['ohc'], 
                 [60],
                 linestyles='-',
-                colors=['darkorange'],
+                colors=['silver'],
                 linewidths=1,
-                alpha=.75,
+                alpha=1,
                 transform=ccrs.PlateCarree(),
                 zorder=101)
 
@@ -2122,14 +2125,14 @@ def plot_ohc(ds1, ds2, extent, region_name,
                       cmap=cmap,
                       transform=transform['data']
                       )
-    ax2.contour(ds1['lon'], 
-                ds1['lat'], 
-                ds1['ohc'], 
+    ax2.contour(ds2['lon'], 
+                ds2['lat'], 
+                ds2['ohc'], 
                 [60],
                 linestyles='-',
-                colors=['darkorange'],
+                colors=['silver'],
                 linewidths=1,
-                alpha=.75,
+                alpha=1,
                 transform=ccrs.PlateCarree(),
                 zorder=101)
     
