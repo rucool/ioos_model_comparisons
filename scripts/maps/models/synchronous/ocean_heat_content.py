@@ -19,6 +19,8 @@ from shapely.errors import TopologicalError
 from ioos_model_comparisons.models import rtofs as r
 from ioos_model_comparisons.models import gofs as g
 from ioos_model_comparisons.models import cmems as c
+from ioos_model_comparisons.models import amseas as a
+
 import xarray as xr
 
 startTime = time.time()
@@ -26,12 +28,24 @@ matplotlib.use('agg')
 
 parallel = True # utilize parallel processing?
 
+# Which models should we plot?
+plot_rtofs = True
+plot_gofs = True
+plot_cmems = True
+plot_amseas = True
+
 # Set path to save plots
 path_save = (conf.path_plots / "maps")
 
 # For debug
 # conf.days = 1
-# conf.regions = ['mab']
+# conf.regions = ['gom']
+
+# initialize keyword arguments. Grab anything from configs.py
+kwargs = dict()
+kwargs['transform'] = conf.projection
+kwargs['dpi'] = conf.dpi
+kwargs['overwrite'] = False
     
 # Get today and yesterday dates
 today = dt.date.today()
@@ -62,6 +76,8 @@ global_extent = [
     extent_df.latmax.max()
     ]
 
+lon_transform = lon180to360(global_extent[:2])
+
 if conf.argo:
     argo_data = get_argo_floats_by_time(global_extent, search_start, date_end)
 else:
@@ -76,40 +92,45 @@ else:
 if conf.bathy:
     bathy_data = get_bathymetry(global_extent)
 
-# Load RTOFS and subset to global_extent of regions we are looking at.
-rds = r()
-lons_ind = np.interp(global_extent[:2], rds.lon.values[0,:], rds.x.values)
-lats_ind = np.interp(global_extent[2:], rds.lat.values[:,0], rds.y.values)
+if plot_rtofs:
+    # Load RTOFS and subset to global_extent of regions we are looking at.
+    rds = r()
+    lons_ind = np.interp(global_extent[:2], rds.lon.values[0,:], rds.x.values)
+    lats_ind = np.interp(global_extent[2:], rds.lat.values[:,0], rds.y.values)
 
-rds = rds.isel(
-    x=slice(np.floor(lons_ind[0]).astype(int), np.ceil(lons_ind[1]).astype(int)), 
-    y=slice(np.floor(lats_ind[0]).astype(int), np.ceil(lats_ind[1]).astype(int))
+    rds = rds.isel(
+        x=slice(np.floor(lons_ind[0]).astype(int), np.ceil(lons_ind[1]).astype(int)), 
+        y=slice(np.floor(lats_ind[0]).astype(int), np.ceil(lats_ind[1]).astype(int))
+        )
+
+    # Save rtofs lon and lat as variables to speed up indexing calculation
+    grid_lons = rds.lon.values[0,:]
+    grid_lats = rds.lat.values[:,0]
+    grid_x = rds.x.values
+    grid_y = rds.y.values
+
+if plot_gofs:
+    # Load GOFS
+    gds = g(rename=True).sel(
+        lon=slice(lon_transform[0], lon_transform[1]),
+        lat=slice(global_extent[2], global_extent[3])
     )
 
-# Save rtofs lon and lat as variables to speed up indexing calculation
-grid_lons = rds.lon.values[0,:]
-grid_lats = rds.lat.values[:,0]
-grid_x = rds.x.values
-grid_y = rds.y.values
+if plot_cmems:
+    # Load Copernicus
+    cds = c(rename=True).sel(
+        lon=slice(global_extent[0], global_extent[1]),
+        lat=slice(global_extent[2], global_extent[3]) 
+    )
 
-# Load GOFS
-g_extents = lon180to360(global_extent[:2])
-gds = g(rename=True).sel(
-    lon=slice(g_extents[0], g_extents[1]),
-    lat=slice(global_extent[2], global_extent[3])
-)
 
-# Load Copernicus
-cds = c(rename=True).sel(
-    lon=slice(global_extent[0], global_extent[1]),
-    lat=slice(global_extent[2], global_extent[3]) 
-)
-
-# initialize keyword arguments. Grab anything from configs.py
-kwargs = dict()
-kwargs['transform'] = conf.projection
-kwargs['dpi'] = conf.dpi
-kwargs['overwrite'] = False
+if plot_amseas:
+    # Load amseas
+    am = a(rename=True)
+    ads = am.sel(
+        lon=slice(lon_transform[0], lon_transform[1]),
+        lat=slice(global_extent[2], global_extent[3])
+        )
 
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
@@ -118,75 +139,106 @@ tstr = '%Y-%m-%d %H:%M:%S'
 def plot_ctime(ctime):
     print(f"Checking if {ctime} exists for each model.")
     
-    try:
-        rds_time = rds.sel(time=ctime)
-        # startTime = time.time()
-        rds_time['density'] = xr.apply_ufunc(density, 
-                                rds_time['temperature'], 
-                                -rds_time['depth'],
-                                rds_time['salinity'], 
-                                rds_time['lat'], 
-                                rds_time['lon']
-                                )
-        rds_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
-                            rds_time.depth, 
-                            rds_time.temperature, 
-                            rds_time.density, 
-                            input_core_dims=[['depth'], ['depth'], ['depth']], 
-                            vectorize=True)
-        # print('RTOFS - Execution time in seconds: ' + str(time.time() - startTime))
-        print(f"RTOFS: True")
-        rdt_flag = True
-    except KeyError as error:
-        print(f"RTOFS: False")
-        rdt_flag = False
+    if plot_rtofs:
+        try:
+            rds_time = rds.sel(time=ctime)
+            # startTime = time.time()
+            rds_time['density'] = xr.apply_ufunc(density, 
+                                    rds_time['temperature'], 
+                                    -rds_time['depth'],
+                                    rds_time['salinity'], 
+                                    rds_time['lat'], 
+                                    rds_time['lon']
+                                    )
+            rds_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+                                rds_time.depth, 
+                                rds_time.temperature, 
+                                rds_time.density, 
+                                input_core_dims=[['depth'], ['depth'], ['depth']], 
+                                vectorize=True)
+            # print('RTOFS - Execution time in seconds: ' + str(time.time() - startTime))
+            print(f"RTOFS: True")
+            rdt_flag = True
+        except KeyError as error:
+            print(f"RTOFS: False")
+            rdt_flag = False
 
-    try:
-        gds_time = gds.sel(time=ctime)
-        # startTime = time.time()
-        gds_time['density'] = xr.apply_ufunc(density, 
-                                gds_time['temperature'], 
-                                -gds_time['depth'],
-                                gds_time['salinity'], 
-                                gds_time['lat'], 
-                                gds_time['lon']
-                                )
-        gds_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
-                            gds_time.depth, 
-                            gds_time.temperature, 
-                            gds_time.density, 
-                            input_core_dims=[['depth'], ['depth'], ['depth']], 
-                            vectorize=True)
-        # print('GOFS - Execution time in seconds: ' + str(time.time() - startTime))
-        print(f"GOFS: True")
-        gdt_flag = True
-    except KeyError as error:
-        print(f"GOFS: False")
+    if plot_gofs:
+        try:
+            gds_time = gds.sel(time=ctime)
+            # startTime = time.time()
+            gds_time['density'] = xr.apply_ufunc(density, 
+                                    gds_time['temperature'], 
+                                    -gds_time['depth'],
+                                    gds_time['salinity'], 
+                                    gds_time['lat'], 
+                                    gds_time['lon']
+                                    )
+            gds_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+                                gds_time.depth, 
+                                gds_time.temperature, 
+                                gds_time.density, 
+                                input_core_dims=[['depth'], ['depth'], ['depth']], 
+                                vectorize=True)
+            # print('GOFS - Execution time in seconds: ' + str(time.time() - startTime))
+            print(f"GOFS: True")
+            gdt_flag = True
+        except KeyError as error:
+            print(f"GOFS: False")
+            gdt_flag = False
+    else:
         gdt_flag = False
 
-    try:
-        cds_time = cds.sel(time=ctime) #CMEMS
-        # startTime = time.time()
-        cds_time['density'] = xr.apply_ufunc(density, 
-                                cds_time['temperature'], 
-                                -cds_time['depth'],
-                                cds_time['salinity'], 
-                                cds_time['lat'], 
-                                cds_time['lon']
-                                )
-        cds_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
-                            cds_time.depth, 
-                            cds_time.temperature, 
-                            cds_time.density, 
-                            input_core_dims=[['depth'], ['depth'], ['depth']], 
-                            vectorize=True)
-        # print('CMEMS: Execution time in seconds: ' + str(time.time() - startTime))
-        print(f"CMEMS: True")
-        cdt_flag = True
-    except KeyError:
-        print(f"CMEMS: False")
+    if plot_cmems:
+        try:
+            cds_time = cds.sel(time=ctime) #CMEMS
+            # startTime = time.time()
+            cds_time['density'] = xr.apply_ufunc(density, 
+                                    cds_time['temperature'], 
+                                    -cds_time['depth'],
+                                    cds_time['salinity'], 
+                                    cds_time['lat'], 
+                                    cds_time['lon']
+                                    )
+            cds_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+                                cds_time.depth, 
+                                cds_time.temperature, 
+                                cds_time.density, 
+                                input_core_dims=[['depth'], ['depth'], ['depth']], 
+                                vectorize=True)
+            # print('CMEMS: Execution time in seconds: ' + str(time.time() - startTime))
+            print(f"CMEMS: True")
+            cdt_flag = True
+        except KeyError:
+            print(f"CMEMS: False")
+            cdt_flag = False
+        print("\n")
+    else:
         cdt_flag = False
-    print("\n")
+
+    if plot_amseas:
+        try:
+            amt = ads.sel(time=ctime)
+            amt['density'] = xr.apply_ufunc(density, 
+                            amt['temperature'], 
+                            -amt['depth'],
+                            amt['salinity'], 
+                            amt['lat'], 
+                            amt['lon']
+                            )
+            amt['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+                                amt.depth, 
+                                amt.temperature, 
+                                amt.density, 
+                                input_core_dims=[['depth'], ['depth'], ['depth']], 
+                                vectorize=True)
+            print(f"AMSEAS: True")
+            amt_flag = True
+        except KeyError as error:
+            print(f"AMSEAS: False - {error}")
+            amt_flag = False
+    else:
+        amt_flag = False
 
     search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
     search_window_t1 = ctime.strftime(tstr)
@@ -200,6 +252,9 @@ def plot_ctime(ctime):
         # Increase the extent a little bit to grab slightly more data than the region 
         # we want to plot. Otherwise, we will have areas of the plot with no data.
         extent_data = np.add(extent, [-1, 1, -1, 1]).tolist()
+
+        # convert from 360 to 180 lon
+        lon360 = lon180to360(extent_data[:2])
 
         # Add the following to keyword arguments to ocean_heat_content function
         kwargs['path_save'] = path_save / configs['folder']
@@ -250,7 +305,6 @@ def plot_ctime(ctime):
             
         if gdt_flag:
             # subset dataset to the proper extents for each region
-            lon360 = lon180to360(extent_data[:2]) # convert from 360 to 180 lon
             gds_slice = gds_time.sel(
                 lon=slice(lon360[0], lon360[1]),
                 lat=slice(extent_data[2], extent_data[3])
@@ -264,6 +318,16 @@ def plot_ctime(ctime):
                 lon=slice(extent_data[0], extent_data[1]),
                 lat=slice(extent_data[2], extent_data[3])
                 )
+            
+        if amt_flag:
+            # subset dataset to the proper extents for each region
+            amt_slice = amt.sel(
+                lon=slice(lon360[0], lon360[1]),
+                lat=slice(extent_data[2], extent_data[3])
+            )
+
+            # Convert from 0,360 lon to -180,180
+            amt_slice['lon'] = lon360to180(amt_slice['lon'])
 
         # Subset downloaded Argo data to this region and time
         if not argo_data.empty:
@@ -302,6 +366,9 @@ def plot_ctime(ctime):
                 
             if rdt_flag and cdt_flag:
                 plot_ohc(rds_slice, cds_slice, extent, configs['name'], **kwargs)
+
+            if rdt_flag and amt_flag:
+                plot_ohc(rds_slice, amt_slice, extent, configs['name'], **kwargs)
 
             # Delete some keyword arguments that may not be defined in all
             # regions. We don't want to plot the regions with wrong inputs 

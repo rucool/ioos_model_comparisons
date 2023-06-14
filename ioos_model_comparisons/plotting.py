@@ -32,6 +32,7 @@ from shapely.geometry.polygon import LinearRing
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import dd2dms
 import scipy.ndimage as ndimage
+import matplotlib.lines as mlines
 
 # Suppresing warnings for a "pretty output."
 warnings.simplefilter("ignore")
@@ -2053,31 +2054,6 @@ def plot_ohc(ds1, ds2, extent, region_name,
     add_ticks(ax1, extent, label_left=True)
     add_ticks(ax2, extent, label_left=False, label_right=True)
 
-    # Deal with the third axes
-    h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
-    if (len(h) > 0) & (len(l) > 0):
-        
-        # Add handles to legend
-        ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
-
-        # Add title to legend
-        t0 = []
-        if isinstance(argo, pd.DataFrame):
-            if not argo.empty:
-                t0.append(argo.index.min()[1])
-
-        if isinstance(gliders, pd.DataFrame):
-            if not gliders.empty:
-                t0.append(gliders.index.min()[1])
-
-        if len(t0) > 0:
-            t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
-        else:
-            t0 = None
-        legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
-        ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
-    ax3.set_axis_off()
-
     # Calculate contours
     if limits:
         ohc_min = limits[0]
@@ -2106,16 +2082,16 @@ def plot_ohc(ds1, ds2, extent, region_name,
                       extend="max",
                       cmap=cmap,
                       transform=transform['data'])
-    ax1.contour(ds1['lon'], 
-                ds1['lat'], 
-                ds1['ohc'], 
-                [60],
-                linestyles='-',
-                colors=['silver'],
-                linewidths=1,
-                alpha=1,
-                transform=ccrs.PlateCarree(),
-                zorder=101)
+    h3 = ax1.contour(ds1['lon'], 
+                     ds1['lat'], 
+                     ds1['ohc'], 
+                     [60],
+                     linestyles='-',
+                     colors=['silver'],
+                     linewidths=1,
+                     alpha=1,
+                     transform=ccrs.PlateCarree(),
+                     zorder=101)
 
 
     # Ocean Heat Content Plot
@@ -2135,6 +2111,50 @@ def plot_ohc(ds1, ds2, extent, region_name,
                 alpha=1,
                 transform=ccrs.PlateCarree(),
                 zorder=101)
+    h0 = []
+    l0 = []
+    
+    h0.append(mlines.Line2D([], [], linestyle='-', color='silver', alpha=1, linewidth=1))
+    l0.append('60 kJ cm-2')
+    # h0.append(mlines.Line2D([], [], linestyle='-', color='white', alpha=1, linewidth=1))
+    # l0.append('Past 5 days')
+    leg1 = ax1.legend(h0, l0, loc='upper left', fontsize=9)
+    leg2 = ax2.legend(h0, l0, loc='upper left', fontsize=9)
+
+    # Deal with the third axes
+    h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+    if (len(h) > 0) & (len(l) > 0):
+        # h.append(mlines.Line2D([], [], linestyle='-', color='silver', alpha=1, linewidth=1))
+        # l.append('60 kJ cm-2')
+        # h.append(mlines.Line2D([], [], linestyle='-', color='white', alpha=1, linewidth=1))
+        # l.append('Tracks - Past 5 days')
+        # h.append()
+        
+        # Add handles to legend
+        ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
+
+        # Add title to legend
+        t0 = []
+        if isinstance(argo, pd.DataFrame):
+            if not argo.empty:
+                t0.append(argo.index.min()[1])
+
+        if isinstance(gliders, pd.DataFrame):
+            if not gliders.empty:
+                t0.append(gliders.index.min()[1])
+
+        if len(t0) > 0:
+            t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+        else:
+            t0 = None
+        legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
+        ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+    ax3.set_axis_off()
+    # plt.gca().add_artist(leg1)
+    # plt.gca().add_artist(leg2)
+
+    leg1.set_zorder(10001)
+    leg2.set_zorder(10001)    
     
     # Add colorbar to first axes
     cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)

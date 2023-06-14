@@ -30,8 +30,14 @@ parallel = True # utilize parallel processing?
 path_save = (conf.path_plots / "maps")
 
 # For debug
-conf.days = 7
+# conf.days = 1
 # conf.regions = ['sab']
+
+# initialize keyword arguments. Grab anything from configs.py
+kwargs = dict()
+kwargs['transform'] = conf.projection
+kwargs['dpi'] = conf.dpi
+kwargs['overwrite'] = False
     
 # Get today and yesterday dates
 date_end = dt.date.today()
@@ -93,12 +99,6 @@ grid_lons = rds.lon.values[0,:]
 grid_lats = rds.lat.values[:,0]
 grid_x = rds.x.values
 grid_y = rds.y.values
-
-# initialize keyword arguments. Grab anything from configs.py
-kwargs = dict()
-kwargs['transform'] = conf.projection
-kwargs['dpi'] = conf.dpi
-kwargs['overwrite'] = False
 
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
