@@ -16,7 +16,7 @@ from shapely.errors import TopologicalError
 startTime = time.time()
 matplotlib.use('agg')
 
-parallel = False # utilize parallel processing?
+parallel = True # utilize parallel processing?
 
 # Set path to save plots
 path_save = (conf.path_plots / "maps")
@@ -30,7 +30,7 @@ amseas = False
 # plot_active_hurricanes = False
 
 # For debug 
-conf.days = 1
+conf.days = 3
 conf.regions = ['mab', 'gom', 'caribbean']
 
 # Get today and yesterday dates
@@ -136,6 +136,8 @@ def plot_ctime(ctime):
         except KeyError as error:
             print(f"RTOFS: False")
             rdt_flag = False
+    else:
+        rdt_flag = False
 
     if gofs:
         try:
@@ -145,6 +147,8 @@ def plot_ctime(ctime):
         except KeyError as error:
             print(f"GOFS: False")
             gdt_flag=False
+    else:
+        gdt_flag=False
             
     if cmems:
         try:
@@ -155,7 +159,7 @@ def plot_ctime(ctime):
             print(f"CMEMS: False")
             cdt_flag = False
     else:
-        cdt_flag = False   
+        cdt_flag = False
 
     if amseas:
         try:
@@ -167,6 +171,7 @@ def plot_ctime(ctime):
             adt_flag = False
     else:
         adt_flag = False
+
     print("\n")
 
     search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
@@ -296,16 +301,17 @@ def plot_ctime(ctime):
             
         try:
             # salinity_max(rds_slice, extent, configs['name'], **kwargs)
-            if rdt_flag and gdt_flag:
-                salinity_max_comparison(rds_slice, gds_slice, extent, configs['name'], **kwargs)
-                
-            if rdt_flag and cdt_flag:
-                salinity_max_comparison(rds_slice, cds_slice, extent, configs['name'], **kwargs)
+            if rdt_flag:
+                if gdt_flag:
+                    salinity_max_comparison(rds_slice, gds_slice, extent, configs['name'], **kwargs)
+                    
+                if cdt_flag:
+                    salinity_max_comparison(rds_slice, cds_slice, extent, configs['name'], **kwargs)
 
-            if rdt_flag and adt_flag:
-                if ads_slice['lon'].size == 0 or ads_slice['lat'].size == 0:
-                    continue
-                salinity_max_comparison(rds_slice, ads_slice, extent, configs['name'], **kwargs)
+                if adt_flag:
+                    if ads_slice['lon'].size == 0 or ads_slice['lat'].size == 0:
+                        continue
+                    salinity_max_comparison(rds_slice, ads_slice, extent, configs['name'], **kwargs)
 
             # Delete some keyword arguments that may not be defined in all
             # regions. We don't want to plot the regions with wrong inputs 
