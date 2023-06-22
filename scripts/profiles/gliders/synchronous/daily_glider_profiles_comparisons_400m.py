@@ -12,7 +12,12 @@ from cool_maps.plot import add_features, create
 
 import ioos_model_comparisons.configs as configs
 import ioos_model_comparisons.configs as conf
-from ioos_model_comparisons.calc import density, lon180to360, lon360to180, ocean_heat_content
+from ioos_model_comparisons.calc import (density,
+                                         lon180to360,
+                                         lon360to180, 
+                                         ocean_heat_content,
+                                         depth_interpolate
+                                         )
 from ioos_model_comparisons.models import cmems, gofs, rtofs
 from ioos_model_comparisons.platforms import get_active_gliders, get_bathymetry
 from ioos_model_comparisons.plotting import map_add_inset
@@ -81,6 +86,7 @@ vars = ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity',
 region_gliders = []
 
 conf.regions = ['mab', 'sab', 'caribbean', 'gom', 'passengers']
+# conf.regions = ['caribbean']
 for region in conf.regions:
     # extent_list.append(region_config(region)["extent"])
     extent = region_config(region)["extent"]
@@ -153,6 +159,12 @@ os.makedirs(spath, exist_ok=True)
 levels = [-8000, -1000, -100, 0]
 colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
 
+def round_to_nearest_ten(n):
+    if n % 10 >= 5:
+        return ((n // 10) + 1) * 10
+    else:
+        return (n // 10) * 10
+
 def plot_glider_profiles(id, gliders):
     print('Plotting ' + id)
 
@@ -211,7 +223,14 @@ def plot_glider_profiles(id, gliders):
     # Groupby glider profiles
     maxd = []
     ohc_glider = []
+
+    binned = []
     for name, pdf in df.groupby(['profile_id', 'time', 'lon', 'lat']):
+        binned.append(depth_interpolate(pdf, 
+                                        depth_min=round_to_nearest_ten(pdf.depth.min()),
+                                        depth_max=round_to_nearest_ten(pdf.depth.max())
+                                        )
+                      )
         pid = name[0]
         time_glider = name[1] 
         lon_glider = name[2].round(2)
@@ -342,9 +361,10 @@ def plot_glider_profiles(id, gliders):
         dax.plot(cds['density'], cds["depth"], '.-', color="magenta", label='_nolegend_')
 
     # Plot glider profile
-    tax.plot(temp_glider, depth_glider, '-o', color='blue', label=alabel)
-    sax.plot(salinity_glider, depth_glider, '-o', color='blue', label=alabel)
-    dax.plot(density_glider, depth_glider, '-o', color='blue', label=alabel)
+    bin_avg = pd.concat(binned).set_index(['profile_id','depth']).to_xarray().mean('profile_id')
+    tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=alabel)
+    sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=alabel)
+    dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=alabel)
 
     # Plot model profiles
     if plot_rtofs:
