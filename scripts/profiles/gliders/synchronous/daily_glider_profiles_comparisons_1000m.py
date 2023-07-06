@@ -219,6 +219,7 @@ def plot_glider_profiles(id, gliders):
     ohc_glider = []
     binned = []
     for name, pdf in df.groupby(['profile_id', 'time', 'lon', 'lat']):
+        pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
         binned.append(depth_interpolate(pdf, 
                                         depth_min=round_to_nearest_ten(pdf.depth.min()),
                                         depth_max=round_to_nearest_ten(pdf.depth.max())
@@ -246,7 +247,6 @@ def plot_glider_profiles(id, gliders):
         temp_glider = pdf['temperature']
         salinity_glider = pdf['salinity']
         density_glider = pdf['density']
-        # density_glider = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
 
 
         # Plot glider profiles
@@ -420,8 +420,8 @@ def plot_glider_profiles(id, gliders):
     else:
         method = "Nearest-Neighbor"
 
-    title_str = (f'Glider: {glid}\n'
-                 f'Deployed: { deployed.strftime("%Y-%m-%d") }\n'
+    title_str = (f'Comparison Date: { df["time"].min().strftime("%Y-%m-%d") }\n\n'
+                 f'Glider: {glid}\n'
                  f'Profiles: { df["profile_id"].nunique() }\n'
                  f'First: { str(df["time"].min()) }\n'
                  f'Last: { str(df["time"].max()) }\n'
