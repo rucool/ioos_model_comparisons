@@ -31,7 +31,7 @@ def region_config(regions=None, model=None):
         # Yucatan Limits
         name = "Yucatan"
         folder = "yucatan"
-        extent = [-90, -78, 18, 28]
+        extent = [-90, -78, 17, 28]
         sea_water_temperature = [
             # dict(depth=0, limits=[24.5, 27.75, .25]),
             dict(depth=0, limits=[27.5, 31, .25]),
@@ -158,7 +158,7 @@ def region_config(regions=None, model=None):
         folder = "gulf_of_mexico"
         extent = [-99, -79, 18, 31]
         sea_water_temperature = [
-            dict(depth=0, limits=[25, 29.5, .5]),
+            dict(depth=0, limits=[28, 31.75, .25]),
             dict(depth=150, limits=[14, 26, .5]),
             dict(depth=200, limits=[12, 23, .5])
             ]
@@ -199,7 +199,7 @@ def region_config(regions=None, model=None):
         folder = "south_atlantic_bight"
         extent = [-82, -64, 25, 36]
         sea_water_temperature = [
-            dict(depth=0, limits=[24, 29.5, .5]),
+            dict(depth=0, limits=[26, 31.5, .5]),
             dict(depth=150, limits=[15, 22.5, .5]),
             dict(depth=200, limits=[15, 21, .5])
             ]
@@ -326,7 +326,7 @@ def region_config(regions=None, model=None):
         folder = "caribbean"
         extent = [-89, -58, 7, 23]
         sea_water_temperature = [
-            dict(depth=0, limits=[25.5, 29.5, .25]),
+            dict(depth=0, limits=[28, 31.75, .25]),
             dict(depth=100, limits=[18, 27.5, .5]),
             dict(depth=150, limits=[17, 25, .5]),
             dict(depth=200, limits=[14, 22.5, .5])
