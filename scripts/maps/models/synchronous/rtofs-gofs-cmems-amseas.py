@@ -203,6 +203,7 @@ def main():
                 pass
                     
             extended = np.add(extent, [-1, 1, -1, 1]).tolist()
+            lon360 = lon180to360(extended[:2]) # convert from 360 to 180 lon
 
             # Find x, y indexes of the area we want to subset
             lons_ind = np.interp(extended[:2], grid_lons, grid_x)
@@ -245,7 +246,6 @@ def main():
 
             if gdt_flag:
                 # subset dataset to the proper extents for each region
-                lon360 = lon180to360(extended[:2]) # convert from 360 to 180 lon
                 gds_sub = gdt.sel(
                     lon=slice(lon360[0], lon360[1]),
                     lat=slice(extended[2], extended[3])
