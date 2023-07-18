@@ -80,7 +80,7 @@ vars = ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity',
 
 region_gliders = []
 
-conf.regions = ['mab', 'sab', 'caribbean', 'gom', 'passengers']
+conf.regions = ['mab', 'sab', 'caribbean', 'gom']
 # conf.regions = ['mab']
 for region in conf.regions:
     # extent_list.append(region_config(region)["extent"])
@@ -445,7 +445,7 @@ def plot_glider_profiles(id, gliders):
     # lonmin, lonmax, latmin, latmax = extent_inset
  
     # Create a map in the map axis     
-    create(extent_main, ax=mpax, bathymetry=False)
+    create(extent, ax=mpax, bathymetry=False)
     mpax.plot(lon_track, lat_track, '.-w', 
               markeredgecolor='black',
               markersize=8,
@@ -458,7 +458,7 @@ def plot_glider_profiles(id, gliders):
             marker='.',
             markeredgecolor='black',
             markerfacecolor='red',
-            markersize=8,
+            markersize=10,
             transform=configs.projection['data'],
             zorder=1000
             )
@@ -470,30 +470,30 @@ def plot_glider_profiles(id, gliders):
                     levels, colors=colors, transform=configs.projection['data'], ticks=False)
         
     # Create inset axis for glider track
-    axin = map_add_inset(mpax, extent=extent, zoom_extent=extent_inset)
-    add_features(axin)
-    if bathy_flag:
-         axin.contourf(bathy['longitude'],
-                  bathy['latitude'],
-                  bathy['elevation'],
-                  levels, colors=colors, transform=configs.projection['data'], ticks=False)
+    # # axin = map_add_inset(mpax, extent=extent, zoom_extent=extent_inset)
+    # add_features(axin)
+    # if bathy_flag:
+    #      axin.contourf(bathy['longitude'],
+    #               bathy['latitude'],
+    #               bathy['elevation'],
+    #               levels, colors=colors, transform=configs.projection['data'], ticks=False)
     
-    axin.plot(lon_track, lat_track, '.-w', 
-              markeredgecolor='black',
-              markersize=8,
-              linewidth=4,
-              transform=configs.projection['data'],
-              zorder=999
-              )
+    # axin.plot(lon_track, lat_track, '.-w', 
+    #           markeredgecolor='black',
+    #           markersize=8,
+    #           linewidth=4,
+    #           transform=configs.projection['data'],
+    #           zorder=999
+    #           )
    
-    axin.plot(lon_track[-1], lat_track[-1],  
-            marker='.',
-            markeredgecolor='black',
-            markerfacecolor='red',
-            markersize=8,
-            transform=configs.projection['data'],
-            zorder=1000
-            )
+    # axin.plot(lon_track[-1], lat_track[-1],  
+    #         marker='.',
+    #         markeredgecolor='black',
+    #         markerfacecolor='red',
+    #         markersize=8,
+    #         transform=configs.projection['data'],
+    #         zorder=1000
+    #         )
 
     h, l = sax.get_legend_handles_labels()  # get labels and handles from ax1
 
