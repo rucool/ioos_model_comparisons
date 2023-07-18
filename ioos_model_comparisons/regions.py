@@ -26,6 +26,49 @@ def region_config(regions=None, model=None):
     salinity_max = False
     currents = False
 
+    key = "mastr"
+    if key in regions:
+        # Yucatan Limits
+        name = "Yucatan/Mastr"
+        folder = "mastr"
+        extent = [-89, -84, 17, 22]
+        sea_water_temperature = [
+            # dict(depth=0, limits=[24.5, 27.75, .25]),
+            # dict(depth=0, limits=[27.5, 31, .25]),
+            # dict(depth=150, limits=[18, 25.5, .5]),
+            # dict(depth=200, limits=[14, 23, .5])
+            ]
+        salinity = [
+            # dict(depth=0, limits=[35.8, 36.6, .1]),
+            # dict(depth=150, limits=[36, 36.7, .05]),
+            # dict(depth=200, limits=[36, 36.8, .05]), 
+            ]
+        sea_surface_height = [
+            # dict(depth=0, limits=[-.6, .7, .1])
+            ]
+        salinity_max = dict(
+            # figsize=(14, 6.5),
+            # limits=[36, 37, .1]
+            )
+        ocean_heat_content = dict(
+            # limits= [0, 140, 10]
+            )
+        currents = dict(
+            bool=True,
+            depths = [0, 150, 300, 600, 900],
+            limits = [0, 1.5, .1],
+            coarsen=dict(rtofs=5, gofs=6),
+            kwargs=dict(
+                ptype="streamplot",
+                color="black"
+                )
+            )
+        eez = True
+        figure = dict(
+            legend = dict(columns=8),
+            figsize=(10,8)
+            )
+
     key = "yucatan"
     if key in regions:
         # Yucatan Limits
@@ -51,7 +94,7 @@ def region_config(regions=None, model=None):
             limits=[36, 37, .1]
             )
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         currents = dict(
             bool=True,
@@ -93,7 +136,7 @@ def region_config(regions=None, model=None):
             limits=[36, 37.5, .1]
             )
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         currents = dict(
             bool=True,
@@ -132,7 +175,7 @@ def region_config(regions=None, model=None):
             limits=[36, 37, .1]
         )
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         currents = dict(
             bool=True,
@@ -163,19 +206,19 @@ def region_config(regions=None, model=None):
             dict(depth=200, limits=[12, 23, .5])
             ]
         salinity = [
-            dict(depth=0, limits=[34.4, 36.5, .1]), 
-            dict(depth=150, limits=[35.9, 36.7, .1]),
+            dict(depth=0, limits=[32.0, 36.6, .1]), 
+            dict(depth=150, limits=[35.6, 37.0, .1]),
             dict(depth=200, limits=[35.7, 36.8, .1]),
             ]
         sea_surface_height = [
-            dict(depth=0, limits=[-.6, .7, .1])
+            # dict(depth=0, limits=[-.6, .7, .1])
             ]
         salinity_max = dict(
             figsize=(14, 6.5),
             limits=[36, 37, .1]
         )
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         currents = dict(
             bool=True,
@@ -188,7 +231,7 @@ def region_config(regions=None, model=None):
                 )
             )
         figure = dict(
-            legend = dict(columns=7),
+            legend = dict(columns=9),
             figsize = (13, 7.5)
             )
 
@@ -216,7 +259,7 @@ def region_config(regions=None, model=None):
             limits=[36, 37, .1]
             )
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         currents = dict(
             bool=True,
@@ -257,7 +300,7 @@ def region_config(regions=None, model=None):
             dict(depth=0, limits=[-.6, .7, .1]),
             ]
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         salinity_max = dict(
             figsize=(14, 8.5),
@@ -302,7 +345,7 @@ def region_config(regions=None, model=None):
             limits=[36, 37, .1]
             )
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         currents = dict(
             bool=True,
@@ -345,7 +388,7 @@ def region_config(regions=None, model=None):
             limits= [36, 37.5, .1]
             )
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         currents = dict(
             bool=True,
@@ -387,7 +430,7 @@ def region_config(regions=None, model=None):
             limits=[36, 37.5, .1]
         )
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         currents = dict(
             bool=True,
@@ -428,7 +471,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             # coarsen=dict(rtofs=None, gofs=None),
-            depths = [0, 150, 200],
+            depths = [0, 160, 200],
             coarsen=dict(rtofs=5, gofs=6),
             kwargs=dict(
                 ptype="streamplot",
@@ -502,7 +545,7 @@ def region_config(regions=None, model=None):
             limits= [36, 37.5, .1]
             )
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         currents = dict(
             bool=True,
@@ -551,7 +594,7 @@ def region_config(regions=None, model=None):
             dict(depth=0, limits=[-.6, .7, .1]),
             ]
         ocean_heat_content = dict(
-            limits= [0, 140, 10]
+            limits= [0, 160, 10]
             )
         salinity_max = dict(
             figsize=(14, 8.5),
