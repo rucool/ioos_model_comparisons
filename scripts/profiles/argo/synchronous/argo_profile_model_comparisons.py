@@ -1,3 +1,4 @@
+#/usr/bin/env python
 import os
 
 import matplotlib.patheffects as path_effects
@@ -11,7 +12,7 @@ from ioos_model_comparisons.calc import (depth_interpolate, lon180to360,
                                          lon360to180, difference, density,
                                          ocean_heat_content)
 from ioos_model_comparisons.models import gofs, rtofs, cmems, amseas
-from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_bathymetry
+from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_bathymetry, get_ohc
 from ioos_model_comparisons.regions import region_config
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
@@ -65,8 +66,7 @@ then = pd.Timestamp(then.strftime('%Y-%m-%d')) # convert back to timestamp
 
 # Get extent for all configured regions to download argo/glider data one time
 extent_list = []
-conf.regions = ['caribbean', 'gom', 'sab', 'mab', 'passengers']
-# conf.regions = ['gom']
+conf.regions = ['caribbean', 'gom', 'sab', 'mab']
 for region in conf.regions:
     extent_list.append(region_config(region)["extent"])
 
@@ -251,6 +251,11 @@ def process_argo(region):
             leg_str = f'Argo #{wmo}\n'
             leg_str += f'ARGO:  { tstr }\n'
 
+            nesdis = get_ohc(extent, pd.to_datetime(tstr).date())   
+            nesdis = nesdis.squeeze()
+            ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
+            ohc_nesdis = ohc_nesdis.ohc.values
+            
             if plot_gofs:
                 try:
                     # GOFS
@@ -537,6 +542,11 @@ def process_argo(region):
                     ohc_string += f"AMSEAS: {ohc_amseas:.4f},  "
             except:
                 pass
+
+            try:
+                ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
+            except:
+                pass   
             
             plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
  

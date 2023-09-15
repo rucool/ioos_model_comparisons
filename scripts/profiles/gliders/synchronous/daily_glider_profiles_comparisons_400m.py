@@ -19,7 +19,7 @@ from ioos_model_comparisons.calc import (density,
                                          depth_interpolate
                                          )
 from ioos_model_comparisons.models import cmems, gofs, rtofs
-from ioos_model_comparisons.platforms import get_active_gliders, get_bathymetry
+from ioos_model_comparisons.platforms import get_active_gliders, get_bathymetry, get_ohc
 from ioos_model_comparisons.plotting import map_add_inset
 from ioos_model_comparisons.regions import region_config
 
@@ -73,7 +73,6 @@ extent_list = []
 date_list = [today + dt.timedelta(days=x+1) for x in range(days)]
 date_list.insert(0, today)
 # date_list.reverse()
-
 # Get time bounds for the current day
 t0 = date_list[0]
 t1 = date_list[1]
@@ -85,7 +84,6 @@ vars = ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity',
 region_gliders = []
 
 conf.regions = ['mab', 'sab', 'caribbean', 'gom']
-# conf.regions = ['caribbean']
 for region in conf.regions:
     # extent_list.append(region_config(region)["extent"])
     extent = region_config(region)["extent"]
@@ -223,14 +221,18 @@ def plot_glider_profiles(id, gliders):
     maxd = []
     ohc_glider = []
 
+    # Creating individual arrays
+    array1 = np.arange(0, 10, 2) # From 0 to 10 with step size 2
+    array2 = np.arange(10, 101, 5) # From 10 to 100 with step size 5 (101 is the stop point to include 100)
+    array3 = np.arange(110, 401, 10) # From 110 to 1000 with step size 10 (1001 is the stop point to include 1000)
+
+    # Concatenating the arrays for bins to interpolate to
+    bins = np.concatenate((array1, array2, array3)) 
+
     binned = []
     for name, pdf in df.groupby(['profile_id', 'time', 'lon', 'lat']):
         pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
-        binned.append(depth_interpolate(pdf, 
-                                        depth_min=round_to_nearest_ten(pdf.depth.min()),
-                                        depth_max=round_to_nearest_ten(pdf.depth.max())
-                                        )
-                      )
+        binned.append(depth_interpolate(pdf, bins = bins))
         pid = name[0]
         time_glider = name[1] 
         lon_glider = name[2].round(2)
@@ -262,9 +264,15 @@ def plot_glider_profiles(id, gliders):
         # dax.plot(density_glider1, depth_glider, '.', color='cyan', label='_nolegend_')
         maxd.append(np.nanmax(depth_glider))
         ohc = ocean_heat_content(depth_glider, temp_glider, density_glider)
-        ohc_glider.append(ohc)    
+        ohc_glider.append(ohc) 
+
+    # time_glider_str = time_glider.strftime("%Y-%m-%d")
+    nesdis = get_ohc(extent, time_glider.date())   
+    nesdis = nesdis.squeeze()
     mlon = df['lon'].mean()
     mlat = df['lat'].mean()
+    ohc_nesdis = nesdis.sel(longitude=mlon, latitude=mlat, method='nearest')
+    ohc_nesdis = ohc_nesdis.ohc.values
     
     if plot_gofs:
         # Convert glider lon from -180,180 to 0,359
@@ -345,6 +353,8 @@ def plot_glider_profiles(id, gliders):
         # Calculate density
         cds['density'] = density(cds['temperature'].values, -cds['depth'].values, cds['salinity'].values, cds['lat'].values, cds['lon'].values)
         ohc_cmems = ocean_heat_content(cds['depth'].values, cds['temperature'].values, cds['density'].values)
+        
+    # ohc_nesdis = 
 
     # Plot model profiles
     if plot_rtofs:
@@ -432,12 +442,12 @@ def plot_glider_profiles(id, gliders):
         method = "Nearest-Neighbor"
 
     title_str = (f'Comparison Date: { df["time"].min().strftime("%Y-%m-%d") }\n\n'
-                 f'Glider: {glid}\n'
-                 f'Profiles: { df["profile_id"].nunique() }\n'
-                 f'First: { str(df["time"].min()) }\n'
-                 f'Last: { str(df["time"].max()) }\n'
-                 f'Method: {method}\n'
-                 ) 
+                f'Glider: {glid}\n'
+                f'Profiles: { df["profile_id"].nunique() }\n'
+                f'First: { str(df["time"].min()) }\n'
+                f'Last: { str(df["time"].max()) }\n'
+                f'Method: {method}\n'
+                ) 
 
     # Add text to title axis
     text = ax4.text(-0.1, 1.0, 
@@ -548,7 +558,11 @@ def plot_glider_profiles(id, gliders):
             ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
     except:
         pass
-    
+
+    try:
+        ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
+    except:
+        pass   
     plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
 
 
