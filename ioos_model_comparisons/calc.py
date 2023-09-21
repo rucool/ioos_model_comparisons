@@ -188,63 +188,110 @@ def find_nearest(array, value):
     return array.flat[idx], idx
 
 
+# def depth_interpolate(
+#     df,
+#     depth_var="depth",
+#     depth_min=0,
+#     depth_max=1000,
+#     stride=10,
+#     method="linear",
+#     index=None,
+# ):
+#     """_summary_
+
+#     Args:
+#         df (pd.DataFrame): Depth profile in the form of a pandas dataframe
+#         depth_var (str, optional): Name of the depth variable in the dataframe. Defaults to 'depth'.
+#         depth_min (float or string, optional): Shallowest bin depth. Pass 'round' to round to nearest minimumdepth. Defaults to None.
+#         depth_max (float or string, optional): Deepest bin depth. Pass 'round' to round to nearest maximum depth. Defaults to None.
+#         stride (int, optional): Amount of space between bins. Defaults to 10.
+#         method (str, optional): Interpolation type. Defaults to 'linear'.
+
+#     Returns:
+#         pd.DataFrame: dataframe with depth interpolated
+#     """
+#     if df.empty:
+#         print("Dataframe empty. Returning to original function")
+#         return
+
+#     if isinstance(depth_min, str):
+#         if depth_min == "round":
+#             depth_min = round(df[depth_var].min())
+#         else:
+#             depth_min = int(depth_min)
+
+#     if isinstance(depth_min, str):
+#         if depth_min == "round":
+#             depth_max = round(df[depth_var].max())
+#         else:
+#             depth_max = int(depth_max)
+
+#     bins = np.arange(depth_min, depth_max + stride, stride)
+
+#     # Create temporary dataframe to interpolate to dz m depths
+#     temp = df.set_index(depth_var)  # set index to depth
+#     temp = temp[
+#         ~temp.index.duplicated()
+#     ]  # Remove duplicated indexs (not sure why there would be duplicates)
+#     temp = temp.reindex(temp.index.union(bins))  # reindex to depths in bins
+#     try:
+#         temp = temp.drop("time", axis=1).interpolate(
+#             method=method, limit_direction="both"
+#         )  # drop time and interpolate new depth indexes
+#     except KeyError:
+#         temp = temp.interpolate(
+#             method=method, limit_direction="both"
+#         )  # drop time and interpolate new depth indexes
+    
+#     temp = temp.reindex(index=bins)  # only want to see new_index data
+#     temp = temp.reset_index()  # reset index so you can access the depth variable
+
+#     if index:
+#         temp = temp.set_index(index)
+
+#     return temp
+
 def depth_interpolate(
     df,
     depth_var="depth",
     depth_min=0,
     depth_max=1000,
     stride=10,
+    bins=None,
     method="linear",
     index=None,
 ):
-    """_summary_
-
-    Args:
-        df (pd.DataFrame): Depth profile in the form of a pandas dataframe
-        depth_var (str, optional): Name of the depth variable in the dataframe. Defaults to 'depth'.
-        depth_min (float or string, optional): Shallowest bin depth. Pass 'round' to round to nearest minimumdepth. Defaults to None.
-        depth_max (float or string, optional): Deepest bin depth. Pass 'round' to round to nearest maximum depth. Defaults to None.
-        stride (int, optional): Amount of space between bins. Defaults to 10.
-        method (str, optional): Interpolation type. Defaults to 'linear'.
-
-    Returns:
-        pd.DataFrame: dataframe with depth interpolated
-    """
     if df.empty:
-        print("Dataframe empty. Returning to original function")
-        return
+        raise ValueError("Dataframe is empty")
+        
+    if depth_var not in df.columns:
+        raise ValueError(f"'{depth_var}' is not a valid column in the dataframe")
 
-    if isinstance(depth_min, str):
-        if depth_min == "round":
-            depth_min = round(df[depth_var].min())
-        else:
-            depth_min = int(depth_min)
+    # Generate bins if not provided
+    if bins is None:
+        # Handle depth_min and depth_max arguments
+        for var_name, default_val in [("depth_min", df[depth_var].min()), ("depth_max", df[depth_var].max())]:
+            var_val = eval(var_name)
+            if isinstance(var_val, str):
+                if var_val.lower() == "round":
+                    locals()[var_name] = round(default_val)
+                else:
+                    try:
+                        locals()[var_name] = int(var_val)
+                    except ValueError:
+                        raise ValueError(f"Invalid value '{var_val}' for {var_name}. Expected 'round' or a number.")
+        bins = np.arange(depth_min, depth_max + stride, stride)
 
-    if isinstance(depth_min, str):
-        if depth_min == "round":
-            depth_max = round(df[depth_var].max())
-        else:
-            depth_max = int(depth_max)
-
-    bins = np.arange(depth_min, depth_max + stride, stride)
-
-    # Create temporary dataframe to interpolate to dz m depths
-    temp = df.set_index(depth_var)  # set index to depth
-    temp = temp[
-        ~temp.index.duplicated()
-    ]  # Remove duplicated indexs (not sure why there would be duplicates)
-    temp = temp.reindex(temp.index.union(bins))  # reindex to depths in bins
-    try:
-        temp = temp.drop("time", axis=1).interpolate(
-            method=method, limit_direction="both"
-        )  # drop time and interpolate new depth indexes
-    except KeyError:
-        temp = temp.interpolate(
-            method=method, limit_direction="both"
-        )  # drop time and interpolate new depth indexes
+    temp = df.set_index(depth_var)
+    temp = temp[~temp.index.duplicated()]
+    temp = temp.reindex(temp.index.union(bins))
     
-    temp = temp.reindex(index=bins)  # only want to see new_index data
-    temp = temp.reset_index()  # reset index so you can access the depth variable
+    if "time" in temp.columns:
+        temp = temp.drop("time", axis=1)
+        
+    temp = temp.interpolate(method=method, limit_direction="both")
+    temp = temp.reindex(index=bins)
+    temp = temp.reset_index()
 
     if index:
         temp = temp.set_index(index)
@@ -254,8 +301,6 @@ def depth_interpolate(
 
 def depth_bin(df, depth_var="depth", depth_min=0, depth_max=None, stride=1):
     """
-    This function will
-
     :param df: depth profile in the form of a pandas dataframe
     :param depth_var: the name of the depth variable in the dataframe
     :param depth_min: the shallowest bin depth
