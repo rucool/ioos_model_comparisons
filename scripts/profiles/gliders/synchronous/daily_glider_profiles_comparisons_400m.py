@@ -14,7 +14,7 @@ import ioos_model_comparisons.configs as configs
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import (density,
                                          lon180to360,
-                                         lon360to180, 
+                                         lon360to180,
                                          ocean_heat_content,
                                          depth_interpolate
                                          )
@@ -22,7 +22,7 @@ from ioos_model_comparisons.models import cmems, gofs, rtofs
 from ioos_model_comparisons.platforms import get_active_gliders, get_bathymetry, get_ohc
 from ioos_model_comparisons.plotting import map_add_inset
 from ioos_model_comparisons.regions import region_config
-
+import pandas
 import matplotlib.pyplot as plt
 import re
 from datetime import datetime
@@ -35,7 +35,7 @@ path_save = (configs.path_plots / "profiles" / "gliders")
 # dac access
 parallel = True
 timeout = 60
-days = 1
+days = 2
 today = dt.date.today()
 interp = False
 
@@ -70,12 +70,14 @@ extent_list = []
 #     ]
 
 # Create a date list.
-date_list = [today + dt.timedelta(days=x+1) for x in range(days)]
+date_list = [today - dt.timedelta(days=x+1) for x in range(days)]
 date_list.insert(0, today)
-# date_list.reverse()
+date_list.insert(0, today + dt.timedelta(days=1))
+date_list.reverse()
+
 # Get time bounds for the current day
 t0 = date_list[0]
-t1 = date_list[1]
+t1 = date_list[-1]
 
 # %% Look for datasets in IOOS glider dac
 vars = ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity',
@@ -150,8 +152,8 @@ def line_limits(fax, delta=1):
     maxs = [np.nanmax(line.get_xdata()) for line in fax.lines]
     return min(mins)-delta, max(maxs)+delta
 
-spath = path_save / str(today.year) / today.strftime('%m-%d')
-os.makedirs(spath, exist_ok=True)
+# spath = path_save / str(today.year) / today.strftime('%m-%d')
+# os.makedirs(spath, exist_ok=True)
 
 levels = [-8000, -1000, -100, 0]
 colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
@@ -192,382 +194,408 @@ def plot_glider_profiles(id, gliders):
     print('Deployed:', deployed)
     
     alabel = f'{glid}'
-    fullfile = spath / f"{id}_{t0.strftime('%Y%m%d')}_to_{t1.strftime('%Y%m%d')}_400m.png"
 
-    # Initialize plot
-    fig = plt.figure(constrained_layout=True, figsize=(16, 8))
-    widths = [1, 1, 1, 1]
-    heights = [1, 2, 1]
+    for t in list(df.groupby(df['time'].dt.date)):
+        tdf = t[1]
+        t0 = t[0]
+        t1 = t[0] + dt.timedelta(days=1)
+        
+        spath = path_save / str(today.year) / t0.strftime('%m-%d')
+        os.makedirs(spath, exist_ok=True)
+        
+        fullfile = spath / f"{id}_{t0.strftime('%Y%m%d')}_to_{t1.strftime('%Y%m%d')}_400m.png"
 
-    gs = fig.add_gridspec(3, 4, width_ratios=widths,
-                            height_ratios=heights)
+        # Initialize plot
+        fig = plt.figure(constrained_layout=True, figsize=(16, 8))
+        widths = [1, 1, 1, 1]
+        heights = [1, 2, 1]
 
-    tax = fig.add_subplot(gs[:, 0]) # Temperature
-    sax = fig.add_subplot(gs[:, 1], sharey=tax)  # Salinity
-    plt.setp(sax.get_yticklabels(), visible=False)
-    dax = fig.add_subplot(gs[:, 2], sharey=tax) # Density
-    plt.setp(dax.get_yticklabels(), visible=False)
-    ax4 = fig.add_subplot(gs[0, -1]) # Title
-    mpax = fig.add_subplot(gs[1, -1], projection=configs.projection['map']) # Map
-    lax = fig.add_subplot(gs[2, -1]) # Legend
+        gs = fig.add_gridspec(3, 4, width_ratios=widths,
+                                height_ratios=heights)
 
-    lon_track = []
-    lat_track = []
+        tax = fig.add_subplot(gs[:, 0]) # Temperature
+        sax = fig.add_subplot(gs[:, 1], sharey=tax)  # Salinity
+        plt.setp(sax.get_yticklabels(), visible=False)
+        dax = fig.add_subplot(gs[:, 2], sharey=tax) # Density
+        plt.setp(dax.get_yticklabels(), visible=False)
+        ax4 = fig.add_subplot(gs[0, -1]) # Title
+        mpax = fig.add_subplot(gs[1, -1], projection=configs.projection['map']) # Map
+        lax = fig.add_subplot(gs[2, -1]) # Legend
+
+        lon_track = []
+        lat_track = []
     
-    # Filter glider depth
-    df = df[df["depth"] <= 400]
+        # Filter glider depth
+        tdf = tdf[tdf["depth"] <= 400]
 
-    # Groupby glider profiles
-    maxd = []
-    ohc_glider = []
+        # Groupby glider profiles
+        maxd = []
+        ohc_glider = []
 
-    # Creating individual arrays
-    array1 = np.arange(0, 10, 2) # From 0 to 10 with step size 2
-    array2 = np.arange(10, 101, 5) # From 10 to 100 with step size 5 (101 is the stop point to include 100)
-    array3 = np.arange(110, 401, 10) # From 110 to 1000 with step size 10 (1001 is the stop point to include 1000)
+        # Creating individual arrays
+        array1 = np.arange(0, 10, 2) # From 0 to 10 with step size 2
+        array2 = np.arange(10, 101, 5) # From 10 to 100 with step size 5 (101 is the stop point to include 100)
+        array3 = np.arange(110, 401, 10) # From 110 to 1000 with step size 10 (1001 is the stop point to include 1000)
 
-    # Concatenating the arrays for bins to interpolate to
-    bins = np.concatenate((array1, array2, array3)) 
+        # Concatenating the arrays for bins to interpolate to
+        bins = np.concatenate((array1, array2, array3)) 
 
-    binned = []
-    for name, pdf in df.groupby(['profile_id', 'time', 'lon', 'lat']):
-        pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
-        binned.append(depth_interpolate(pdf, bins = bins))
-        pid = name[0]
-        time_glider = name[1] 
-        lon_glider = name[2].round(2)
-        lat_glider = name[3].round(2)
-        lon_track.append(lon_glider)
-        lat_track.append(lat_glider)
-        
-        print(f"Glider: {id}, Profile ID: {pid}, Time: {time_glider}")
-        
-        # Filter salinity and temperature that are more than 4 standard deviations
-        # from the mean
+        binned = []
+        for name, pdf in tdf.groupby(['profile_id', 'time', 'lon', 'lat']):
+            if not pdf.empty:
+                print(f'plotting profile {name}')
+                pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
+                binned.append(depth_interpolate(pdf,
+                                                bins = bins
+                                                )
+                              )
+                pid = name[0]
+                time_glider = name[1] 
+                lon_glider = name[2].round(2)
+                lat_glider = name[3].round(2)
+                lon_track.append(lon_glider)
+                lat_track.append(lat_glider)
+                
+                print(f"Glider: {id}, Profile ID: {pid}, Time: {time_glider}")
+
+                # Filter salinity and temperature that are more than 4 standard deviations
+                # from the mean
+                try:
+                    pdf = pdf[np.abs(stats.zscore(pdf['salinity'])) < 4]  #  salinity
+                    pdf = pdf[np.abs(stats.zscore(pdf['temperature'])) < 4]  #  temperature
+                except pandas.errors.IndexingError:
+                    pass
+
+                # Save as Pd.Series for easier recalling of columns 
+                depth_glider = pdf['depth']
+                temp_glider = pdf['temperature']
+                salinity_glider = pdf['salinity']
+                density_glider = pdf['density']
+
+                # Plot glider profiles
+                tax.plot(temp_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+                sax.plot(salinity_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+                dax.plot(density_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+
+                try:
+                    maxd.append(np.nanmax(depth_glider))
+                except:
+                    continue
+                ohc = ocean_heat_content(depth_glider, temp_glider, density_glider)
+                ohc_glider.append(ohc) 
+            else:
+                print('Test')
+                continue
+
+        mlon = tdf['lon'].mean()
+        mlat = tdf['lat'].mean()
+
+        # time_glider_str = time_glider.strftime("%Y-%m-%d")
         try:
-            pdf = pdf[np.abs(stats.zscore(df['salinity'])) < 4]  #  salinity
-            pdf = pdf[np.abs(stats.zscore(df['temperature'])) < 4]  #  temperature
-        except KeyError:
+            nesdis = get_ohc(extent, time_glider.date())
+        except:
+            nesdis = None
+
+        if nesdis: 
+            nesdis = nesdis.squeeze()
+            ohc_nesdis = nesdis.sel(longitude=mlon, latitude=mlat, method='nearest')
+            ohc_nesdis = ohc_nesdis.ohc.values
+        
+        if plot_gofs:
+            # Convert glider lon from -180,180 to 0,359
+            lon_glider_gofs = lon180to360(mlon)
+        
+            # Select the nearest model time to the glider time for this profile
+            gds = gofs.sel(time=time_glider, method="nearest")
+
+            # Interpolate the model to the nearest point
+            if interp:
+                gds = gds.interp(
+                    lon=lon_glider_gofs,
+                    lat=mlat,
+                    )
+            else:
+                # select nearest neighbor grid point
+                gds = gds.sel(
+                    lon=lon_glider_gofs,
+                    lat=mlat,
+                    method="nearest"
+                )
+            
+            # Convert lon from 0,259 to -180,180
+            gds['lon'] = lon360to180(gds['lon'])
+
+            # Calculate density
+            gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
+
+            print(f"GOFS - Time: {pd.to_datetime(gds.time.values)}")
+
+            ohc_gofs = ocean_heat_content(gds['depth'].values, gds['temperature'].values, gds['density'].values)
+
+        if plot_rtofs:
+            # RTOFS
+            rds = rtofs.sel(time=time_glider, method="nearest")
+            print(f"RTOFS - Time: {pd.to_datetime(rds.time.values)}")
+
+            # interpolating lon and lat to x and y index of the rtofs grid
+            rlonI = np.interp(mlon, rlon, rx) # lon -> x
+            rlatI = np.interp(mlat, rlat, ry) # lat -> y
+
+            if interp:
+                rds = rds.interp(
+                    x=rlonI,
+                    y=rlatI,
+                )
+            else:
+                rds = rds.sel(
+                    x=np.round(rlonI),
+                    y=np.round(rlatI),
+                    method='nearest'
+                    )
+            
+            # Calculate density 
+            rds['density'] = density(rds['temperature'].values, -rds['depth'].values, rds['salinity'].values, rds['lat'].values, rds['lon'].values)
+            ohc_rtofs = ocean_heat_content(rds['depth'].values, rds['temperature'].values, rds['density'].values)
+
+        if plot_cmems:
+            # CMEMS
+            cds = cmems.sel(time=time_glider, method="nearest")
+            print(f"CMEMS - Time: {pd.to_datetime(cds.time.values)}")
+            # delta_time = np.abs(time_glider - pd.to_datetime(cds.time.values))
+            # print(f"Threshold time: {delta_time}")
+            # if delta_time < time_threshold:
+            #     print(f"Difference between profile and nearest CMEMS time is {delta_time}. Interpolating to profile")
+
+            if interp:
+                cds = cds.interp(
+                    lon=mlon,
+                    lat=mlat
+                )
+            else:
+                cds = cds.sel(
+                    lon=mlon,
+                    lat=mlat,
+                    method='nearest'
+                )
+            # Calculate density
+            cds['density'] = density(cds['temperature'].values, -cds['depth'].values, cds['salinity'].values, cds['lat'].values, cds['lon'].values)
+            ohc_cmems = ocean_heat_content(cds['depth'].values, cds['temperature'].values, cds['density'].values)
+            
+        # Plot model profiles
+        if plot_rtofs:
+            tax.plot(rds['temperature'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
+            sax.plot(rds['salinity'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
+            dax.plot(rds['density'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
+
+        if plot_gofs:
+            tax.plot(gds['temperature'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
+            sax.plot(gds['salinity'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
+            dax.plot(gds['density'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
+
+        if plot_cmems:
+            tax.plot(cds['temperature'], cds["depth"], '.-', color="magenta", label='_nolegend_')
+            sax.plot(cds['salinity'], cds["depth"], '.-', color="magenta", label='_nolegend_')
+            dax.plot(cds['density'], cds["depth"], '.-', color="magenta", label='_nolegend_')
+
+        # Plot glider profile
+        bin_avg = pd.concat(binned).set_index(['profile_id','depth']).to_xarray().mean('profile_id')
+        tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=alabel)
+        sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=alabel)
+        dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=alabel)
+
+        # Plot model profiles
+        if plot_rtofs:
+            tax.plot(rds['temperature'], rds['depth'], '-o', color='red', label=rlabel)
+            sax.plot(rds['salinity'], rds['depth'], '-o', color='red', label=rlabel)
+            dax.plot(rds['density'], rds['depth'], '-o', color='red', label=rlabel)
+
+        if plot_gofs:
+            tax.plot(gds['temperature'], gds["depth"], '-o', color="green", label=glabel)
+            sax.plot(gds['salinity'], gds["depth"], '-o', color="green", label=glabel)
+            dax.plot(gds['density'], gds["depth"], '-o', color="green", label=glabel)
+
+        if plot_cmems:        
+            tax.plot(cds['temperature'], cds["depth"], '-o', color="magenta", label=clabel)
+            sax.plot(cds['salinity'], cds["depth"], '-o', color="magenta", label=clabel)    
+            dax.plot(cds['density'], cds["depth"], '-o', color="magenta", label=clabel)
+        try:
+            # Get min and max of each plot. Add a delta to each for x limits
+            tmin, tmax = line_limits(tax, delta=.5)
+            smin, smax = line_limits(sax, delta=.25)
+            dmin, dmax = line_limits(dax, delta=.5)
+        except ValueError:
+            print('Some kind of error')
             pass
 
-        # Save as Pd.Series for easier recalling of columns 
-        depth_glider = pdf['depth']
-        temp_glider = pdf['temperature']
-        salinity_glider = pdf['salinity']
-        density_glider = pdf['density']
-        # density_glider = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
+        md = np.nanmax(maxd)
+        
+        if md < 400:
+            ylim = [md, 0]
+            if md < 50:
+                yticks = np.arange(0, md+5, 5)
+            elif md <= 100:
+                yticks = np.arange(0, md+10, 10)
+            elif md < 200:
+                yticks = np.arange(0, md+10, 20)
+            elif md < 300:
+                yticks = np.arange(0, md+25, 25)
+            else:
+                yticks = np.arange(0, 425, 25)       
+        else:
+            ylim = [401, 0]
+            yticks = np.arange(0, 425, 25)
+            
+        # Adjust plots
+        tax.set_xlim([tmin, tmax])
+        tax.set_ylim(ylim)
+        tax.set_yticks(yticks)
+        tax.set_ylabel('Depth (m)', fontsize=13, fontweight="bold")
+        tax.set_xlabel('Temperature ($^oC$)', fontsize=13, fontweight="bold")
+        tax.grid(True, linestyle='--', linewidth=0.5)
 
-        # Plot glider profiles
-        tax.plot(temp_glider, depth_glider, '.', color='cyan', label='_nolegend_')
-        sax.plot(salinity_glider, depth_glider, '.', color='cyan', label='_nolegend_')
-        dax.plot(density_glider, depth_glider, '.', color='cyan', label='_nolegend_')
-        # dax.plot(density_glider1, depth_glider, '.', color='cyan', label='_nolegend_')
-        maxd.append(np.nanmax(depth_glider))
-        ohc = ocean_heat_content(depth_glider, temp_glider, density_glider)
-        ohc_glider.append(ohc) 
+        sax.set_xlim([smin, smax])
+        sax.set_ylim(ylim)  
+        sax.set_xlabel('Salinity', fontsize=13, fontweight="bold")
+        sax.grid(True, linestyle='--', linewidth=0.5)
 
-    # time_glider_str = time_glider.strftime("%Y-%m-%d")
-    nesdis = get_ohc(extent, time_glider.date())   
-    nesdis = nesdis.squeeze()
-    mlon = df['lon'].mean()
-    mlat = df['lat'].mean()
-    ohc_nesdis = nesdis.sel(longitude=mlon, latitude=mlat, method='nearest')
-    ohc_nesdis = ohc_nesdis.ohc.values
-    
-    if plot_gofs:
-        # Convert glider lon from -180,180 to 0,359
-        lon_glider_gofs = lon180to360(mlon)
-    
-        # Select the nearest model time to the glider time for this profile
-        gds = gofs.sel(time=time_glider, method="nearest")
+        dax.set_xlim([dmin, dmax])
+        dax.set_ylim(ylim)
+        dax.set_xlabel('Density (kg m-3)', fontsize=13, fontweight="bold")
+        dax.grid(True, linestyle='--', linewidth=0.5)
 
-        # Interpolate the model to the nearest point
         if interp:
-            gds = gds.interp(
-                lon=lon_glider_gofs,
-                lat=mlat,
+            method = "Interpolation"
+        else:
+            method = "Nearest-Neighbor"
+
+        title_str = (f'Comparison Date: { tdf["time"].min().strftime("%Y-%m-%d") }\n\n'
+                    f'Glider: {glid}\n'
+                    f'Profiles: { tdf["profile_id"].nunique() }\n'
+                    f'First: { str(tdf["time"].min()) }\n'
+                    f'Last: { str(tdf["time"].max()) }\n'
+                    f'Method: {method}\n'
+                    ) 
+
+        # Add text to title axis
+        text = ax4.text(-0.1, 1.0, 
+                        title_str, 
+                        ha='left', va='top', size=13, fontweight='bold')
+
+        text.set_path_effects([path_effects.Normal()])
+        ax4.set_axis_off()
+
+        lon_track = np.array(lon_track)
+        lat_track = np.array(lat_track)
+        dx = 2/2
+        dy = 1.25/2
+        extent_main = [lon_track.min() - .2, lon_track.max() + .2, lat_track.min() - .2, lat_track.max() + .2]
+        extent_inset = [lon_track.min() - dx, lon_track.max() + dx, lat_track.min() - dy, lat_track.max() + dy]
+        # lonmin, lonmax, latmin, latmax = extent_inset
+    
+        # Create a map in the map axis     
+        create(extent, ax=mpax, bathymetry=False)
+        mpax.plot(lon_track, lat_track, '.-w', 
+                markeredgecolor='black',
+                markersize=8,
+                linewidth=4,
+                transform=configs.projection['data'],
+                zorder=999,
                 )
-        else:
-            # select nearest neighbor grid point
-            gds = gds.sel(
-                lon=lon_glider_gofs,
-                lat=mlat,
-                method="nearest"
-            )
         
-        # Convert lon from 0,259 to -180,180
-        gds['lon'] = lon360to180(gds['lon'])
-
-        # Calculate density
-        gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
-
-        print(f"GOFS - Time: {pd.to_datetime(gds.time.values)}")
-
-        ohc_gofs = ocean_heat_content(gds['depth'].values, gds['temperature'].values, gds['density'].values)
-
-    if plot_rtofs:
-        # RTOFS
-        rds = rtofs.sel(time=time_glider, method="nearest")
-        print(f"RTOFS - Time: {pd.to_datetime(rds.time.values)}")
-
-        # interpolating lon and lat to x and y index of the rtofs grid
-        rlonI = np.interp(mlon, rlon, rx) # lon -> x
-        rlatI = np.interp(mlat, rlat, ry) # lat -> y
-
-        if interp:
-            rds = rds.interp(
-                x=rlonI,
-                y=rlatI,
-            )
-        else:
-            rds = rds.sel(
-                x=np.round(rlonI),
-                y=np.round(rlatI),
-                method='nearest'
+        mpax.plot(lon_track[-1], lat_track[-1],  
+                marker='.',
+                markeredgecolor='black',
+                markerfacecolor='red',
+                markersize=10,
+                transform=configs.projection['data'],
+                zorder=1000
                 )
+
+        if bathy_flag:
+            mpax.contourf(bathy['longitude'],
+                        bathy['latitude'],
+                        bathy['elevation'],
+                        levels, colors=colors, transform=configs.projection['data'], ticks=False)
         
-        # Calculate density 
-        rds['density'] = density(rds['temperature'].values, -rds['depth'].values, rds['salinity'].values, rds['lat'].values, rds['lon'].values)
-        ohc_rtofs = ocean_heat_content(rds['depth'].values, rds['temperature'].values, rds['density'].values)
+        # Create inset axis for glider track
+        # axin = map_add_inset(mpax, extent=extent, zoom_extent=extent_inset)
+        # add_features(axin)
+        # if bathy_flag:
+        #     axin.contourf(bathy['longitude'],
+        #         bathy['latitude'],
+        #         bathy['elevation'],
+        #         levels, colors=colors, transform=configs.projection['data'], ticks=False)
 
-    if plot_cmems:
-        # CMEMS
-        cds = cmems.sel(time=time_glider, method="nearest")
-        print(f"CMEMS - Time: {pd.to_datetime(cds.time.values)}")
-        # delta_time = np.abs(time_glider - pd.to_datetime(cds.time.values))
-        # print(f"Threshold time: {delta_time}")
-        # if delta_time < time_threshold:
-        #     print(f"Difference between profile and nearest CMEMS time is {delta_time}. Interpolating to profile")
+        # axin.plot(lon_track, lat_track, '.-w', 
+        #           markeredgecolor='black',
+        #           markersize=8,
+        #           linewidth=4,
+        #           transform=configs.projection['data'],
+        #           zorder=999
+        #           )
 
-        if interp:
-            cds = cds.interp(
-                lon=mlon,
-                lat=mlat
-            )
-        else:
-            cds = cds.sel(
-                lon=mlon,
-                lat=mlat,
-                method='nearest'
-            )
-        # Calculate density
-        cds['density'] = density(cds['temperature'].values, -cds['depth'].values, cds['salinity'].values, cds['lat'].values, cds['lon'].values)
-        ohc_cmems = ocean_heat_content(cds['depth'].values, cds['temperature'].values, cds['density'].values)
+        # axin.plot(lon_track[-1], lat_track[-1],  
+        #         marker='.',
+        #         markeredgecolor='black',
+        #         markerfacecolor='red',
+        #         markersize=8,
+        #         transform=configs.projection['data'],
+        #         zorder=1000
+        #         )
+
+        h, l = sax.get_legend_handles_labels()  # get labels and handles from ax1
+
+        lax.legend(h, l, ncol=1, loc='center', fontsize=13)
+        lax.set_axis_off()
+
+        # plt.figtext(0.15, 0.001, f'Depths interpolated to every {configs.stride}m', ha="center", fontsize=10, fontstyle='italic')
+
+        fig.tight_layout()
+        fig.subplots_adjust(top=0.9)
+
+        ohc_string = 'Ocean Heat Content (kJ/cm^2) - '
+        try:
+            if np.isnan(np.nanmean(ohc_glider)):
+                ohc_string += 'Glider: N/A,  '
+            else:
+                ohc_string += f"Glider: {np.nanmean(ohc_glider):.4f},  "
+        except:
+            pass
         
-    # ohc_nesdis = 
-
-    # Plot model profiles
-    if plot_rtofs:
-        tax.plot(rds['temperature'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
-        sax.plot(rds['salinity'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
-        dax.plot(rds['density'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
-
-    if plot_gofs:
-        tax.plot(gds['temperature'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
-        sax.plot(gds['salinity'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
-        dax.plot(gds['density'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
-
-    if plot_cmems:
-        tax.plot(cds['temperature'], cds["depth"], '.-', color="magenta", label='_nolegend_')
-        sax.plot(cds['salinity'], cds["depth"], '.-', color="magenta", label='_nolegend_')
-        dax.plot(cds['density'], cds["depth"], '.-', color="magenta", label='_nolegend_')
-
-    # Plot glider profile
-    bin_avg = pd.concat(binned).set_index(['profile_id','depth']).to_xarray().mean('profile_id')
-    tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=alabel)
-    sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=alabel)
-    dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=alabel)
-
-    # Plot model profiles
-    if plot_rtofs:
-        tax.plot(rds['temperature'], rds['depth'], '-o', color='red', label=rlabel)
-        sax.plot(rds['salinity'], rds['depth'], '-o', color='red', label=rlabel)
-        dax.plot(rds['density'], rds['depth'], '-o', color='red', label=rlabel)
-
-    if plot_gofs:
-        tax.plot(gds['temperature'], gds["depth"], '-o', color="green", label=glabel)
-        sax.plot(gds['salinity'], gds["depth"], '-o', color="green", label=glabel)
-        dax.plot(gds['density'], gds["depth"], '-o', color="green", label=glabel)
-
-    if plot_cmems:        
-        tax.plot(cds['temperature'], cds["depth"], '-o', color="magenta", label=clabel)
-        sax.plot(cds['salinity'], cds["depth"], '-o', color="magenta", label=clabel)    
-        dax.plot(cds['density'], cds["depth"], '-o', color="magenta", label=clabel)
-
-    # Get min and max of each plot. Add a delta to each for x limits
-    tmin, tmax = line_limits(tax, delta=.5)
-    smin, smax = line_limits(sax, delta=.25)
-    dmin, dmax = line_limits(dax, delta=.5)
-
-    md = np.nanmax(maxd)
-    
-    if md < 400:
-        ylim = [md, 0]
-        if md < 50:
-            yticks = np.arange(0, md+5, 5)
-        elif md <= 100:
-            yticks = np.arange(0, md+10, 10)
-        elif md < 200:
-            yticks = np.arange(0, md+10, 20)
-        elif md < 300:
-            yticks = np.arange(0, md+25, 25)
-        else:
-            yticks = np.arange(0, 425, 25)       
-    else:
-        ylim = [401, 0]
-        yticks = np.arange(0, 425, 25)
+        try:
+            if np.isnan(ohc_rtofs):
+                ohc_string += 'RTOFS: N/A,  '
+            else:
+                ohc_string += f"RTOFS: {ohc_rtofs:.4f},  "
+        except:
+            pass
         
-    # Adjust plots
-    tax.set_xlim([tmin, tmax])
-    tax.set_ylim(ylim)
-    tax.set_yticks(yticks)
+        try:           
+            if np.isnan(ohc_gofs):
+                ohc_string += 'GOFS: N/A,  '
+            else:
+                ohc_string += f"GOFS: {ohc_gofs:.4f},  "
+        except:
+            pass
+            
+        try:
+            if np.isnan(ohc_cmems):
+                ohc_string += 'CMEMS: N/A,  '
+            else:
+                ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
+        except:
+            pass
 
-    tax.set_ylabel('Depth (m)', fontsize=13, fontweight="bold")
-    tax.set_xlabel('Temperature ($^oC$)', fontsize=13, fontweight="bold")
-    tax.grid(True, linestyle='--', linewidth=0.5)
+        if nesdis:
+            try:
+                ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
+            except:
+                pass
+            
+        plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
 
-    sax.set_xlim([smin, smax])
-    sax.set_ylim(ylim)  
-    sax.set_xlabel('Salinity', fontsize=13, fontweight="bold")
-    sax.grid(True, linestyle='--', linewidth=0.5)
-
-    dax.set_xlim([dmin, dmax])
-    dax.set_ylim(ylim)
-    dax.set_xlabel('Density (kg m-3)', fontsize=13, fontweight="bold")
-    dax.grid(True, linestyle='--', linewidth=0.5)
-
-    if interp:
-        method = "Interpolation"
-    else:
-        method = "Nearest-Neighbor"
-
-    title_str = (f'Comparison Date: { df["time"].min().strftime("%Y-%m-%d") }\n\n'
-                f'Glider: {glid}\n'
-                f'Profiles: { df["profile_id"].nunique() }\n'
-                f'First: { str(df["time"].min()) }\n'
-                f'Last: { str(df["time"].max()) }\n'
-                f'Method: {method}\n'
-                ) 
-
-    # Add text to title axis
-    text = ax4.text(-0.1, 1.0, 
-                    title_str, 
-                    ha='left', va='top', size=13, fontweight='bold')
-
-    text.set_path_effects([path_effects.Normal()])
-    ax4.set_axis_off()
-
-    lon_track = np.array(lon_track)
-    lat_track = np.array(lat_track)
-    dx = 2/2
-    dy = 1.25/2
-    extent_main = [lon_track.min() - .2, lon_track.max() + .2, lat_track.min() - .2, lat_track.max() + .2]
-    extent_inset = [lon_track.min() - dx, lon_track.max() + dx, lat_track.min() - dy, lat_track.max() + dy]
-    # lonmin, lonmax, latmin, latmax = extent_inset
- 
-    # Create a map in the map axis     
-    create(extent, ax=mpax, bathymetry=False)
-    mpax.plot(lon_track, lat_track, '.-w', 
-              markeredgecolor='black',
-              markersize=8,
-              linewidth=4,
-              transform=configs.projection['data'],
-              zorder=999,
-              )
-    
-    mpax.plot(lon_track[-1], lat_track[-1],  
-            marker='.',
-            markeredgecolor='black',
-            markerfacecolor='red',
-            markersize=10,
-            transform=configs.projection['data'],
-            zorder=1000
-            )
-
-    if bathy_flag:
-        mpax.contourf(bathy['longitude'],
-                      bathy['latitude'],
-                      bathy['elevation'],
-                      levels, colors=colors, transform=configs.projection['data'], ticks=False)
-    
-    # Create inset axis for glider track
-    # axin = map_add_inset(mpax, extent=extent, zoom_extent=extent_inset)
-    # add_features(axin)
-    # if bathy_flag:
-    #     axin.contourf(bathy['longitude'],
-    #         bathy['latitude'],
-    #         bathy['elevation'],
-    #         levels, colors=colors, transform=configs.projection['data'], ticks=False)
-
-    # axin.plot(lon_track, lat_track, '.-w', 
-    #           markeredgecolor='black',
-    #           markersize=8,
-    #           linewidth=4,
-    #           transform=configs.projection['data'],
-    #           zorder=999
-    #           )
-    
-    # axin.plot(lon_track[-1], lat_track[-1],  
-    #         marker='.',
-    #         markeredgecolor='black',
-    #         markerfacecolor='red',
-    #         markersize=8,
-    #         transform=configs.projection['data'],
-    #         zorder=1000
-    #         )
-
-    h, l = sax.get_legend_handles_labels()  # get labels and handles from ax1
-
-    lax.legend(h, l, ncol=1, loc='center', fontsize=13)
-    lax.set_axis_off()
-
-    # plt.figtext(0.15, 0.001, f'Depths interpolated to every {configs.stride}m', ha="center", fontsize=10, fontstyle='italic')
-
-    fig.tight_layout()
-    fig.subplots_adjust(top=0.9)
-     
-    ohc_string = 'Ocean Heat Content (kJ/cm^2) - '
-    try:
-        if np.isnan(np.nanmean(ohc_glider)):
-            ohc_string += 'Glider: N/A,  '
-        else:
-            ohc_string += f"Glider: {np.nanmean(ohc_glider):.4f},  "
-    except:
-        pass
-    
-    try:
-        if np.isnan(ohc_rtofs):
-            ohc_string += 'RTOFS: N/A,  '
-        else:
-            ohc_string += f"RTOFS: {ohc_rtofs:.4f},  "
-    except:
-        pass
-    
-    try:           
-        if np.isnan(ohc_gofs):
-            ohc_string += 'GOFS: N/A,  '
-        else:
-            ohc_string += f"GOFS: {ohc_gofs:.4f},  "
-    except:
-        pass
-           
-    try:
-        if np.isnan(ohc_cmems):
-            ohc_string += 'CMEMS: N/A,  '
-        else:
-            ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
-    except:
-        pass
-
-    try:
-        ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
-    except:
-        pass   
-    plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
-
-
-    plt.savefig(fullfile, dpi=configs.dpi, bbox_inches='tight', pad_inches=0.1)
-    plt.close() 
+        plt.savefig(fullfile, dpi=configs.dpi, bbox_inches='tight', pad_inches=0.1)
+        plt.close() 
     
 from functools import partial
 from joblib import Parallel, delayed
@@ -592,10 +620,9 @@ def main():
         # Use joblib to enable. The last argument in the function is what you input.
         # results = Parallel(n_jobs=workers)(delayed(f)(x) for x in active_gliders)
     else:
-        for id in active_gliders: 
+        for id in active_gliders:
             plot_glider_profiles(id, gliders)
 
 
 if __name__ == "__main__":
-
     main()
