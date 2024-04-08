@@ -25,12 +25,12 @@ fnames2grab = [
     'rtofs_glo_3dz_f024_6hrly_hvr_US_east.nc'
 ]
 
-# Calculate today and yesterday's dates in the required format
-today = datetime.now()
-yesterday = today - timedelta(days=1)
+def generate_date_strs(days=2):
+    """
+    Generates a list of date strings for the past 'days' days, including today.
+    """
+    return [(datetime.now() - timedelta(days=x)).strftime('%Y-%m-%d') for x in range(days)]
 
-# Convert dates to strings in 'YYYY-MM-DD' format
-date_strs = [today.strftime('%Y-%m-%d'), yesterday.strftime('%Y-%m-%d')]
 
 def download_file(url, destination, retries=3):
     # Check if the file has already been downloaded and is not empty
@@ -77,8 +77,9 @@ def download_rtofs_data(date_str, prod=True):
         download_file(file_url, file_path)
     print(f"Completed downloads for {date_str} - {'Prod' if prod else 'Parallel'}")
 
-# Example usage for specific dates
 if __name__ == "__main__":
+    days = 5  # Number of days in the past to download data for, including today
+    date_strs = generate_date_strs(days)
     for date_str in date_strs:
         download_rtofs_data(date_str, prod=True)
         download_rtofs_data(date_str, prod=False)
