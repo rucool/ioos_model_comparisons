@@ -67,6 +67,7 @@ if plot_para:
     # rtofs_para = xr.open_mfdataset(rtofs_files)
     # rtofs_para = rtofs_para.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth', 'X': 'x', 'Y': 'y'})
     rtofs_para = rtofs(source='parallel') 
+    print('RTOFS Parallel loaded')
 
     rtofs_para.attrs['model'] = 'RTOFS (Parallel)'
 
@@ -104,7 +105,9 @@ if conf.bathy:
     bathy_data = get_bathymetry(global_extent)
 
 # Load RTOFS DataSet
+print('Loading RTOFS')
 rds = rtofs() 
+print('RTOFS loaded')
 
 # Save rtofs lon and lat as variables to speed up indexing calculation
 grid_lons = rds.lon.values[0,:]
@@ -113,20 +116,28 @@ grid_x = rds.x.values
 grid_y = rds.y.values
 
 if plot_gofs:
+    print('Loading GOFS')
     # Load GOFS DataSet
     gds = gofs(rename=True)
+    print('GOFS loaded')
 
 if plot_cmems:
+    print('Loading CMEMS')
     # Load Copernicus
     cds = CMEMS() 
+    print('CMEMS loaded')
 
 if plot_amseas:
+    print('Loading AMSEAS')
     # Load AMSEAS
     am = amseas(rename=True)
+    print('AMSEAS loaded')
 
 if plot_cnaps:
+    print('Loading CNAPS')
     # Load CNAPS
     cn = cnaps(rename=True)
+    print('CNAPS loaded')
     grid_lons_cn = cn.lon.values[0,:]
     grid_lats_cn = cn.lat.values[:,0]
     grid_x_cn = cn.xi_rho.values

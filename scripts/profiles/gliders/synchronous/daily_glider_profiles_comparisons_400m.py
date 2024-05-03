@@ -125,13 +125,17 @@ def pick_region_map(regions, point):
 
 # %% Load models
 if plot_gofs:
+    print('Loading GOFS')
     # Read GOFS 3.1 output
     gofs = gofs(rename=True).sel(depth=slice(0,400))
+    print('GOFS loaded')
     glabel = f'GOFS' # Legend labels
 
 if plot_para:
+    print('Loading RTOFS Parallel')
     # RTOFS Parallel
     rtofs_para = rtofs(source='parallel').sel(depth=slice(0,400))
+    print('RTOFS Parallel loaded')
     # from glob import glob
     # import xarray as xr
     # import os
@@ -145,8 +149,10 @@ if plot_para:
     rtofs_para.attrs['model'] = 'RTOFS (Parallel)'
 
 if plot_rtofs:
+    print('Loading RTOFS')
     # Read RTOFS grid and time
     rtofs = rtofs().sel(depth=slice(0,400))
+    print('RTOFS loaded')
     rlabel = f'RTOFS' # Legend labels
 
     # Setting RTOFS lon and lat to their own variables speeds up the script
@@ -156,9 +162,11 @@ if plot_rtofs:
     ry = rtofs.y.data
 
 if plot_cmems:
+    print('Loading CMEMS')
     # Read Copernicus
     # cmems = cmems(rename=True).sel(depth=slice(0,400))
     cobj = CMEMS()
+    print('CMEMS loaded')
     clabel = f"CMEMS" # Legend labels
 
 # Convert time threshold to a Timedelta so that we can compare timedeltas.
@@ -274,7 +282,7 @@ def plot_glider_profiles(id, gliders):
                 if not pdf.empty:
                     print(f'plotting profile {name}')
                     pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
-                    tmp_depth = depth_bin(pdf, depth_var='depth', depth_min=0, depth_max=400, stride=10, aggregation='mean')
+                    tmp_depth = depth_bin(pdf.select_dtypes(exclude=['object']), depth_var='depth', depth_min=0, depth_max=400, stride=10, aggregation='mean')
                     binned.append(tmp_depth)
                     pid = name[0]
                     time_glider = name[1] 

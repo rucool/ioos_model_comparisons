@@ -436,7 +436,8 @@ def get_bathymetry(bbox=None):
 
     e = ERDDAP(
         server="https://hfr.marine.rutgers.edu/erddap/",
-        protocol="griddap"
+        protocol="griddap",
+        response='opendap'
     )
 
     e.dataset_id = "bathymetry_gebco_2014_grid"
@@ -444,13 +445,18 @@ def get_bathymetry(bbox=None):
     e.griddap_initialize()
 
     # Modify constraints
-    e.constraints["latitude<="] = max(lats)
-    e.constraints["latitude>="] = min(lats)
-    e.constraints["longitude>="] = max(lons)
-    e.constraints["longitude<="] = min(lons)
+    # e.constraints["latitude<="] = max(lats)
+    # e.constraints["latitude>="] = min(lats)
+    # e.constraints["longitude>="] = max(lons)
+    # e.constraints["longitude<="] = min(lons)
+    # ds = 
+    ds = e.to_xarray().sel(
+        longitude=slice(bbox[0], bbox[1]),
+        latitude=slice(bbox[2], bbox[3])
+        )
 
     # return xarray dataset
-    return e.to_xarray()
+    return ds
 
 
 def get_ohc(bbox=None, time=None):
