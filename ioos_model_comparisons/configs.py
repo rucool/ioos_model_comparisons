@@ -11,7 +11,7 @@ script_name = Path(__file__).name
 if platform == "linux" or platform == "linux2":
     # server
     path_plots = Path("/www/web/rucool/hurricane/model_comparisons")
-    eez_path = '/home/hurricaneadm/data/eez/eez_boundaries_v11.shp'
+    eez_path = '/home/hurricaneadm/data/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp'
 elif platform == "darwin":
     # local
     path_plots = Path.home() / "Documents" / "plots" / "model_comparisons"
@@ -24,15 +24,15 @@ path_data = current_dir.with_name('data') # data path relative to the toolbox
 
 # Configurations for contour maps 
 regions = [
-    "west_florida_shelf", 
-    "yucatan", 
     "mab",
     "sab", 
-    "leeward", 
-    "windward",
     "gom",
+    "yucatan",
     "caribbean",
-    "tropical_western_atlantic"
+    # "leeward", 
+    # "windward",
+    # "west_florida_shelf", 
+    # "tropical_western_atlantic"
     ]
 days = 2
 

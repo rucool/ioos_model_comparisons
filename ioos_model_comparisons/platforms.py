@@ -12,7 +12,8 @@ from erddapy import ERDDAP
 from joblib import Parallel, delayed
 from numpy import isin
 from requests.exceptions import HTTPError as rHTTPError
-import requests 
+import requests
+import re
 
 Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
@@ -30,7 +31,7 @@ rename_argo["longitude (degrees_east)"] = "lon"
 rename_argo["latitude (degrees_north)"] = "lat"
 
 
-def get_argo_floats_by_time(bbox=(-100, -45, 5, 46),
+def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
                             time_start=None, time_end=dt.date.today(),
                             wmo_id=None, variables=None):
     """_summary_
@@ -52,6 +53,10 @@ def get_argo_floats_by_time(bbox=(-100, -45, 5, 46),
     time_start = time_start or (time_end - dt.timedelta(days=1))
     
     default_variables = ['platform_number', 'time', 'longitude', 'latitude']
+
+    # Convert dates to strings
+    # time_start = time_start.strftime('%Y-%m-%dT%H:%M:%SZ')
+    # time_end = time_end.strftime('%Y-%m-%dT%H:%M:%SZ')
     
     constraints = {
         'time>=': str(time_start),
@@ -98,7 +103,13 @@ def get_argo_floats_by_time(bbox=(-100, -45, 5, 46),
 
 def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None, 
                        timeout=5, parallel=False):
-    variables = variables or ['time', 'latitude', 'longitude']
+    # variables = variables or ['time', 'latitude', 'longitude', ]
+    variables = variables or [
+        "time",
+        "longitude",
+        "latitude",
+        "profile_id", "depth"
+        ]
     bbox = bbox or [-100, -40, 18, 60]
     t0 = t0 or (t1 - dt.timedelta(days=1))
 
@@ -198,7 +209,32 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None,
         df = pd.DataFrame()
     return df
 
+def rename_glider_vars(df):
+    dict_var = {}
+    
+    # Display the results
+    for k in df.keys():
+        # Regular expression to find text before and within parentheses
+        match = re.search(r'([^\s]+) \((.*?)\)', k)
 
+        # Extract the texts, if a match is found
+        if match:
+            dict_var[k] = match.group(1)
+            units = match.group(2)
+            print(f"Variable: {dict_var[k]}, Units: {units}") 
+            if dict_var[k] == 'pressure':
+                if units == 'bar':
+                    print('Pressure reported in bar. Converting to decibar')
+                    # Convert from bars to decibar
+                    df[k] = df[k]*10
+        else:
+            print("No matching pattern found")
+
+    df.index.name = 'time'
+    df = df.rename(columns=dict_var)
+
+    return df
+     
 def get_glider_by_id(dataset_id=None, bbox=None, start=None, end=None, vars=None):
     """_summary_
 
@@ -227,8 +263,8 @@ def get_glider_by_id(dataset_id=None, bbox=None, start=None, end=None, vars=None
         "depth",
         "temperature",
         "salinity",
-        "conductivity",
-        "density"
+        "density",
+        "profile_id"
         ]
       
     e = ERDDAP(
@@ -265,6 +301,7 @@ def get_glider_by_id(dataset_id=None, bbox=None, start=None, end=None, vars=None
             parse_dates=True,
             skiprows=(1,)  # units information can be dropped.
         ).dropna().tz_localize(None)
+        df = rename_glider_vars(df)
     except rHTTPError:
         print("Please enter a valid dataset id")
     return df

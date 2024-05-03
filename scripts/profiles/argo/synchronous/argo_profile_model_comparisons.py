@@ -11,7 +11,7 @@ import xarray as xr
 from ioos_model_comparisons.calc import (depth_interpolate, lon180to360, 
                                          lon360to180, difference, density,
                                          ocean_heat_content)
-from ioos_model_comparisons.models import gofs, rtofs, cmems, amseas
+from ioos_model_comparisons.models import gofs, rtofs, amseas, CMEMS
 from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_bathymetry, get_ohc
 from ioos_model_comparisons.regions import region_config
 import ioos_model_comparisons.configs as conf
@@ -32,7 +32,8 @@ depth = 400
 plot_rtofs = True
 plot_gofs = True
 plot_cmems = True
-plot_amseas = True
+plot_amseas = False
+plot_para = True
 
 # argos = ["4902350", "4903250", "6902854", "4903224", "4903227"]
 # argos = [4903227]
@@ -47,11 +48,15 @@ depths = slice(0, depth)
 if plot_rtofs:
     rds = rtofs().sel(depth=depths)
 
+if plot_para:
+    pds = rtofs(source='parallel').sel(depth=depths)
+
 if plot_gofs:
     gds = gofs(rename=True).sel(depth=depths)
 
 if plot_cmems:
-    cds = cmems(rename=True).sel(depth=depths)
+    cobj = CMEMS()
+    cds = cobj.data.sel(depth=depths)
 
 if plot_amseas:
     ams = amseas(rename=True).sel(depth=depths)
@@ -90,7 +95,7 @@ floats = get_argo_floats_by_time(global_extent,
                                  date_end, 
                                  variables=vars)
 # print('Execution time in seconds: ' + str(time.time() - startTime))
-# search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
+# search_window_t = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
 # search_window_t1 = ctime.strftime(tstr) 
 
 # Convert pressure to depth
@@ -251,10 +256,10 @@ def process_argo(region):
             leg_str = f'Argo #{wmo}\n'
             leg_str += f'ARGO:  { tstr }\n'
 
-            nesdis = get_ohc(extent, pd.to_datetime(tstr).date())   
-            nesdis = nesdis.squeeze()
-            ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
-            ohc_nesdis = ohc_nesdis.ohc.values
+            # nesdis = get_ohc(extent, pd.to_datetime(tstr).date())   
+            # nesdis = nesdis.squeeze()
+            # ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
+            # ohc_nesdis = ohc_nesdis.ohc.values
             
             if plot_gofs:
                 try:
@@ -341,6 +346,56 @@ def process_argo(region):
                     rtofs_flag = False
             else:
                 rtofs_flag = False
+
+            if plot_para:
+                try:
+                    # RTOFS
+                    # interpolating lon and lat to x and y index of the rtofs grid
+                    rlonI = np.interp(lon, rlons, rx)
+                    rlatI = np.interp(lat, rlats, ry)
+
+                    pdsp = pds.sel(time=ctime, method='nearest')
+                    pdsi = pdsp.interp(
+                        x=rlonI,
+                        y=rlatI,
+                        # depth=xr.DataArray(depths_interp, dims='depth')
+                    )
+                    
+                    # Calculate density for rtofs profile
+                    # rdsi['pressure'] = xr.apply_ufunc(seawater.eos80.pres, rdsi.depth, rdsi.lat)
+                    # rdsi['density'] = xr.apply_ufunc(seawater.eos80.dens, rdsi.salinity, rdsi.temperature, rdsi.pressure)
+
+                    pdsi['density'] = density(pdsi.temperature, -pdsi.depth, pdsi.salinity, pdsi.lat, pdsi.lon)
+
+                    # Calculate ocean heat content for profile
+                    ohc_rtofsp = ocean_heat_content(
+                        pdsi['depth'].values,
+                        pdsi['temperature'].values,
+                        pdsi['density'].values
+                        )
+                    rlon = pdsi.lon.data.round(2)
+                    rlat = pdsi.lat.data.round(2)
+                    plabel = f'RTOFS (Parallel) [{ rlon }, { rlat }]'
+                    leg_str += f'RTOFS (Parallel): {pd.to_datetime(pdsi.time.data)}\n'
+
+                    # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice 
+                    # in order to widen the area of the extent slightly.
+                    extent_ind = [
+                        np.floor(lons_ind[0]).astype(int),
+                        np.ceil(lons_ind[1]).astype(int),
+                        np.floor(lats_ind[0]).astype(int),
+                        np.ceil(lats_ind[1]).astype(int)
+                        ]
+                    
+                    tmp = pdsp.isel(depth=0,
+                                    x=slice(extent_ind[0], extent_ind[1]), 
+                                    y=slice(extent_ind[2], extent_ind[3]))
+                    rtofsp_flag = True
+                except KeyError as error:
+                    print(f"RTOFS: False - {error}")
+                    rtofsp_flag = False
+            else:
+                rtofsp_flag = False
 
             if plot_cmems:
                 try:
@@ -453,6 +508,11 @@ def process_argo(region):
                 ax1.plot(adsi['temperature'], adsi['depth'], linestyle='-', marker='o', color='navy', label=amlabel)
                 ax2.plot(adsi['salinity'], adsi['depth'],  linestyle='-',  marker='o',color='navy', label=amlabel)
                 ax3.plot(adsi['density'], adsi['depth'], linestyle='-',  marker='o',color='navy', label=amlabel)
+
+            if rtofsp_flag:
+                ax1.plot(pdsi['temperature'], pdsi['depth'], linestyle='-',  marker='o', color='orange', label=plabel)
+                ax2.plot(pdsi['salinity'], pdsi['depth'], linestyle='-', marker='o', color='orange', label=plabel)
+                ax3.plot(pdsi['density'], pdsi['depth'], linestyle='-',  marker='o',color='orange', label=plabel)    
                 
             ax1.set_ylim([depth, 0])
             ax1.grid(True, linestyle='--', linewidth=.5)
@@ -518,6 +578,14 @@ def process_argo(region):
                     ohc_string += f"RTOFS: {ohc_rtofs:.4f},  "
             except:
                 pass
+
+            try:
+                if np.isnan(ohc_rtofsp):
+                    ohc_string += 'RTOFS (Parallel): N/A,  '
+                else:
+                    ohc_string += f"RTOFS (Parallel): {ohc_rtofsp:.4f},  "
+            except:
+                pass
             
             try:           
                 if np.isnan(ohc_gofs):
@@ -543,10 +611,10 @@ def process_argo(region):
             except:
                 pass
 
-            try:
-                ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
-            except:
-                pass   
+            # try:
+            #     ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
+            # except:
+            #     pass   
             
             plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
  
@@ -678,7 +746,7 @@ def main():
     if parallel: 
         import concurrent.futures
         if isinstance(parallel, bool):
-            workers = 5
+            workers = 6
         elif isinstance(parallel, int):
             workers = parallel
 

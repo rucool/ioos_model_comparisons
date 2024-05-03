@@ -18,8 +18,13 @@ def amseas(rename=False):
     return ds
 
 
-def rtofs():
-    url = "https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_scraped"
+def rtofs(source='east'):
+    if source == 'east':
+        url = "https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_scraped"
+    elif source == 'west':
+        url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_west_scraped'
+    elif source == 'parallel':
+        url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_parallel_scraped'
     ds = xr.open_dataset(url).set_coords(['lon', 'lat'])
     ds.attrs['model'] = 'RTOFS'
     return ds
@@ -75,15 +80,18 @@ class RTOFS():
         """
         return calculate_transect(start, end, grid_spacing)
 
+    # @classmethod
     def profile(self, lon, lat, method='nearest'):
         # Find x, y indexes of the area we want to subset
         lons_ind = np.interp(lon, self.grid_lons, self.x)
         lats_ind = np.interp(lat, self.grid_lats, self.y)
 
         if method == 'nearest':
-            pass
+            xds = self._data_orig.sel(x=lons_ind, y=lats_ind, method='nearest')
+            # rdsp = rds.sel(time=ctime, method='nearest')
         elif method == 'interp':
-            pass
+            xds = self._data_orig.interp(x=lons_ind, y=lats_ind)
+        return xds
         
 
 def gofs(rename=False):
@@ -136,6 +144,85 @@ def gofs(rename=False):
 #             )
 #     return ds
 
+
+    # def __init__(self, username='maristizabalvar', password='MariaCMEMS2018') -> None:
+import os
+import copernicusmarine as cm
+from dateutil import parser
+import xarray as xr
+
+class CMEMS:
+    '''
+    Class for handling Copernicus Marine Environment Monitoring Service (CMEMS) data.
+    '''
+
+    def __init__(self, username='maristizabalvar', password='MariaCMEMS2018') -> None:
+        '''
+        Initialize the CMEMS instance with user credentials.
+
+        Args:
+        - username (str): CMEMS username. Defaults to None and reads from environment.
+        - password (str): CMEMS password. Defaults to None and reads from environment.
+        '''
+        self.username = username or os.getenv('CMEMS_USERNAME')
+        self.password = password or os.getenv('CMEMS_PASSWORD')
+        self.data = None
+        self.load_data()
+
+    def load_data(self):
+        """Load datasets from CMEMS and merge them into a single xarray Dataset."""
+        try:
+            datasets = [
+                "cmems_mod_glo_phy-thetao_anfc_0.083deg_PT6H-i",
+                "cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i",
+                "cmems_mod_glo_phy-so_anfc_0.083deg_PT6H-i"
+            ]
+            data_list = [self._load_single_dataset(ds_id) for ds_id in datasets]
+            self.data = xr.merge(data_list)
+            self._rename_vars()
+        except Exception as e:
+            print(f"Failed to load and merge data: {e}")
+
+    def _load_single_dataset(self, dataset_id):
+        return cm.open_dataset(
+            dataset_id=dataset_id,
+            username=self.username,
+            password=self.password
+        )
+
+    def _rename_vars(self):
+        rename_dict = {
+            'thetao': 'temperature', 
+            'so': 'salinity',
+            'latitude': 'lat',
+            'longitude': 'lon',
+            'uo': 'u',
+            'vo': 'v'
+        }
+        existing_vars = set(self.data.variables.keys()) & set(rename_dict.keys())
+        self.data = self.data.rename({k: rename_dict[k] for k in existing_vars})
+
+    def subset(self, extent, start_time=None, end_time=None):
+        """Return a subset of data based on geographical and optional temporal limits."""
+        try:
+            if start_time:
+                start_time = parser.parse(start_time)
+            if end_time:
+                end_time = parser.parse(end_time)
+
+            sel_dict = {
+                'longitude': slice(extent[0], extent[1]),
+                'latitude': slice(extent[2], extent[3])
+            }
+            if start_time and end_time:
+                sel_dict['time'] = slice(start_time, end_time)
+
+            return self.data.sel(**sel_dict)
+        except Exception as e:
+            print(f"Error subsetting data: {e}")
+            return None
+
+      
 def cmems(rename=False):
     username = 'maristizabalvar'
     password = 'MariaCMEMS2018'

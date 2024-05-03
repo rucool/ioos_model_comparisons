@@ -188,6 +188,24 @@ def find_nearest(array, value):
     return array.flat[idx], idx
 
 
+def depth_averaged_current_vectorized(depths, u_currents, v_currents):
+    
+    # Assuming depths is always the first dimension
+    layer_thicknesses = np.diff(depths, axis=0)
+    
+    # Insert the first layer's thickness
+    first_layer_thickness = np.expand_dims(layer_thicknesses[0], axis=0)
+    layer_thicknesses = np.concatenate([first_layer_thickness, layer_thicknesses], axis=0)
+    
+    depth_weighted_u_currents = u_currents * layer_thicknesses[:, np.newaxis, np.newaxis]
+    depth_weighted_v_currents = v_currents * layer_thicknesses[:, np.newaxis, np.newaxis]
+
+    depth_averaged_u_current = depth_weighted_u_currents.sum(axis=0) / layer_thicknesses.sum()
+    depth_averaged_v_current = depth_weighted_v_currents.sum(axis=0) / layer_thicknesses.sum()
+    
+    return depth_averaged_u_current, depth_averaged_v_current
+
+
 # def depth_interpolate(
 #     df,
 #     depth_var="depth",
@@ -289,7 +307,8 @@ def depth_interpolate(
     if "time" in temp.columns:
         temp = temp.drop("time", axis=1)
         
-    temp = temp.interpolate(method=method, limit_direction="both")
+    # temp = temp.interpolate(method=method, limit_direction="both")
+    temp = temp.interpolate(method=method, limit_direction='both')
     temp = temp.reindex(index=bins)
     temp = temp.reset_index()
 
@@ -298,26 +317,62 @@ def depth_interpolate(
 
     return temp
 
-
-def depth_bin(df, depth_var="depth", depth_min=0, depth_max=None, stride=1):
+def depth_bin(df, depth_var="depth", depth_min=0, depth_max=None, stride=1, aggregation='mean', index_type='mid'):
     """
-    :param df: depth profile in the form of a pandas dataframe
-    :param depth_var: the name of the depth variable in the dataframe
-    :param depth_min: the shallowest bin depth
-    :param depth_max: the deepest bin depth
-    :param stride: the amount of space between each bin
-    :return: pandas dataframe where data has been averaged into specified depth bins
-    """
-    depth_max = depth_max or df[depth_var].max()
+    Bins a depth profile from a pandas dataframe and computes aggregated values for each bin, with the bin edges or mid-points as the index. Ensures all bins above a specified minimum are included, even if empty.
 
-    bins = np.arange(
-        depth_min, depth_max + stride, stride
-    )  # Generate array of depths you want to bin at
-    cut = pd.cut(
-        df[depth_var], bins, labels=False
-    )  # Cut/Bin the dataframe based on the bins variable we just generated
-    binned_df = df.groupby(cut).mean()  # Groupby the cut and do the mean
-    return binned_df
+    Parameters:
+    - df (pd.DataFrame): Depth profile data.
+    - depth_var (str): Column name for the depth variable. Defaults to "depth".
+    - depth_min (int): Minimum depth for binning. Defaults to 0.
+    - depth_max (int): Maximum depth for binning. Defaults to max depth in df.
+    - stride (int): Interval between depth bins. Defaults to 1.
+    - aggregation (str): Aggregation method (e.g., 'mean', 'sum', 'median'). Defaults to 'mean'.
+    - index_type (str): Type of index for the bins ('edge' or 'mid'). Defaults to 'mid'.
+
+    Returns:
+    - pd.DataFrame: Dataframe with data aggregated into specified depth bins, indexed by bin edges or mid-points.
+
+    Raises:
+    - ValueError: If input parameters are invalid.
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError("df must be a pandas DataFrame")
+
+    if depth_var not in df.columns:
+        raise ValueError(f"{depth_var} column not found in DataFrame")
+
+    if not isinstance(depth_min, (int, float)) or not isinstance(depth_max, (int, float, type(None))) or not isinstance(stride, (int, float)):
+        raise ValueError("depth_min, depth_max, and stride must be numbers")
+
+    if depth_max is not None and depth_max <= depth_min:
+        raise ValueError("depth_max must be greater than depth_min")
+
+    if index_type not in ['edge', 'mid']:
+        raise ValueError("index_type must be 'edge' or 'mid'")
+
+    depth_max = depth_max or max(df[depth_var].max(), depth_min)
+
+    bins = np.arange(depth_min, depth_max + stride, stride)
+    cut = pd.cut(df[depth_var], bins, right=False, labels=False, include_lowest=True)
+
+    if aggregation not in ['mean', 'sum', 'median']:
+        raise ValueError("Invalid aggregation method. Choose from 'mean', 'sum', 'median'.")
+
+    binned_df = df.groupby(cut).agg(aggregation)
+
+    # Ensure all bins are represented, including empty ones
+    binned_df = binned_df.reindex(range(len(bins) - 1))
+
+    # Setting index as bin edges or mid-points
+    if index_type == 'edge':
+        binned_df.index = pd.IntervalIndex.from_breaks(bins).astype(str)
+    else:  # mid
+        mid_points = (bins[:-1] + bins[1:]) / 2
+        binned_df.index = mid_points
+
+    binned_df.index.name = 'depth'
+    return binned_df.drop('depth', axis=1).reset_index()
 
 
 def calculate_transect(start, end, dist=5000):    

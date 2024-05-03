@@ -16,9 +16,9 @@ from ioos_model_comparisons.calc import (density,
                                          lon180to360,
                                          lon360to180,
                                          ocean_heat_content,
-                                         depth_interpolate
+                                         depth_interpolate, depth_bin
                                          )
-from ioos_model_comparisons.models import cmems, gofs, rtofs
+from ioos_model_comparisons.models import cmems, gofs, rtofs, CMEMS
 from ioos_model_comparisons.platforms import get_active_gliders, get_bathymetry, get_ohc
 from ioos_model_comparisons.plotting import map_add_inset
 from ioos_model_comparisons.regions import region_config
@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 import re
 from datetime import datetime
 import cartopy.feature as cfeature
+import math
 
 # %%
 # set path to save plots
@@ -44,6 +45,7 @@ plot_rtofs = True
 plot_gofs = True
 plot_cmems = True
 plot_amseas = True
+plot_para = True
 
 # Subplot selection
 plot_temperature = True
@@ -87,6 +89,7 @@ region_gliders = []
 
 conf.regions = ['mab', 'sab', 'caribbean', 'gom']
 for region in conf.regions:
+    print('Region:', region)
     # extent_list.append(region_config(region)["extent"])
     extent = region_config(region)["extent"]
     gliders = get_active_gliders(extent, t0, t1, 
@@ -110,12 +113,36 @@ gliders = pd.concat(region_gliders)
 #                             timeout=timeout, 
 #                             parallel=False).reset_index()
 
+def pick_region_map(regions, point):
+    distances = []
+    for region in regions:
+        x0, x1, y0, y1 = region
+        center_x = (x0 + x1) / 2
+        center_y = (y0 + y1) / 2
+        distance = math.sqrt((point[0] - center_x)**2 + (point[1] - center_y)**2)
+        distances.append((distance, region, (center_x, center_y)))
+    return min(distances, key=lambda x: x[0])
 
 # %% Load models
 if plot_gofs:
     # Read GOFS 3.1 output
     gofs = gofs(rename=True).sel(depth=slice(0,400))
     glabel = f'GOFS' # Legend labels
+
+if plot_para:
+    # RTOFS Parallel
+    rtofs_para = rtofs(source='parallel').sel(depth=slice(0,400))
+    # from glob import glob
+    # import xarray as xr
+    # import os
+    rplabel = "RTOFS (Parallel)"
+    # url = '/Users/mikesmith/Downloads/rtofs.parallel.v2.3/'
+    # rtofs_files = [glob(os.path.join(url, x.strftime('rtofs.%Y%m%d'), '*.nc')) for x in date_list]
+    # rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
+
+    # rtofs_para = xr.open_mfdataset(rtofs_files)
+    # rtofs_para = rtofs_para.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth', 'X': 'x', 'Y': 'y'})
+    rtofs_para.attrs['model'] = 'RTOFS (Parallel)'
 
 if plot_rtofs:
     # Read RTOFS grid and time
@@ -130,7 +157,8 @@ if plot_rtofs:
 
 if plot_cmems:
     # Read Copernicus
-    cmems = cmems(rename=True).sel(depth=slice(0,400))
+    # cmems = cmems(rename=True).sel(depth=slice(0,400))
+    cobj = CMEMS()
     clabel = f"CMEMS" # Legend labels
 
 # Convert time threshold to a Timedelta so that we can compare timedeltas.
@@ -241,51 +269,52 @@ def plot_glider_profiles(id, gliders):
         bins = np.concatenate((array1, array2, array3)) 
 
         binned = []
-        for name, pdf in tdf.groupby(['profile_id', 'time', 'lon', 'lat']):
-            if not pdf.empty:
-                print(f'plotting profile {name}')
-                pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
-                binned.append(depth_interpolate(pdf,
-                                                bins = bins
-                                                )
-                              )
-                pid = name[0]
-                time_glider = name[1] 
-                lon_glider = name[2].round(2)
-                lat_glider = name[3].round(2)
-                lon_track.append(lon_glider)
-                lat_track.append(lat_glider)
-                
-                print(f"Glider: {id}, Profile ID: {pid}, Time: {time_glider}")
+        if not tdf.empty:
+            for name, pdf in tdf.groupby(['profile_id', 'time', 'lon', 'lat']):
+                if not pdf.empty:
+                    print(f'plotting profile {name}')
+                    pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
+                    tmp_depth = depth_bin(pdf, depth_var='depth', depth_min=0, depth_max=400, stride=10, aggregation='mean')
+                    binned.append(tmp_depth)
+                    pid = name[0]
+                    time_glider = name[1] 
+                    lon_glider = name[2].round(2)
+                    lat_glider = name[3].round(2)
+                    lon_track.append(lon_glider)
+                    lat_track.append(lat_glider)
+                    
+                    print(f"Glider: {id}, Profile ID: {pid}, Time: {time_glider}")
 
-                # Filter salinity and temperature that are more than 4 standard deviations
-                # from the mean
-                try:
-                    pdf = pdf[np.abs(stats.zscore(pdf['salinity'])) < 4]  #  salinity
-                    pdf = pdf[np.abs(stats.zscore(pdf['temperature'])) < 4]  #  temperature
-                except pandas.errors.IndexingError:
-                    pass
+                    # Filter salinity and temperature that are more than 4 standard deviations
+                    # from the mean
+                    try:
+                        pdf = pdf[np.abs(stats.zscore(pdf['salinity'])) < 4]  #  salinity
+                        pdf = pdf[np.abs(stats.zscore(pdf['temperature'])) < 4]  #  temperature
+                    except pandas.errors.IndexingError:
+                        pass
 
-                # Save as Pd.Series for easier recalling of columns 
-                depth_glider = pdf['depth']
-                temp_glider = pdf['temperature']
-                salinity_glider = pdf['salinity']
-                density_glider = pdf['density']
+                    # Save as Pd.Series for easier recalling of columns 
+                    depth_glider = pdf['depth']
+                    temp_glider = pdf['temperature']
+                    salinity_glider = pdf['salinity']
+                    density_glider = pdf['density']
 
-                # Plot glider profiles
-                tax.plot(temp_glider, depth_glider, '.', color='cyan', label='_nolegend_')
-                sax.plot(salinity_glider, depth_glider, '.', color='cyan', label='_nolegend_')
-                dax.plot(density_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+                    # Plot glider profiles
+                    tax.plot(temp_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+                    sax.plot(salinity_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+                    dax.plot(density_glider, depth_glider, '.', color='cyan', label='_nolegend_')
 
-                try:
-                    maxd.append(np.nanmax(depth_glider))
-                except:
+                    try:
+                        maxd.append(np.nanmax(depth_glider))
+                    except:
+                        continue
+                    ohc = ocean_heat_content(depth_glider, temp_glider, density_glider)
+                    ohc_glider.append(ohc) 
+                else:
+                    print('Test')
                     continue
-                ohc = ocean_heat_content(depth_glider, temp_glider, density_glider)
-                ohc_glider.append(ohc) 
-            else:
-                print('Test')
-                continue
+        else:
+            continue
 
         mlon = tdf['lon'].mean()
         mlat = tdf['lat'].mean()
@@ -357,9 +386,37 @@ def plot_glider_profiles(id, gliders):
             rds['density'] = density(rds['temperature'].values, -rds['depth'].values, rds['salinity'].values, rds['lat'].values, rds['lon'].values)
             ohc_rtofs = ocean_heat_content(rds['depth'].values, rds['temperature'].values, rds['density'].values)
 
+        if plot_para:
+            # RTOFS
+            rdsp = rtofs_para.sel(time=time_glider, method="nearest")
+            print(f"RTOFS - Time: {pd.to_datetime(rdsp.time.values)}")
+
+            # interpolating lon and lat to x and y index of the rtofs grid
+            rlonI = np.interp(mlon, rlon, rx) # lon -> x
+            rlatI = np.interp(mlat, rlat, ry) # lat -> y
+
+            if interp:
+                rdsp = rdsp.interp(
+                    x=rlonI,
+                    y=rlatI,
+                )
+            else:
+                rdsp = rdsp.sel(
+                    x=np.round(rlonI),
+                    y=np.round(rlatI),
+                    method='nearest'
+                    )
+            
+            # Calculate density 
+            rdsp['density'] = density(rdsp['temperature'].values, -rdsp['depth'].values, rdsp['salinity'].values, rdsp['lat'].values, rdsp['lon'].values)
+            ohc_rtofsp = ocean_heat_content(rdsp['depth'].values, rdsp['temperature'].values, rdsp['density'].values)
+            
         if plot_cmems:
             # CMEMS
-            cds = cmems.sel(time=time_glider, method="nearest")
+            # cds = cmems.sel(time=time_glider, method="nearest")
+            # cobj.cmems_load(extent, time_glider, subset_extent=True, subset_depth=True)
+            cds = cobj.data.sel(depth=slice(0,400)).squeeze()
+            cds = cds.sel(time=time_glider, method="nearest")
             print(f"CMEMS - Time: {pd.to_datetime(cds.time.values)}")
             # delta_time = np.abs(time_glider - pd.to_datetime(cds.time.values))
             # print(f"Threshold time: {delta_time}")
@@ -387,6 +444,11 @@ def plot_glider_profiles(id, gliders):
             sax.plot(rds['salinity'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
             dax.plot(rds['density'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
 
+        if plot_para:
+            tax.plot(rdsp['temperature'], rdsp['depth'], '.-', color='orange', label='_nolegend_')
+            sax.plot(rdsp['salinity'], rdsp['depth'], '.-', color='orange', label='_nolegend_')
+            dax.plot(rdsp['density'], rdsp['depth'], '.-', color='orange', label='_nolegend_')
+
         if plot_gofs:
             tax.plot(gds['temperature'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
             sax.plot(gds['salinity'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
@@ -398,7 +460,7 @@ def plot_glider_profiles(id, gliders):
             dax.plot(cds['density'], cds["depth"], '.-', color="magenta", label='_nolegend_')
 
         # Plot glider profile
-        bin_avg = pd.concat(binned).set_index(['profile_id','depth']).to_xarray().mean('profile_id')
+        bin_avg = pd.concat(binned).groupby('depth').mean().reset_index()
         tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=alabel)
         sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=alabel)
         dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=alabel)
@@ -408,6 +470,11 @@ def plot_glider_profiles(id, gliders):
             tax.plot(rds['temperature'], rds['depth'], '-o', color='red', label=rlabel)
             sax.plot(rds['salinity'], rds['depth'], '-o', color='red', label=rlabel)
             dax.plot(rds['density'], rds['depth'], '-o', color='red', label=rlabel)
+
+        if plot_para:
+            tax.plot(rdsp['temperature'], rdsp['depth'], '-o', color='orange', label=rplabel)
+            sax.plot(rdsp['salinity'], rdsp['depth'], '-o', color='orange', label=rplabel)
+            dax.plot(rdsp['density'], rdsp['depth'], '-o', color='orange', label=rplabel)
 
         if plot_gofs:
             tax.plot(gds['temperature'], gds["depth"], '-o', color="green", label=glabel)
@@ -569,6 +636,14 @@ def plot_glider_profiles(id, gliders):
                 ohc_string += f"RTOFS: {ohc_rtofs:.4f},  "
         except:
             pass
+
+        try:
+            if np.isnan(ohc_rtofsp):
+                ohc_string += 'RTOFS (Parallel): N/A,  '
+            else:
+                ohc_string += f"RTOFS (Parallel): {ohc_rtofsp:.4f},  "
+        except:
+            pass
         
         try:           
             if np.isnan(ohc_gofs):
@@ -606,7 +681,7 @@ def driver(gliders, id):
 def main():    
     # import concurrent.futures
     active_gliders = gliders.glider.unique().tolist()
-        
+    # active_gliders = ['sg625-20240119T0000']   
     if parallel:
         import concurrent.futures
         workers = 6

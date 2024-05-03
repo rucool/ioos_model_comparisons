@@ -29,6 +29,7 @@ from ioos_model_comparisons.plotting import (add_features,
                                  remove_quiver_handles,
                                  plot_regional_assets)
 import cool_maps.plot as cplt
+from ioos_model_comparisons.plotting import plot_storm_track
 # Suppresing warnings for a "pretty output."
 warnings.simplefilter("ignore")
 
@@ -281,7 +282,8 @@ def surface_current_fronts_single(ds1, region,
                                   path_save=os.getcwd(),
                                   figsize=(14,8),
                                   dpi=150,
-                                  overwrite=False
+                                  overwrite=False,
+                                  storms=None
                                   ):
     time = pd.to_datetime(ds1.time.data)
 
@@ -356,6 +358,10 @@ def surface_current_fronts_single(ds1, region,
         eez_line = mlines.Line2D([], [], linestyle='-.', color='r', linewidth=1)
 
     plot_regional_assets(ax, **rargs)
+    
+    if storms:
+        for s in storms.keys():
+            plot_storm_track(ax, storms[s])
 
     # Plot ARGO
     try:
@@ -401,44 +407,44 @@ def surface_current_fronts_single(ds1, region,
     test = ax.contour(ds1['lon'], ds1['lat'], mag_r, [.772], linestyles='-', colors=['black'], linewidths=1, alpha=.75, transform=ccrs.PlateCarree(), zorder=101)
         
     # Add loop current contour from WHO Group
-    # fname = '/Users/mikesmith/Downloads/GOM front/2023-01-31_fronts.mat'
-    # data = loadmat(fname)
+    fname = '/Users/mikesmith/Downloads/2023-11-14_fronts.mat'
+    data = loadmat(fname)
  
-    # fronts = []
-    # for item in data['BZ_all'][0]:
-    #     loop_y = item['y'].T
-    #     loop_x = item['x'].T
+    fronts = []
+    for item in data['BZ_all'][0]:
+        loop_y = item['y'].T
+        loop_x = item['x'].T
 
-    #     hf = ax.plot(loop_x, loop_y,
-    #                  linestyle=item['LineStyle'][0],
-    #                  color='black',
-    #                  linewidth=4, 
-    #                  transform=ccrs.PlateCarree(), 
-    #                  zorder=120
-    #                  )
-    #     fronts.append(hf)
+        hf = ax.plot(loop_x, loop_y,
+                     linestyle=item['LineStyle'][0],
+                     color='black',
+                     linewidth=4, 
+                     transform=ccrs.PlateCarree(), 
+                     zorder=120
+                     )
+        fronts.append(hf)
 
-    #     # Add arrows
-    #     start_lon = item['bx'].T
-    #     start_lat = item['by'].T
-    #     end_lon = item['tx'].T
-    #     end_lat = item['ty'].T
+        # Add arrows
+        start_lon = item['bx'].T
+        start_lat = item['by'].T
+        end_lon = item['tx'].T
+        end_lat = item['ty'].T
 
-    #     for count, _ in enumerate(start_lon):
-    #         ah = ax.arrow(
-    #             start_lon[count][0],
-    #             start_lat[count][0],
-    #             end_lon[count][0]-start_lon[count][0],
-    #             end_lat[count][0]-start_lat[count][0],
-    #             linewidth=0, 
-    #             head_width=0.2,
-    #             shape='full', 
-    #             fc='black', 
-    #             ec='black',
-    #             transform=ccrs.PlateCarree(),
-    #             zorder=130,
-    #             )
-    # fronts.reverse()
+        for count, _ in enumerate(start_lon):
+            ah = ax.arrow(
+                start_lon[count][0],
+                start_lat[count][0],
+                end_lon[count][0]-start_lon[count][0],
+                end_lat[count][0]-start_lat[count][0],
+                linewidth=0, 
+                head_width=0.2,
+                shape='full', 
+                fc='black', 
+                ec='black',
+                transform=ccrs.PlateCarree(),
+                zorder=130,
+                )
+    fronts.reverse()
 
     # Legend 1
     legend_1_text = [
@@ -446,17 +452,20 @@ def surface_current_fronts_single(ds1, region,
         "1.50 - 2.25 knots",
         "> 2.25 knots", 
         "1.5 knots = 0.77 m/s",
-        # "EddyWatch - 1.5 knots",
-        "Bathymetry"
+        "EddyWatch - 1.5 knots",
+        # "Bathymetry"
         ] 
      
     legend_1 = [plt.Rectangle((0,0),1,1,fc = pc.get_facecolor()[0]) for pc in cs.collections]
-    # legend_1.append(fronts[1][0])
     # legend_1.append(Rectangle((0, 0), 1, 1, fc="w", fill=False, edgecolor='none', linewidth=0))
-    legend_1.append(mlines.Line2D([], [], linestyle='-', color='k', alpha=.75, linewidth=.75))
+    legend_1.append(mlines.Line2D([], [], linestyle='-', color='k', alpha=.75, linewidth=1))
+    legend_1.append(fronts[1][0])
+    # legend_1.append(mlines.Line2D([], [], linestyle='-', color='k', linewidth=2))
     # legend_1.append(fronts[0][0])
     # legend_1.append(ah)
-    legend_1.append(mlines.Line2D([], [], linestyle='--', color='k', alpha=.5, linewidth=.75))
+    # legend_1.append(mlines.Line2D([], [], linestyle='--', color='k', alpha=.5, linewidth=.75))
+    # change the line width for the legend
+
 
     try:
         legend_1.append(ha[0])
@@ -485,8 +494,8 @@ def surface_current_fronts_single(ds1, region,
     # for line in leg.get_lines():
         # line.set_linewidth(4.0)
 
-    for legobj in leg.legendHandles:
-        legobj.set_linewidth(2.0)
+    # for legobj in leg.legend_handles():
+        # legobj.set_linewidth(2.0)
     leg.set_zorder(10001)
 
     # Create legend for contours 
@@ -644,7 +653,7 @@ def surface_current_15knot_all(ds1,
     test5 = ax.contour(ds5['lon'], ds5['lat'], mag_5, [.772], linestyles='-', colors=['orange'], linewidths=2,  alpha=.75,transform=ccrs.PlateCarree(), zorder=101, label='AMSEAS')
 
     # # Add loop current contour from WHO Group
-    fname = '/Users/mikesmith/Downloads/GOM front/2023-01-31_fronts.mat'
+    fname = '/Users/mikesmith/Downloads/fronts/2023-01-31_fronts.mat'
     data = loadmat(fname)
  
     fronts = []

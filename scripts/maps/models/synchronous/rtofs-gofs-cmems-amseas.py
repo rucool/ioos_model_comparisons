@@ -4,12 +4,13 @@ import ioos_model_comparisons.configs as conf
 import numpy as np
 import pandas as pd
 from ioos_model_comparisons.calc import lon180to360, lon360to180
-from ioos_model_comparisons.models import gofs, rtofs, cmems, amseas, cnaps
+from ioos_model_comparisons.models import gofs, rtofs, amseas, CMEMS
 from ioos_model_comparisons.platforms import (get_active_gliders, 
                                   get_argo_floats_by_time,
                                   get_bathymetry)
 from ioos_model_comparisons.plotting import (plot_model_region_comparison,
-                                 plot_model_region_comparison_streamplot
+                                 plot_model_region_comparison_streamplot,
+                                 plot_sst
                                  )
 from ioos_model_comparisons.regions import region_config
 import matplotlib
@@ -23,9 +24,10 @@ path_save = (conf.path_plots / "maps")
 
 # Which models should we plot?
 plot_rtofs = True
+plot_para = True
 plot_gofs = True
 plot_cmems = True
-plot_amseas = True
+plot_amseas = False
 plot_cnaps = False
 
 # initialize keyword arguments for map plots
@@ -43,13 +45,30 @@ kwargs['colorbar'] = True
 today = dt.date.today()
 date_end = today + dt.timedelta(days=1)
 date_start = today - dt.timedelta(days=conf.days)
-freq = '6H'
+freq = '12H'
 
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
 
 # Create dates that we want to plot
 date_list = pd.date_range(date_start, date_end, freq=freq)
+date_list_2 = pd.date_range(date_start - dt.timedelta(days=1), date_end, freq=freq)
+
+if plot_para:
+    # RTOFS Parallel
+    # from glob import glob
+    # import xarray as xr
+    # import os
+    # url = '/Users/mikesmith/Downloads/rtofs.parallel.v2.3/'
+    # rtofs_files = [glob(os.path.join(url, x.strftime('rtofs.%Y%m%d'), '*.nc')) for x in date_list_2]
+    # rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
+
+
+    # rtofs_para = xr.open_mfdataset(rtofs_files)
+    # rtofs_para = rtofs_para.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth', 'X': 'x', 'Y': 'y'})
+    rtofs_para = rtofs(source='parallel') 
+
+    rtofs_para.attrs['model'] = 'RTOFS (Parallel)'
 
 # This is the initial time to start the search for argo/gliders
 search_start = date_list[0] - dt.timedelta(hours=conf.search_hours)
@@ -77,7 +96,7 @@ else:
     argo_data = pd.DataFrame()
 
 if conf.gliders:
-    glider_data = get_active_gliders(global_extent, search_start, date_end, parallel=False)
+    glider_data = get_active_gliders(global_extent, search_start, date_end, parallel=False, timeout=60)
 else:
     glider_data = pd.DataFrame()
 
@@ -99,7 +118,7 @@ if plot_gofs:
 
 if plot_cmems:
     # Load Copernicus
-    cds = cmems(rename=True)
+    cds = CMEMS() 
 
 if plot_amseas:
     # Load AMSEAS
@@ -125,6 +144,17 @@ def main():
             print(f"RTOFS: False - {error}")
             rdt_flag = False
 
+        if plot_para:
+            try:
+                rdtp = rtofs_para.sel(time=ctime)
+                print(f"RTOFS Para: True")
+                rdtp_flag = True
+            except KeyError as error:
+                print(f"RTOFS Para: False - {error}")
+                rdtp_flag = False
+        else:
+            rdtp_flag = False
+
         if plot_gofs:
             try:
                 gdt = gds.sel(time=ctime)
@@ -138,7 +168,10 @@ def main():
 
         if plot_cmems:
             try:
-                cdt = cds.sel(time=ctime)
+                cdt = cds.data.sel(time=ctime)
+                cdt.attrs['model'] = 'CMEMS'
+                # cds.load(global_extent, ctime)
+                # cdt = cds.data
                 print(f"CMEMS: True")
                 cdt_flag = True
             except KeyError as error:
@@ -224,6 +257,12 @@ def main():
                 y=slice(extent_ind[2], extent_ind[3])
                 ).set_coords(['u', 'v'])
 
+            if rdtp_flag:
+                rdtp_sub = rdtp.isel(
+                    x=slice(extent_ind[0], extent_ind[1]), 
+                    y=slice(extent_ind[2], extent_ind[3])
+                    ).set_coords(['u', 'v'])
+
             if cnt_flag:
                 # CNAPS
                 # Find x, y indexes of the area we want to subset
@@ -293,6 +332,17 @@ def main():
                     ]
                 kwargs['gliders'] = glider_region
                 
+            # def kelvin_to_celsius(kelvin_temps):
+            #     # Convert each Kelvin temperature to Celsius
+            #     celsius_temps = [k - 273.15 for k in kelvin_temps]
+            #     return celsius_temps
+
+            # import xarray as xr
+            # sst = xr.open_dataset('/Users/mikesmith/Downloads/GOESNOAASST_10a3_f173_873f.nc').squeeze()
+            # temp = kelvin_to_celsius(sst['SST'])
+            # sst['SST_C'] = (('latitude', 'longitude'), temp)
+            # sst = sst.rename({'latitude': 'lat', 'longitude': 'lon'})
+            # plot_sst(rds_sub, sst, region, **kwargs)
             try:
                 if rdt_flag and gdt_flag:
                     plot_model_region_comparison(rds_sub, gds_sub, region, **kwargs)
@@ -303,10 +353,18 @@ def main():
 
             try:
                 if rdt_flag and cdt_flag:
-                    plot_model_region_comparison(rds_sub, cds_sub, region, **kwargs)
-                    plot_model_region_comparison_streamplot(rds_sub, cds_sub, region, **kwargs)
+                    plot_model_region_comparison(rds_sub, cds_sub.squeeze(), region, **kwargs)
+                    plot_model_region_comparison_streamplot(rds_sub, cds_sub.squeeze(), region, **kwargs)
             except Exception as e:
                 print(f"Failed to process RTOFS vs CMEMS at {ctime}")
+                print(f"Error: {e}")
+
+            try:
+                if rdt_flag and rdtp_flag:
+                    plot_model_region_comparison(rds_sub, rdtp_sub, region, **kwargs)
+                    plot_model_region_comparison_streamplot(rds_sub, rdtp_sub, region, **kwargs)
+            except Exception as e:
+                print(f"Failed to process RTOFS vs RTOFS Para at {ctime}")
                 print(f"Error: {e}")
                 
             try:
@@ -317,13 +375,13 @@ def main():
                 print(f"Failed to process RTOFS vs AMSEAS at {ctime}")
                 print(f"Error: {e}")
                 
-            try:
-                if rdt_flag and cnt_flag:
-                    plot_model_region_comparison(rds_sub, gds_sub, region, **kwargs)
-                    plot_model_region_comparison_streamplot(rds_sub, cnt_sub, region, **kwargs)
-            except Exception as e:
-                print(f"Failed to process RTOFS vs GOFS at {ctime}")
-                print(f"Error: {e}")
+            # try:
+            #     if rdt_flag and cnt_flag:
+            #         plot_model_region_comparison(rds_sub, gds_sub, region, **kwargs)
+            #         plot_model_region_comparison_streamplot(rds_sub, cnt_sub, region, **kwargs)
+            # except Exception as e:
+            #     print(f"Failed to process RTOFS vs GOFS at {ctime}")
+            #     print(f"Error: {e}")
  
 
 if __name__ == "__main__":
