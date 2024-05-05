@@ -290,14 +290,14 @@ def region_config(regions=None, model=None):
             dict(depth=0, limits=[5, 25, 1]),
             dict(depth=30, limits=[7, 25, 1]),
             dict(depth=100, limits=[12, 23, 1]),
-            # dict(depth=150, limits=[11, 22, 1]),
+            dict(depth=150, limits=[11, 22, 1]),
             # dict(depth=200, limits=[9, 21, 1])
             ]
         salinity = [
             dict(depth=0, limits=[31, 36.5, .25]),
             dict(depth=30, limits=[33, 36.75, .25]),
             dict(depth=100, limits=[34.7, 36.7, .1]),
-            # dict(depth=150, limits=[35.3, 36.6, .1]),
+            dict(depth=150, limits=[35.3, 36.6, .1]),
             # dict(depth=200, limits=[35.2, 36.6, .1])
             ]
         sea_surface_height = [
