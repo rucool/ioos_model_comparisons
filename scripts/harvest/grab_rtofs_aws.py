@@ -2,10 +2,9 @@ import requests
 from tqdm import tqdm
 from pathlib import Path
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
 import os
-import hashlib
 from datetime import datetime, timedelta
+import requests
 
 # Base URL adjustments
 prod_url = 'https://noaa-nws-rtofs-pds.s3.amazonaws.com'
@@ -22,7 +21,12 @@ fnames2grab = [
     'rtofs_glo_3dz_f006_6hrly_hvr_US_east.nc',
     'rtofs_glo_3dz_f012_6hrly_hvr_US_east.nc',
     'rtofs_glo_3dz_f018_6hrly_hvr_US_east.nc',
-    'rtofs_glo_3dz_f024_6hrly_hvr_US_east.nc'
+    'rtofs_glo_3dz_f024_6hrly_hvr_US_east.nc',
+    'rtofs_glo_2ds_f006_diag.nc',
+    'rtofs_glo_2ds_f012_diag.nc',
+    'rtofs_glo_2ds_f018_diag.nc',
+    'rtofs_glo_2ds_f024_diag.nc',
+    
 ]
 
 def generate_date_strs(days=2):
@@ -74,7 +78,11 @@ def download_rtofs_data(date_str, prod=True):
         file_url = f"{base_url}/rtofs.{fstr}/{fname}"
         
         print(f"Downloading: {file_url} to {file_path}")
-        download_file(file_url, file_path)
+        try:
+            download_file(file_url, file_path)
+        except requests.exceptions.HTTPError as e:
+            print(f"Failed to download {file_url} with error: {e}")
+            continue
     print(f"Completed downloads for {date_str} - {'Prod' if prod else 'Parallel'}")
 
 if __name__ == "__main__":
