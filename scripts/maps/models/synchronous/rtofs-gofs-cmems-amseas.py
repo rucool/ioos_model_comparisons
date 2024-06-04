@@ -15,6 +15,8 @@ from ioos_model_comparisons.plotting import (plot_model_region_comparison,
 from ioos_model_comparisons.regions import region_config
 import matplotlib
 import time
+import xarray as xr
+import copy
 
 startTime = time.time() # Start time to see how long the script took
 matplotlib.use('agg')
@@ -53,6 +55,13 @@ tstr = '%Y-%m-%d %H:%M:%S'
 # Create dates that we want to plot
 date_list = pd.date_range(date_start, date_end, freq=freq)
 date_list_2 = pd.date_range(date_start - dt.timedelta(days=1), date_end, freq=freq)
+
+sstdata = xr.open_dataset('http://basin.ceoe.udel.edu/thredds/dodsC/GOESNOAASST.nc')
+sstdata = sstdata.rename({'latitude': 'lat', 'longitude': 'lon'})
+
+unique_times = ~sstdata['time'].to_series().duplicated()
+sst_unique = sstdata.isel(time=unique_times)
+sst_sorted = sst_unique.sortby('time')
 
 if plot_para:
     # RTOFS Parallel
@@ -154,7 +163,7 @@ def main():
         except KeyError as error:
             print(f"RTOFS: False - {error}")
             rdt_flag = False
-
+            
         if plot_para:
             try:
                 rdtp = rtofs_para.sel(time=ctime)
@@ -343,17 +352,11 @@ def main():
                     ]
                 kwargs['gliders'] = glider_region
                 
-            # def kelvin_to_celsius(kelvin_temps):
-            #     # Convert each Kelvin temperature to Celsius
-            #     celsius_temps = [k - 273.15 for k in kelvin_temps]
-            #     return celsius_temps
-
-            # import xarray as xr
-            # sst = xr.open_dataset('/Users/mikesmith/Downloads/GOESNOAASST_10a3_f173_873f.nc').squeeze()
-            # temp = kelvin_to_celsius(sst['SST'])
-            # sst['SST_C'] = (('latitude', 'longitude'), temp)
-            # sst = sst.rename({'latitude': 'lat', 'longitude': 'lon'})
-            # plot_sst(rds_sub, sst, region, **kwargs)
+            def kelvin_to_celsius(kelvin_temps):
+                # Convert each Kelvin temperature to Celsius
+                celsius_temps = [k - 273.15 for k in kelvin_temps]
+                return celsius_temps
+            
             try:
                 if rdt_flag and gdt_flag:
                     plot_model_region_comparison(rds_sub, gds_sub, region, **kwargs)
@@ -378,13 +381,13 @@ def main():
                 print(f"Failed to process RTOFS vs RTOFS Para at {ctime}")
                 print(f"Error: {e}")
                 
-            try:
-                if rdt_flag and amt_flag:
-                    plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
-                    plot_model_region_comparison_streamplot(rds_sub, am_sub, region, **kwargs) 
-            except Exception as e:
-                print(f"Failed to process RTOFS vs AMSEAS at {ctime}")
-                print(f"Error: {e}")
+            # try:
+            #     if rdt_flag and amt_flag:
+            #         plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
+            #         plot_model_region_comparison_streamplot(rds_sub, am_sub, region, **kwargs) 
+            # except Exception as e:
+            #     print(f"Failed to process RTOFS vs AMSEAS at {ctime}")
+            #     print(f"Error: {e}")
                 
             # try:
             #     if rdt_flag and cnt_flag:
@@ -393,6 +396,21 @@ def main():
             # except Exception as e:
             #     print(f"Failed to process RTOFS vs GOFS at {ctime}")
             #     print(f"Error: {e}")
+            sst = sst_sorted.sel(
+                lon=slice(extent[0],extent[1]),
+                lat=slice(extent[2],extent[3])
+                ).sel(time=str(ctime), method='nearest')
+
+            temp = kelvin_to_celsius(sst['SST'])
+            sst['SST_C'] = (('lat', 'lon'), temp)
+
+            swargs = copy.deepcopy(kwargs)
+            try:
+                del swargs['eez']
+                del swargs['currents']
+            except KeyError:
+                pass
+            plot_sst(rds_sub, sst, region, **swargs)
  
 
 if __name__ == "__main__":

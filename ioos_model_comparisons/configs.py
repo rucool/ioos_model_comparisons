@@ -31,7 +31,7 @@ regions = [
     "caribbean",
     # "leeward", 
     # "windward",
-    # "west_florida_shelf", 
+    "west_florida_shelf", 
     # "tropical_western_atlantic"
     ]
 days = 2

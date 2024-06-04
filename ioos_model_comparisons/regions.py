@@ -79,11 +79,11 @@ def region_config(regions=None, model=None):
         sea_water_temperature = [
             dict(depth=0, limits=[24.5, 27.75, .25]),
             # dict(depth=0, limits=[27.5, 31, .25]),
-            dict(depth=150, limits=[18, 25.5, .5]),
+            # dict(depth=150, limits=[18, 25.5, .5]),
             # dict(depth=200, limits=[14, 23, .5])
             ]
         salinity = [
-            dict(depth=0, limits=[35.8, 36.6, .1]),
+            # dict(depth=0, limits=[35.8, 36.6, .1]),
             dict(depth=150, limits=[36, 37, .05]),
             # dict(depth=200, limits=[36, 36.8, .05]), 
             ]
@@ -291,14 +291,14 @@ def region_config(regions=None, model=None):
             dict(depth=30, limits=[7, 25, 1]),
             dict(depth=100, limits=[12, 23, 1]),
             dict(depth=150, limits=[11, 22, 1]),
-            # dict(depth=200, limits=[9, 21, 1])
+            dict(depth=200, limits=[9, 21, 1])
             ]
         salinity = [
             dict(depth=0, limits=[31, 36.5, .25]),
             dict(depth=30, limits=[33, 36.75, .25]),
             dict(depth=100, limits=[34.7, 36.7, .1]),
             dict(depth=150, limits=[35.3, 36.6, .1]),
-            # dict(depth=200, limits=[35.2, 36.6, .1])
+            dict(depth=200, limits=[35.2, 36.6, .1])
             ]
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1]),
