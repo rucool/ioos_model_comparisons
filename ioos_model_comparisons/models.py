@@ -161,7 +161,7 @@ def gofs(rename=False):
 
     # def __init__(self, username='maristizabalvar', password='MariaCMEMS2018') -> None:
 import os
-# import copernicusmarine as cm
+import copernicusmarine as cm
 from dateutil import parser
 import xarray as xr
 
