@@ -21,12 +21,26 @@ def amseas(rename=False):
 def rtofs(source='east'):
     if source == 'east':
         url = "https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_scraped"
+        model = 'RTOFS'
     elif source == 'west':
         url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_west_scraped'
+        model = 'RTOFS (West Coast)'
     elif source == 'parallel':
         url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_parallel_scraped'
-    ds = xr.open_dataset(url).set_coords(['lon', 'lat'])
-    ds.attrs['model'] = 'RTOFS'
+        model = 'RTOFS (Parallel)'
+    ds = xr.open_dataset(url)
+
+    ds = ds.rename(
+        {'Longitude': 'lon', 
+         'Latitude': 'lat',
+         'MT': 'time',
+         'Depth': 'depth',
+         'X': 'x', 
+         'Y': 'y'
+         }
+        )
+    ds = ds.set_coords(['lon', 'lat'])
+    ds.attrs['model'] = model
     return ds
 
 class RTOFS():
@@ -147,7 +161,7 @@ def gofs(rename=False):
 
     # def __init__(self, username='maristizabalvar', password='MariaCMEMS2018') -> None:
 import os
-import copernicusmarine as cm
+# import copernicusmarine as cm
 from dateutil import parser
 import xarray as xr
 
@@ -187,7 +201,7 @@ class CMEMS:
         return cm.open_dataset(
             dataset_id=dataset_id,
             username=self.username,
-            password=self.password
+            password=self.password,
         )
 
     def _rename_vars(self):
@@ -293,3 +307,6 @@ def cnaps(rename=False):
                 }
             )
     return ds
+
+if __name__ == '__main__':
+    ds = rtofs()
