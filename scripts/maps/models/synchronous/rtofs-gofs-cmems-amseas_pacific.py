@@ -26,10 +26,10 @@ path_save = (conf.path_plots / "maps")
 
 # Which models should we plot?
 plot_rtofs = True
-plot_para = True
-plot_espc = True
+plot_para = False
+plot_espc = True # ESPC
 plot_cmems = True
-plot_amseas = True
+plot_amseas = False
 plot_cnaps = False
 
 # initialize keyword arguments for map plots
@@ -40,12 +40,14 @@ kwargs['overwrite'] = False
 kwargs['colorbar'] = True
 
 # For debug purposes. Comment this out when commiting to repo.
-# conf.days = 1
+conf.days = 2
+conf.regions = ['hawaii', 'mexico_pacific']
 
 # Get today and yesterday dates
 today = dt.date.today()
 date_end = today + dt.timedelta(days=1)
 date_start = today - dt.timedelta(days=conf.days)
+
 freq = '12H'
 
 # Formatter for time
@@ -55,12 +57,12 @@ tstr = '%Y-%m-%d %H:%M:%S'
 date_list = pd.date_range(date_start, date_end, freq=freq)
 date_list_2 = pd.date_range(date_start - dt.timedelta(days=1), date_end, freq=freq)
 
-sstdata = xr.open_dataset('http://basin.ceoe.udel.edu/thredds/dodsC/GOESNOAASST.nc')
-sstdata = sstdata.rename({'latitude': 'lat', 'longitude': 'lon'})
+# sstdata = xr.open_dataset('http://basin.ceoe.udel.edu/thredds/dodsC/GOESNOAASST.nc')
+# sstdata = sstdata.rename({'latitude': 'lat', 'longitude': 'lon'})
 
-unique_times = ~sstdata['time'].to_series().duplicated()
-sst_unique = sstdata.isel(time=unique_times)
-sst_sorted = sst_unique.sortby('time')
+# unique_times = ~sstdata['time'].to_series().duplicated()
+# sst_unique = sstdata.isel(time=unique_times)
+# sst_sorted = sst_unique.sortby('time')
 
 # This is the initial time to start the search for argo/gliders
 search_start = date_list[0] - dt.timedelta(hours=conf.search_hours)
@@ -97,7 +99,7 @@ if conf.bathy:
 
 # Load RTOFS DataSet
 print('Loading RTOFS')
-rds = rtofs() 
+rds = rtofs(source="west") 
 print('RTOFS loaded')
 
 # Save rtofs lon and lat as variables to speed up indexing calculation
@@ -122,6 +124,7 @@ if plot_para:
     print('RTOFS Parallel loaded')
 
     rtofs_para.attrs['model'] = 'RTOFS (Parallel)'
+
 
 if plot_espc:
     print('Loading ESPC')
@@ -395,21 +398,21 @@ def main():
             # except Exception as e:
             #     print(f"Failed to process RTOFS vs GOFS at {ctime}")
             #     print(f"Error: {e}")
-            sst = sst_sorted.sel(
-                lon=slice(extent[0],extent[1]),
-                lat=slice(extent[2],extent[3])
-                ).sel(time=str(ctime), method='nearest')
+            # sst = sst_sorted.sel(
+            #     lon=slice(extent[0],extent[1]),
+            #     lat=slice(extent[2],extent[3])
+            #     ).sel(time=str(ctime), method='nearest')
 
-            temp = kelvin_to_celsius(sst['SST'])
-            sst['SST_C'] = (('lat', 'lon'), temp)
+            # temp = kelvin_to_celsius(sst['SST'])
+            # sst['SST_C'] = (('lat', 'lon'), temp)
 
-            swargs = copy.deepcopy(kwargs)
-            try:
-                del swargs['eez']
-                del swargs['currents']
-            except KeyError:
-                pass
-            plot_sst(rds_sub, sst, region, **swargs)
+            # swargs = copy.deepcopy(kwargs)
+            # try:
+            #     del swargs['eez']
+            #     del swargs['currents']
+            # except KeyError:
+            #     pass
+            # plot_sst(rds_sub, sst, region, **swargs)
  
 
 if __name__ == "__main__":

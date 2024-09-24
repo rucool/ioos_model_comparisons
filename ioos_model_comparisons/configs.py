@@ -15,7 +15,8 @@ if platform == "linux" or platform == "linux2":
 elif platform == "darwin":
     # local
     path_plots = Path.home() / "Documents" / "plots" / "model_comparisons"
-    eez_path = 'data/eez/eez_boundaries_v11.shp'
+    # eez_path = 'data/eez/eez_boundaries_v11.shp'
+    eez_path = '/Users/mikesmith/Downloads/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp'
 # elif platform == "win32":
     # Windows...
 

@@ -34,6 +34,8 @@ from ioos_model_comparisons.calc import dd2dms
 import scipy.ndimage as ndimage
 import matplotlib.lines as mlines
 import datetime as dt
+import xarray as xr
+# import xesmf as xe
 
 # Suppresing warnings for a "pretty output."
 warnings.simplefilter("ignore")
@@ -1011,13 +1013,13 @@ def plot_model_region_comparison(ds1, ds2, region,
             add_bathymetry(ax1,
                             bathy.longitude.values, 
                             bathy.latitude.values, 
-                            bathy.elevation.values,
+                            bathy.z.values,
                             levels=(-1000, -100),
                             zorder=1.5)
             add_bathymetry(ax2,
                             bathy.longitude.values, 
                             bathy.latitude.values, 
-                            bathy.elevation.values,
+                            bathy.z.values,
                             levels=(-1000, -100),
                             zorder=1.5)
         except ValueError:
@@ -1158,24 +1160,24 @@ def plot_model_region_comparison(ds1, ds2, region,
             fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
 
             # Add currents as overlays over variable plots
-            if currents['bool']:
-                quiver_dir = save_dir_final / "currents_overlay"
-                os.makedirs(quiver_dir, exist_ok=True)
+            # if currents['bool']:
+            #     quiver_dir = save_dir_final / "currents_overlay"
+            #     os.makedirs(quiver_dir, exist_ok=True)
                 
-                coarsen = currents['coarsen']
-                q1 = map_add_currents(ax1, rsub, coarsen=coarsen['rtofs'], **currents['kwargs'])
-                q2 = map_add_currents(ax2, gsub, coarsen=coarsen["gofs"], **currents['kwargs'])
+            #     coarsen = currents['coarsen']
+            #     q1 = map_add_currents(ax1, rsub, coarsen=coarsen['rtofs'], **currents['kwargs'])
+            #     q2 = map_add_currents(ax2, gsub, coarsen=coarsen["gofs"], **currents['kwargs'])
 
-                if eez:
-                    eez1._kwargs['edgecolor']= 'white'                
-                    eez2._kwargs['edgecolor']= 'white'
+            #     if eez:
+            #         eez1._kwargs['edgecolor']= 'white'                
+            #         eez2._kwargs['edgecolor']= 'white'
                 
-                fig.savefig(quiver_dir / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
-                # export_fig(quiver_dir, f"{sname}.png", dpi=dpi)
+            #     fig.savefig(quiver_dir / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            #     # export_fig(quiver_dir, f"{sname}.png", dpi=dpi)
 
-                # Remove quiver handles from each axes
-                q1.lines.remove(), q2.lines.remove()
-                remove_quiver_handles(ax1), remove_quiver_handles(ax2)
+            #     # Remove quiver handles from each axes
+            #     q1.lines.remove(), q2.lines.remove()
+            #     remove_quiver_handles(ax1), remove_quiver_handles(ax2)
 
             # Remove handles so we can reuse figure
             # Delete contour handles 
@@ -1188,6 +1190,268 @@ def plot_model_region_comparison(ds1, ds2, region,
             if eez:
                 eez1.remove()
                 eez2.remove()            
+
+    plt.close()
+
+def plot_model_region_difference(ds1, ds2, region,
+                                 bathy=None,
+                                 argo=None,
+                                 gliders=None,
+                                 currents=None,
+                                 eez=False,
+                                 cols=6,
+                                 transform=dict(map=proj['map'], 
+                                                data=proj['data']
+                                                ),
+                                 path_save=os.getcwd(),
+                                 figsize=(14,8),
+                                 dpi=150,
+                                 colorbar=True,
+                                 overwrite=False
+                                 ):
+    
+    # Convert ds.time value to a normal datetime
+    time = pd.to_datetime(ds1.time.data)
+    extent = region['extent']
+
+    # Formatter for time
+    tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
+    tstr_folder = time.strftime('%Y-%m-%dT%H%M%SZ')
+    year = time.strftime("%Y")
+    month = time.strftime("%m")
+
+    # Create subdirectory for region
+    # region_file_str = ('_').join(region_name.lower().split(' '))
+    # path_save_region = path_save / region['folder']
+    
+    # # Create a map figure and serialize it if one doesn't already exist
+    # region_name = "_".join(region["name"].split(' ')).lower()
+    # mdir = path_save / "mapfigs"
+    # os.makedirs(mdir, exist_ok=True)
+    # sfig = mdir / f"{region_name}_fig.pkl"
+
+    # if not sfig.exists():
+    # Create figure
+
+    grid = """
+    RR
+    LL
+    """
+
+    fig, _ = plt.subplot_mosaic(
+        grid,
+        figsize=figsize,
+        layout="constrained",
+        subplot_kw={
+            'projection': transform['map']
+            },
+        gridspec_kw={
+            # set the height ratios between the rows
+            "height_ratios": [4, 1],
+            # set the width ratios between the columns
+            # # "width_ratios": [1],
+            },
+        )
+    axs = fig.axes
+    ax1 = axs[0] # Model 1
+    ax2 = axs[1] # Legend for argo/gliders
+
+    # Set map extent
+    ax1.set_extent(extent)
+          
+    # Make the map pretty
+    add_features(ax1)# zorder=0)
+
+    # Add bathymetry lines
+    if bathy:
+        try:
+            add_bathymetry(ax1,
+                            bathy.longitude.values, 
+                            bathy.latitude.values, 
+                            bathy.elevation.values,
+                            levels=(-1000, -100),
+                            zorder=1.5)
+        except ValueError:
+            print("Bathymetry deeper than specified levels.")
+
+    # Add ticks
+    add_ticks(ax1, extent, label_left=True)
+    add_ticks(ax2, extent, label_left=False, label_right=True)
+
+
+    #             with open(sfig, 'wb') as file:
+    #                 pickle.dump(fig, file)
+    # else:
+    #     with open(sfig, "rb") as file:
+    #         fig = pickle.load(file)
+    #         axs = fig.axes
+    #         ax1 = axs[0]
+    #         ax2 = axs[1]
+    #         ax3 = axs[2]
+
+    # Plot gliders and argo floats
+    rargs = {}
+    rargs['argo'] = argo
+    rargs['gliders'] = gliders
+    rargs['transform'] = transform['data']  
+    plot_regional_assets(ax1, **rargs)
+
+    # Label the subplots
+    ax1.set_title(ds1.model, fontsize=16, fontweight="bold")
+    txt = plt.suptitle("", fontsize=22, fontweight="bold")
+    
+    # Deal with the third axes
+    h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+    if (len(h) > 0) & (len(l) > 0):
+        
+        # Add handles to legend
+        legend = ax2.legend(h, l, ncol=cols, loc='center', fontsize=8)
+
+        # Add title to legend
+        t0 = []
+        if isinstance(argo, pd.DataFrame):
+            if not argo.empty:
+                t0.append(argo.index.min()[1])
+
+        if isinstance(gliders, pd.DataFrame):
+            if not gliders.empty:
+                t0.append(gliders.index.min()[1])
+
+        if len(t0) > 0:
+            t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+        else:
+            t0 = None
+        legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
+        ax2.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+        legend._legend_box.sep = 1
+        # plt.figtext(0.5, 0.001, legstr, ha="center", fontsize=10, fontweight='bold')
+    ax2.set_axis_off()
+
+    # Iterate through the variables to be plotted for each region. 
+    # This dict contains information on what variables and depths to plot. 
+    for k, v in region["variables"].items():
+        # Create subdirectory for variable under region directory
+        var_str = ' '.join(k.split('_')).title()
+
+        for item in v:
+            print(f"Plotting {k} @ {item['depth']}")
+            depth = item['depth']
+            rsub = ds1[k].sel(depth=depth)
+            gsub = ds2[k].sel(depth=depth, method='nearest')
+
+            if ds2.model == 'ROTFS':
+                diff = rsub - gsub
+            else:
+                # Setup regridder
+                grid_out = xr.Dataset({
+                    'lat': rsub['lat'],
+                    'lon': rsub['lon']
+                    })
+
+                regridder = xe.Regridder(gsub, grid_out,
+                                         'bilinear',
+                                         periodic=False,
+                                         extrap_method="nearest_s2d")
+                diff = rsub - regridder(gsub)
+            
+            # Create subdirectory for depth under variable subdirectory
+            save_dir_final = path_save / f"{k}_{depth}m" / 'diff' / time.strftime('%Y/%m')
+            os.makedirs(save_dir_final, exist_ok=True)
+
+            # Create a file name to save the plot as
+            # sname = f'{ds1.model}_vs_{ds2.model}_{k}-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
+            sname = f'{"-".join(region["folder"].split("_"))}_{time.strftime("%Y-%m-%dT%H%M%SZ")}_{k}-{depth}m_{ds1.model.lower()}-{ds2.model.lower()}'
+            save_file = save_dir_final / f"{sname}.png"
+
+            if save_file.is_file():
+                if not overwrite:
+                    print(f"{save_file} exists. Overwrite: False. Skipping.")
+                    continue
+                else:
+                    print(f"{save_file} exists. Overwrite: True. Replotting.")
+                    
+            # Add the super title (title for both subplots)
+            txt.set_text(f"{var_str} ({depth} m) - {tstr_title}\n")
+
+            # Create dictionary for variable argument inputs for contourf
+            vargs = {}
+            vargs['transform'] = transform['data']
+            vargs['transform_first'] = True
+            vargs['cmap'] = cmaps(ds1[k].name)
+            vargs['extend'] = "both"
+
+            # if 'limits' in item:
+            #     vargs['vmin'] = item['limits'][0]
+            #     vargs['vmax'] = item['limits'][1]
+            #     vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
+            if k == 'temperature':
+                vargs['vmin'] = -5
+                vargs['vmax'] = 5
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax']+1, 1)
+                vargs['cmap'] = cmocean.cm.balance
+            elif k == 'salinity':
+                vargs['vmin'] = -1
+                vargs['vmax'] = 1
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax']+0.1, 0.1)
+                vargs['cmap'] = cmocean.cm.balance
+
+        
+            # Filled contour for each model variable
+            if (rsub['lon'].ndim == 1) & rsub['lat'].ndim == 1:
+                rlons, rlats = np.meshgrid(rsub['lon'], rsub['lat'])
+            else:
+                rlons = rsub['lon']
+                rlats = rsub['lat']
+                
+            h1 = ax1.contourf(rlons, rlats, diff.squeeze(), **vargs)
+
+            # Add contour lines for 15°C isotherm in MAB. This identifies the north wall of the Gulf Stream
+            if region['name'] == 'Mid Atlantic Bight' and k == 'temperature' and depth == 200:
+                ax1.contour(rlons, rlats, rsub.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+
+            if colorbar:
+                cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
+                cb.ax.tick_params(labelsize=12)
+                cb.set_label(f'{k.title()} ({rsub.units})', fontsize=12, fontweight="bold")
+
+            # Add EEZ
+            if eez:
+                eez1 = map_add_eez(ax1, zorder=1)
+
+            # Save the figure. Using fig to savefig allows us to delete any
+            # figure handles so that we can reuse the figure.
+            # export_fig(save_dir_final, sname, dpi=dpi)
+            fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+
+            # # Add currents as overlays over variable plots
+            # if currents['bool']:
+            #     quiver_dir = save_dir_final / "currents_overlay"
+            #     os.makedirs(quiver_dir, exist_ok=True)
+                
+            #     coarsen = currents['coarsen']
+            #     q1 = map_add_currents(ax1, rsub, coarsen=coarsen['rtofs'], **currents['kwargs'])
+            #     q2 = map_add_currents(ax2, gsub, coarsen=coarsen["gofs"], **currents['kwargs'])
+
+            #     if eez:
+            #         eez1._kwargs['edgecolor']= 'white'                
+            #         eez2._kwargs['edgecolor']= 'white'
+                
+            #     fig.savefig(quiver_dir / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            #     # export_fig(quiver_dir, f"{sname}.png", dpi=dpi)
+
+            #     # Remove quiver handles from each axes
+            #     q1.lines.remove(), q2.lines.remove()
+            #     remove_quiver_handles(ax1), remove_quiver_handles(ax2)
+
+            # Remove handles so we can reuse figure
+            # Delete contour handles 
+            [x.remove() for x in h1.collections] # axes 1
+
+            if colorbar: 
+                cb.remove()
+                
+            if eez:
+                eez1.remove()
 
     plt.close()
 
@@ -1388,7 +1652,7 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
                 add_bathymetry(ax1,
                             bathy.longitude.values, 
                             bathy.latitude.values, 
-                            bathy.elevation.values,
+                            bathy.z.values,
                             levels=(-1000, -100),
                             zorder=1.5
                             )
@@ -1396,7 +1660,7 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
                 add_bathymetry(ax2,
                             bathy.longitude.values, 
                             bathy.latitude.values, 
-                            bathy.elevation.values,
+                            bathy.z.values,
                             levels=(-1000, -100),
                             zorder=1.5
                             )
@@ -3038,13 +3302,11 @@ def plot_model_region_single_streamplot(ds1, region,
         remove_quiver_handles(ax1)
         [x.remove() for x in m1.collections]
 
-
+import datetime 
 def plot_sst(ds1, ds2, region,
              bathy=None,
              argo=None,
              gliders=None,
-             currents=None,
-             eez=False,
              cols=6,
              transform=dict(
                  map=proj['map'], 
@@ -3056,6 +3318,24 @@ def plot_sst(ds1, ds2, region,
              colorbar=True,
              overwrite=False
              ):
+    k = 'temperature'
+    depth = 0
+    time = pd.to_datetime(ds1.time.data)
+    # Convert to a Python datetime object
+    # Create subdirectory for depth under variable subdirectory
+    save_dir_final = path_save / f"{k}_{depth}m" / time.strftime('%Y/%m')
+    os.makedirs(save_dir_final, exist_ok=True)
+    
+    sname = f'{"-".join(region["folder"].split("_"))}_{time.strftime("%Y-%m-%dT%H%M%SZ")}_{k}-{depth}m_{ds1.model.lower()}-vs-GOES'
+
+    sfname = save_dir_final / sname
+
+    if sfname.is_file():
+        if not overwrite:
+            print(f"{sfname} exists. Overwrite: False. Skipping.")
+            return
+        else:
+            print(f"{sfname} exists. Overwrite: True. Replotting.")
     
     # Convert ds.time value to a normal datetime
     time = pd.to_datetime(ds1.time.data)
@@ -3063,9 +3343,6 @@ def plot_sst(ds1, ds2, region,
 
     # Formatter for time
     tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
-    tstr_folder = time.strftime('%Y-%m-%dT%H%M%SZ')
-    year = time.strftime("%Y")
-    month = time.strftime("%m")
 
     # Create subdirectory for region
     # region_file_str = ('_').join(region_name.lower().split(' '))
@@ -3118,13 +3395,13 @@ def plot_sst(ds1, ds2, region,
             add_bathymetry(ax1,
                             bathy.longitude.values, 
                             bathy.latitude.values, 
-                            bathy.elevation.values,
+                            bathy.z.values,
                             levels=(-1000, -100),
                             zorder=1.5)
             add_bathymetry(ax2,
                             bathy.longitude.values, 
                             bathy.latitude.values, 
-                            bathy.elevation.values,
+                            bathy.z.values,
                             levels=(-1000, -100),
                             zorder=1.5)
         except ValueError:
@@ -3186,13 +3463,18 @@ def plot_sst(ds1, ds2, region,
     rsub = ds1[k].sel(depth=0)
     gsub = ds2['SST_C']
             
+            
+    # Create subdirectory for depth under variable subdirectory
+    save_dir_final = path_save / f"{k}_{depth}m" / time.strftime('%Y/%m')
+    os.makedirs(save_dir_final, exist_ok=True)
+
+
     # Create subdirectory for depth under variable subdirectory
     save_dir_final = path_save / f"{k}_{depth}m" / time.strftime('%Y/%m')
     os.makedirs(save_dir_final, exist_ok=True)
 
     # Create a file name to save the plot as
     # sname = f'{ds1.model}_vs_{ds2.model}_{k}-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
-    sname = f'{"-".join(region["folder"].split("_"))}_{time.strftime("%Y-%m-%dT%H%M%SZ")}_{k}-{depth}m_{ds1.model.lower()}-vs-GOES'
     save_file = save_dir_final / f"{sname}.png"
                     
     # Add the super title (title for both subplots)
@@ -3246,6 +3528,215 @@ def plot_sst(ds1, ds2, region,
     # Save the figure. Using fig to savefig allows us to delete any
     # figure handles so that we can reuse the figure.
     # export_fig(save_dir_final, sname, dpi=dpi)
-    fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+    fig.savefig(sfname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
 
+    plt.close()
+
+from pyproj import Geod
+geod = Geod(ellps='WGS84')
+
+# from matplotlib.patches import Polygon
+from shapely.geometry import Polygon
+
+def plot_model_region_scott(ds, region,
+                      bathy=None,
+                      argo=None,
+                      gliders=None,
+                      currents=dict(bool=False),
+                      transform=dict(
+                          map=proj['map'],
+                          data=proj['data']
+                          ),
+                      legend=True,
+                      model='rtofs',
+                      path_save=os.getcwd(),
+                      dpi=150,
+                      t0=None):
+    """
+
+    :param lon: longitude
+    :param lat: latitude
+    :param variable: data variable you want to plot
+    :param kwargs:
+    :return:
+    """
+    region_name = region["name"]
+    extent = region["extent"]
+    time = pd.to_datetime(ds.time.values)
+
+    # Create subdirectory for region
+    region_file_str = '_'.join(region_name.lower().split(' '))
+    path_save_region = path_save / 'regions' / region_file_str
+
+    if not isinstance(gliders, pd.DataFrame):
+        gliders = pd.DataFrame()
+    
+    if not isinstance(argo, pd.DataFrame):
+        argo = pd.DataFrame()
+
+    # Iterate through the region dictionary. This dict contains information
+    # on what variables and depths to plot. 
+    # for key, values in region["variables"].items():
+    # Create subdirectory for variable under region directory
+    var_str = 'Currents'
+    depth = 0
+
+    da = ds.sel(depth=depth, method='nearest')
+    # Select variable and depth to plot
+    # print(ds[k].name)
+    u = da['u']
+    v = da['v']
+
+    # Create subdirectory for depth under variable subdirectory
+    save_dir_final = path_save_region / f"currents_0m" / time.strftime('%Y/%m')
+    os.makedirs(save_dir_final, exist_ok=True)
+
+    # Create a string for the title of the plot
+    title_time = time.strftime("%Y-%m-%d %H:%M:%S")
+    title = f"{model.upper()} - {var_str} ({depth} m) - {title_time}\n"
+
+    # if not gliders.empty or not argo.empty:
+    #         title += f'Assets ({str(t0)} to {str(time)})'
+
+    # Create a file name to save the plot as
+    sname = f'{model}-currents_0m-{time.strftime("%Y-%m-%dT%H%M%SZ")}'
+    save_file = save_dir_final / f"{sname}.png"
+
+    # Create a map figure and serialize it if one doesn't already exist
+    region_name = "_".join(region["name"].split(' ')).lower()
+    path_maps = path_save / "mapfigs"
+    os.makedirs(path_maps, exist_ok=True)
+    sfig = (path_maps / f"{region_name}_fig.pkl")
+
+    # if not sfig.exists():
+        # Create an empty projection within set extent
+    fig, ax = create(extent, proj=transform['map'])
+
+    # Add bathymetry
+    if bathy:
+        add_bathymetry(ax,
+                        bathy.longitude.values, 
+                        bathy.latitude.values, 
+                        bathy.elevation.values,
+                        levels=(-1000, -100),
+                        zorder=1.5)
+
+    lon1 = -86.7878500
+    lat1 = 21.4719000
+    ax.plot(lon1, lat1, 'o', color='lime', markeredgecolor='black', transform=transform['data'], zorder=2000)
+    radius_km = 233  # Radius in kilometers
+    angles = [0, 155]  # Angles in degrees (clockwise from north)
+    # Calculate the polygon points
+    polygon_points = []
+    for angle in np.linspace(angles[0], angles[1], num=100):
+        lon_dest, lat_dest, _ = geod.fwd(lon1, lat1, angle, radius_km * 1000)
+        polygon_points.append((lon_dest, lat_dest))
+
+    # Add the origin point to close the polygon
+    polygon_points.append((lon1, lat1))
+    polygon = Polygon(polygon_points)
+
+    ax.add_geometries([polygon], crs=ccrs.PlateCarree(), facecolor='red', edgecolor='black', alpha=0.5)
+    
+    lon2 = -86.8676667
+    lat2 = 20.8679333
+    angles = [36, 152]  # Angles in degrees (clockwise from north)
+    ax.plot(lon2, lat2, 'o', color='lime', markeredgecolor='black', transform=transform['data'], zorder=2000)
+    # Calculate the polygon points
+    polygon_points = []
+    for angle in np.linspace(angles[0], angles[1], num=100):
+        lon_dest, lat_dest, _ = geod.fwd(lon2, lat2, angle, radius_km * 1000)
+        polygon_points.append((lon_dest, lat_dest))
+
+    # Add the origin point to close the polygon
+    polygon_points.append((lon2, lat2))
+    polygon = Polygon(polygon_points)
+    ax.add_geometries([polygon], crs=ccrs.PlateCarree(), facecolor='blue', edgecolor='black', alpha=0.5)
+    
+
+    #     save_fig(fig, path_maps, f"{region_name}_fig.pkl")       
+    # else:
+    #     fig = load_fig(sfig)
+    #     ax = fig.axes[0]
+                        
+    rargs = {}
+    rargs['argo'] = argo
+    rargs['gliders'] = gliders
+    rargs['transform'] = transform['data']  
+    plot_regional_assets(ax, **rargs)
+
+    cargs = {}
+    cargs['vmin'] = 0
+    cargs['vmax'] = 2.0
+    cargs['transform'] = transform['data']
+    cargs['cmap'] = cmocean.cm.speed
+    cargs['levels'] = np.arange(0, 2.1, .1)
+    cargs['extend'] = 'both'
+
+    try:
+        cargs.pop('vmin'), cargs.pop('vmax')
+    except KeyError:
+        pass
+
+    ang, spd = uv2spdir(u, v)
+    
+    # If the xarray DataArray contains data, let's contour the data.
+    h = ax.contourf(da['lon'], da['lat'], spd, **cargs)
+
+    currents = dict(
+        bool=True,
+        depths = [0, 150],
+        limits = [0, 1.5, .1],
+        coarsen=dict(rtofs=5, gofs=6),
+        kwargs=dict(
+            ptype="streamplot",
+            color="black",
+            density=3
+            )
+    )
+    
+    map_add_currents(ax, da, **currents['kwargs'])
+
+    # Create the colorbar
+    axins = inset_axes(ax,  # here using axis of the lowest plot
+        width="2.5%",  # width = 5% of parent_bbox width
+        height="100%",  # height : 340% good for a (4x4) Grid
+        loc='lower left',
+        bbox_to_anchor=(1.05, 0., 1, 1),
+        bbox_transform=ax.transAxes,
+        borderpad=0
+        )
+    cb = plt.colorbar(h, cax=axins)
+    cb.ax.tick_params(labelsize=12)
+    cb.set_label(f'Speed (cm/s)', fontsize=13)
+
+    ax.set_title(title, fontsize=16, fontweight='bold')
+
+    # if legend:
+    #     h, l = ax.get_legend_handles_labels()  # get labels and handles from ax1
+
+    #     if (len(h) > 0) & (len(l) > 0):
+    #         # Shrink current axis's height by 10% on the bottom
+    #         box = ax.get_position()
+    #         ax.set_position([box.x0, box.y0 + box.height * 0.1,
+    #                         box.width, box.height * 0.9])
+
+    #         # Put a legend below current axis
+    #         ax.legend(h, l, loc='upper center', bbox_to_anchor=(0.5, -0.05),
+    #                 fancybox=True, shadow=True, ncol=5)
+    #         legstr = f'Glider/Argo Search Window: {str(t0)} to {str(time)}'
+    #         plt.figtext(0.5, -0.07, legstr, ha="center", fontsize=10, fontweight='bold')
+
+    fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+    
+    # Add currents
+    if currents['bool']:
+        quiver_dir = save_dir_final / "currents"
+        os.makedirs(quiver_dir, exist_ok=True)
+        
+        save_file_q = quiver_dir / f"{sname}.png"
+        coarsen = currents['coarsen']
+        map_add_currents(ax, da, coarsen=coarsen[model], **currents['kwargs'])
+        fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+    
     plt.close()

@@ -405,7 +405,7 @@ def region_config(regions=None, model=None):
                 color="black"
                 )
             )
-        eez = True
+        eez = False
         figure = dict(
             legend = dict(columns=7),
             figsize = (12.5,6.5)
@@ -663,7 +663,7 @@ def region_config(regions=None, model=None):
                 )
             )
         figure = dict(
-            figsize = (12, 8.5),
+            figsize = (12, 8),
             legend = dict(columns=9),
             )
 
@@ -711,7 +711,7 @@ def region_config(regions=None, model=None):
                 )
             )
         figure = dict(
-            figsize = (12, 8.5),
+            figsize = (12, 7),
             legend = dict(columns=9),
             )
 

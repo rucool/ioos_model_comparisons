@@ -8,7 +8,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-from cool_maps.plot import add_features, create
+from cool_maps.plot import (
+    # add_features, 
+    create
+    )
 
 import ioos_model_comparisons.configs as configs
 import ioos_model_comparisons.configs as conf
@@ -16,11 +19,12 @@ from ioos_model_comparisons.calc import (density,
                                          lon180to360,
                                          lon360to180,
                                          ocean_heat_content,
-                                         depth_interpolate, depth_bin
+                                        #  depth_interpolate, 
+                                         depth_bin
                                          )
-from ioos_model_comparisons.models import cmems, gofs, rtofs, CMEMS
-from ioos_model_comparisons.platforms import get_active_gliders, get_bathymetry, get_ohc
-from ioos_model_comparisons.plotting import map_add_inset
+from ioos_model_comparisons.models import rtofs, CMEMS, espc
+from ioos_model_comparisons.platforms import get_active_gliders, get_ohc
+# from ioos_model_comparisons.plotting import map_add_inset
 from ioos_model_comparisons.regions import region_config
 import pandas
 import matplotlib.pyplot as plt
@@ -28,6 +32,7 @@ import re
 from datetime import datetime
 import cartopy.feature as cfeature
 import math
+from cool_maps.plot import get_bathymetry
 
 # %%
 # set path to save plots
@@ -39,10 +44,11 @@ timeout = 60
 days = 2
 today = dt.date.today()
 interp = False
+workers = 6
 
 # Model selection
 plot_rtofs = True
-plot_gofs = True
+plot_espc = True
 plot_cmems = True
 plot_amseas = True
 plot_para = True
@@ -73,7 +79,7 @@ extent_list = []
 
 # Create a date list.
 date_list = [today - dt.timedelta(days=x+1) for x in range(days)]
-date_list.insert(0, today)
+# date_list.insert(0, today)
 date_list.insert(0, today + dt.timedelta(days=1))
 date_list.reverse()
 
@@ -116,7 +122,8 @@ gliders = pd.concat(region_gliders)
 def pick_region_map(regions, point):
     distances = []
     for region in regions:
-        x0, x1, y0, y1 = region
+        extent = region_config(region)["extent"]
+        x0, x1, y0, y1 = extent
         center_x = (x0 + x1) / 2
         center_y = (y0 + y1) / 2
         distance = math.sqrt((point[0] - center_x)**2 + (point[1] - center_y)**2)
@@ -124,12 +131,12 @@ def pick_region_map(regions, point):
     return min(distances, key=lambda x: x[0])
 
 # %% Load models
-if plot_gofs:
-    print('Loading GOFS')
-    # Read GOFS 3.1 output
-    gofs = gofs(rename=True).sel(depth=slice(0,400))
-    print('GOFS loaded')
-    glabel = f'GOFS' # Legend labels
+if plot_espc:
+    print('Loading ESPC')
+    # Read ESPC output
+    gofs = espc(rename=True).sel(depth=slice(0,400))
+    print('ESPC loaded')
+    glabel = f'ESPC' # Legend labels
 
 if plot_para:
     print('Loading RTOFS Parallel')
@@ -211,8 +218,11 @@ def plot_glider_profiles(id, gliders):
 
     # Get extent for inset map
     # try:
-    region_name = df['region'].iloc[0]
-    extent = region_config(region_name)["extent"]
+
+    # Find which region it's in most recently
+    found = pick_region_map(conf.regions, (df.lon.iloc[-1], df.lat.iloc[-1]))
+    # region_name = df['region'].iloc[0]
+    extent = region_config(found[1])["extent"]
 
     try:
         bathy = get_bathymetry(extent)
@@ -338,7 +348,7 @@ def plot_glider_profiles(id, gliders):
             ohc_nesdis = nesdis.sel(longitude=mlon, latitude=mlat, method='nearest')
             ohc_nesdis = ohc_nesdis.ohc.values
         
-        if plot_gofs:
+        if plot_espc:
             # Convert glider lon from -180,180 to 0,359
             lon_glider_gofs = lon180to360(mlon)
         
@@ -365,9 +375,9 @@ def plot_glider_profiles(id, gliders):
             # Calculate density
             gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
 
-            print(f"GOFS - Time: {pd.to_datetime(gds.time.values)}")
+            print(f"ESPC - Time: {pd.to_datetime(gds.time.values)}")
 
-            ohc_gofs = ocean_heat_content(gds['depth'].values, gds['temperature'].values, gds['density'].values)
+            ohc_espc = ocean_heat_content(gds['depth'].values, gds['temperature'].values, gds['density'].values)
 
         if plot_rtofs:
             # RTOFS
@@ -397,7 +407,7 @@ def plot_glider_profiles(id, gliders):
         if plot_para:
             # RTOFS
             rdsp = rtofs_para.sel(time=time_glider, method="nearest")
-            print(f"RTOFS - Time: {pd.to_datetime(rdsp.time.values)}")
+            print(f"RTOFS (parallel) - Time: {pd.to_datetime(rdsp.time.values)}")
 
             # interpolating lon and lat to x and y index of the rtofs grid
             rlonI = np.interp(mlon, rlon, rx) # lon -> x
@@ -448,16 +458,16 @@ def plot_glider_profiles(id, gliders):
             
         # Plot model profiles
         if plot_rtofs:
-            tax.plot(rds['temperature'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
-            sax.plot(rds['salinity'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
-            dax.plot(rds['density'], rds['depth'], '.-', color='lightcoral', label='_nolegend_')
+            tax.plot(rds['temperature'], rds['depth'], '.-', linewidth=5, color='red',  label='_nolegend_')
+            sax.plot(rds['salinity'], rds['depth'], '.-', linewidth=5, color='red',  label='_nolegend_')
+            dax.plot(rds['density'], rds['depth'], '.-', linewidth=5, color='red', label='_nolegend_')
 
         if plot_para:
-            tax.plot(rdsp['temperature'], rdsp['depth'], '.-', color='orange', label='_nolegend_')
-            sax.plot(rdsp['salinity'], rdsp['depth'], '.-', color='orange', label='_nolegend_')
-            dax.plot(rdsp['density'], rdsp['depth'], '.-', color='orange', label='_nolegend_')
+            tax.plot(rdsp['temperature'], rdsp['depth'], '.-', color='black', markeredgecolor='black',  markersize=12, label='_nolegend_')
+            sax.plot(rdsp['salinity'], rdsp['depth'], '.-', color='black', markeredgecolor='black', markersize=12, label='_nolegend_')
+            dax.plot(rdsp['density'], rdsp['depth'], '.-', color='black', markeredgecolor='black', markersize=12, label='_nolegend_')
 
-        if plot_gofs:
+        if plot_espc:
             tax.plot(gds['temperature'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
             sax.plot(gds['salinity'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
             dax.plot(gds['density'], gds["depth"], '.-', color="mediumseagreen", label='_nolegend_')
@@ -484,7 +494,7 @@ def plot_glider_profiles(id, gliders):
             sax.plot(rdsp['salinity'], rdsp['depth'], '-o', color='orange', label=rplabel)
             dax.plot(rdsp['density'], rdsp['depth'], '-o', color='orange', label=rplabel)
 
-        if plot_gofs:
+        if plot_espc:
             tax.plot(gds['temperature'], gds["depth"], '-o', color="green", label=glabel)
             sax.plot(gds['salinity'], gds["depth"], '-o', color="green", label=glabel)
             dax.plot(gds['density'], gds["depth"], '-o', color="green", label=glabel)
@@ -537,6 +547,8 @@ def plot_glider_profiles(id, gliders):
         dax.set_ylim(ylim)
         dax.set_xlabel('Density (kg m-3)', fontsize=13, fontweight="bold")
         dax.grid(True, linestyle='--', linewidth=0.5)
+        # Rotate the x-axis labels by 45 degrees (you can adjust this angle)
+        dax.tick_params(axis='x', labelrotation=45)
 
         if interp:
             method = "Interpolation"
@@ -589,7 +601,7 @@ def plot_glider_profiles(id, gliders):
         if bathy_flag:
             mpax.contourf(bathy['longitude'],
                         bathy['latitude'],
-                        bathy['elevation'],
+                        bathy['z'],
                         levels, colors=colors, transform=configs.projection['data'], ticks=False)
         
         # Create inset axis for glider track
@@ -654,10 +666,10 @@ def plot_glider_profiles(id, gliders):
             pass
         
         try:           
-            if np.isnan(ohc_gofs):
-                ohc_string += 'GOFS: N/A,  '
+            if np.isnan(ohc_espc):
+                ohc_string += 'ESPC: N/A,  '
             else:
-                ohc_string += f"GOFS: {ohc_gofs:.4f},  "
+                ohc_string += f"ESPC: {ohc_espc:.4f},  "
         except:
             pass
             
@@ -687,12 +699,9 @@ def driver(gliders, id):
     plot_glider_profiles(id, gliders)
     
 def main():    
-    # import concurrent.futures
     active_gliders = gliders.glider.unique().tolist()
-    # active_gliders = ['sg625-20240119T0000']   
     if parallel:
         import concurrent.futures
-        workers = 6
 
         # Use partial to input half of the function inputs.
         f = partial(driver, gliders)

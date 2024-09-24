@@ -1,6 +1,9 @@
 import xarray as xr
 import numpy as np
 from ioos_model_comparisons.calc import calculate_transect
+import os
+import copernicusmarine as cm
+from dateutil import parser
 
 def amseas(rename=False):
     url = "https://www.ncei.noaa.gov/thredds-coastal/dodsC/ncom_amseas_agg/AmSeas_Dec_17_2020_to_Current_best.ncd"
@@ -18,7 +21,7 @@ def amseas(rename=False):
     return ds
 
 
-def rtofs(source='east'):
+def rtofs(rename=None, source='east'):
     if source == 'east':
         url = "https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_scraped"
         model = 'RTOFS'
@@ -123,47 +126,23 @@ def gofs(rename=False):
             )
     return ds
 
-
-# def cmems(rename=False):
-#     username = 'maristizabalvar'
-#     password = 'MariaCMEMS2018'
-#     dataset = 'global-analysis-forecast-phy-001-024'
-#     from pydap.client import open_url
-#     from pydap.cas.get_cookies import setup_session
-#     cas_url = 'https://cmems-cas.cls.fr/cas/login'
-#     session = setup_session(cas_url, username, password)
-#     session.cookies.set("CASTGC", session.cookies.get_dict()['CASTGC'])
-#     database = ['my', 'nrt']
-#     url = f'https://{database[0]}.cmems-du.eu/thredds/dodsC/{dataset}'
-#     try:
-#         data_store = xr.backends.PydapDataStore(open_url(url, session=session, user_charset='utf-8')) # needs PyDAP >= v3.3.0 see https://github.com/pydap/pydap/pull/223/commits 
-#     except:
-#         url = f'https://{database[1]}.cmems-du.eu/thredds/dodsC/{dataset}'
-#         data_store = xr.backends.PydapDataStore(open_url(url, session=session, user_charset='utf-8')) # needs PyDAP >= v3.3.0 see https://github.com/pydap/pydap/pull/223/commits
-
-#     # Downloading and reading Copernicus grid
-#     ds = xr.open_dataset(data_store, drop_variables='tau')
-#     ds.attrs['model'] = 'CMEMS'
-
-#     if rename:
-#         ds = ds.rename(
-#             {
-#                 'thetao': 'temperature', 
-#                 'so': 'salinity',
-#                 'latitude': 'lat',
-#                 'longitude': 'lon',
-#                 'uo': 'u',
-#                 'vo': 'v'
-#                 }
-#             )
-#     return ds
-
-
-    # def __init__(self, username='maristizabalvar', password='MariaCMEMS2018') -> None:
-import os
-import copernicusmarine as cm
-from dateutil import parser
-import xarray as xr
+def espc(rename=False):
+    url_uv = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_uv3z/FMRC_ESPC-D-V02_uv3z_best.ncd"
+    url_ts = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_ts3z/FMRC_ESPC-D-V02_ts3z_best.ncd"
+    ds_uv = xr.open_dataset(url_uv, drop_variables="tau")
+    ds_ts = xr.open_dataset(url_ts, drop_variables="tau")
+    ds = xr.merge([ds_uv, ds_ts], compat='minimal')
+    ds.attrs['model'] = 'ESPC'
+    if rename:
+        ds = ds.rename(
+            {
+                # "surf_el": "sea_surface_height",
+                "water_temp": "temperature",
+                "water_u": "u",
+                "water_v": "v"
+                }
+            )
+    return ds
 
 class CMEMS:
     '''
@@ -236,58 +215,6 @@ class CMEMS:
             print(f"Error subsetting data: {e}")
             return None
 
-      
-def cmems(rename=False):
-    username = 'maristizabalvar'
-    password = 'MariaCMEMS2018'
-    from pydap.client import open_url
-    from pydap.cas.get_cookies import setup_session
-    cas_url = 'https://cmems-cas.cls.fr/cas/login'
-    session = setup_session(cas_url, username, password)
-    session.cookies.set("CASTGC", session.cookies.get_dict()['CASTGC'])
-
-    try:
-        url = f'https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-thetao_anfc_0.083deg_PT6H-i'
-        data_store1 = xr.backends.PydapDataStore(open_url(url, session=session, user_charset='utf-8')) # needs PyDAP >= v3.3.0 see https://github.com/pydap/pydap/pull/223/commits 
-    except:
-        url = f'https://nrt.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-thetao_anfc_0.083deg_PT6H-i'
-        data_store1 = xr.backends.PydapDataStore(open_url(url, session=session, user_charset='utf-8')) # needs PyDAP >= v3.3.0 see https://github.com/pydap/pydap/pull/223/commits
-
-    try:
-        url = f'https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i'
-        data_store2 = xr.backends.PydapDataStore(open_url(url, session=session, user_charset='utf-8')) # needs PyDAP >= v3.3.0 see https://github.com/pydap/pydap/pull/223/commits 
-    except:
-        url = f'https://nrt.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-cur_anfc_0.083deg_PT6H-i'
-        data_store2 = xr.backends.PydapDataStore(open_url(url, session=session, user_charset='utf-8')) # needs PyDAP >= v3.3.0 see https://github.com/pydap/pydap/pull/223/commits
-
-    try:
-        url = f'https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-so_anfc_0.083deg_PT6H-i'
-        data_store3 = xr.backends.PydapDataStore(open_url(url, session=session, user_charset='utf-8')) # needs PyDAP >= v3.3.0 see https://github.com/pydap/pydap/pull/223/commits 
-    except:
-        url = f'https://nrt.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy-so_anfc_0.083deg_PT6H-i'
-        data_store3 = xr.backends.PydapDataStore(open_url(url, session=session, user_charset='utf-8')) # needs PyDAP >= v3.3.0 see https://github.com/pydap/pydap/pull/223/commits
-        
-
-    # # Downloading and reading Copernicus grid
-    ds1 = xr.open_dataset(data_store1, drop_variables='tau')
-    ds2 = xr.open_dataset(data_store2, drop_variables='tau')
-    ds3 = xr.open_dataset(data_store3, drop_variables='tau')
-    ds = xr.merge([ds1, ds2, ds3])
-
-    ds.attrs['model'] = 'CMEMS'
-
-    if rename:
-        ds = ds.rename(
-            {
-                'thetao': 'temperature', 
-                'so': 'salinity',
-                'latitude': 'lat',
-                'longitude': 'lon',
-                'uo': 'u',
-                'vo': 'v'
-                }
-            )
-    return ds
 
 def cnaps(rename=False):
     url = "http://3.236.148.88:8080/thredds/dodsC/fmrc/useast_coawst_roms/COAWST-ROMS_SWAN_Forecast_Model_Run_Collection_best.ncd"
