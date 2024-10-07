@@ -6,13 +6,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-import seawater
 import xarray as xr
-from ioos_model_comparisons.calc import (depth_interpolate, lon180to360, 
-                                         lon360to180, difference, density,
-                                         ocean_heat_content)
-from ioos_model_comparisons.models import gofs, rtofs, amseas, CMEMS
-from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_bathymetry, get_ohc
+from ioos_model_comparisons.calc import (
+    # depth_interpolate,
+    lon180to360, 
+    lon360to180, 
+    # difference, 
+    density,
+    ocean_heat_content
+    )
+from ioos_model_comparisons.models import rtofs, amseas, CMEMS, espc
+from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_ohc
 from ioos_model_comparisons.regions import region_config
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
@@ -21,6 +25,7 @@ import glob
 import cartopy.feature as cfeature
 import re
 from datetime import datetime
+from cool_maps.plot import get_bathymetry
 
 save_dir = conf.path_plots / 'profiles' / 'argo'
 
@@ -30,7 +35,7 @@ depth = 400
 
 # Which models should we plot?
 plot_rtofs = True
-plot_gofs = True
+plot_espc = True
 plot_cmems = True
 plot_amseas = False
 plot_para = True
@@ -51,8 +56,8 @@ if plot_rtofs:
 if plot_para:
     pds = rtofs(source='parallel').sel(depth=depths)
 
-if plot_gofs:
-    gds = gofs(rename=True).sel(depth=depths)
+if plot_espc:
+    gds = espc(rename=True).sel(depth=depths)
 
 if plot_cmems:
     cobj = CMEMS()
@@ -71,7 +76,8 @@ then = pd.Timestamp(then.strftime('%Y-%m-%d')) # convert back to timestamp
 
 # Get extent for all configured regions to download argo/glider data one time
 extent_list = []
-conf.regions = ['caribbean', 'gom', 'sab', 'mab']
+conf.regions = ['caribbean', 'gom', 'sab', 'mab', 'tropical_western_atlantic']
+# conf.regions = ['gom']
 for region in conf.regions:
     extent_list.append(region_config(region)["extent"])
 
@@ -99,7 +105,8 @@ floats = get_argo_floats_by_time(global_extent,
 # search_window_t1 = ctime.strftime(tstr) 
 
 # Convert pressure to depth
-floats['depth'] = seawater.dpth(floats['pres (decibar)'], floats['lat'])
+# floats['depth'] = seawater.dpth(floats['pres (decibar)'], floats['lat'])
+floats['depth'] = -z_from_p(floats['pres (decibar)'], floats['lat'])
 
 # Mask argo float based off of the maximum depth
 depth_mask = floats['depth'] <= depth
@@ -229,7 +236,6 @@ def process_argo(region):
                 df['density']
                 )
 
-
             # Interpolate argo profile to configuration depths
             # df = depth_interpolate(df, 
             #                        depth_var='depth', 
@@ -261,26 +267,24 @@ def process_argo(region):
             # ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
             # ohc_nesdis = ohc_nesdis.ohc.values
             
-            if plot_gofs:
+            if plot_espc:
                 try:
-                    # GOFS
+                    # ESPC
                     gdsp = gds.sel(time=ctime, method='nearest')
-                    gdsi = gdsp.interp(
+                    gdsi = gdsp.sel(
                         lon=lon180to360(lon), # Convert longitude to 360 convention
                         lat=lat,
+                        method='nearest'
                         # depth=xr.DataArray(depths_interp, dims='depth')
                         )
                     # Convert the lon back to a 180 degree lon
                     gdsi['lon'] = lon360to180(gdsi['lon'])
 
                     # Calculate density for gofs profile
-                    # gdsi["pressure"] = xr.apply_ufunc(seawater.eos80.pres, gdsi.depth, gdsi.lat)
-                    # gdsi["density"] = xr.apply_ufunc(seawater.eos80.dens, gdsi.salinity, gdsi.temperature, gdsi.pressure)
-
                     gdsi['density'] = density(gdsi.temperature, -gdsi.depth, gdsi.salinity, gdsi.lat, gdsi.lon)
 
                     # Calculate ocean heat content for profile
-                    ohc_gofs = ocean_heat_content(
+                    ohc_espc = ocean_heat_content(
                         gdsi['depth'].values,
                         gdsi['temperature'].values,
                         gdsi['density'].values
@@ -288,14 +292,14 @@ def process_argo(region):
                     
                     glon = gdsi.lon.data.round(2)
                     glat = gdsi.lat.data.round(2)
-                    glabel = f'GOFS [{ glon }, { glat }]'
-                    leg_str += f'GOFS : {pd.to_datetime(gdsi.time.data)}\n'
-                    gofs_flag = True
+                    glabel = f'ESPC [{ glon }, { glat }]'
+                    leg_str += f'ESPC : {pd.to_datetime(gdsi.time.data)}\n'
+                    espc_flag = True
                 except KeyError as error:
-                    print(f"GOFS: False - {error}")
-                    gofs_flag = False
+                    print(f"ESPC: False - {error}")
+                    espc_flag = False
             else:
-                gofs_flag = False
+                espc_flag = False
 
             if plot_rtofs:
                 try:
@@ -305,16 +309,14 @@ def process_argo(region):
                     rlatI = np.interp(lat, rlats, ry)
 
                     rdsp = rds.sel(time=ctime, method='nearest')
-                    rdsi = rdsp.interp(
+                    rdsi = rdsp.sel(
                         x=rlonI,
                         y=rlatI,
+                        method='nearest'
                         # depth=xr.DataArray(depths_interp, dims='depth')
                     )
                     
                     # Calculate density for rtofs profile
-                    # rdsi['pressure'] = xr.apply_ufunc(seawater.eos80.pres, rdsi.depth, rdsi.lat)
-                    # rdsi['density'] = xr.apply_ufunc(seawater.eos80.dens, rdsi.salinity, rdsi.temperature, rdsi.pressure)
-
                     rdsi['density'] = density(rdsi.temperature, -rdsi.depth, rdsi.salinity, rdsi.lat, rdsi.lon)
 
                     # Calculate ocean heat content for profile
@@ -355,16 +357,14 @@ def process_argo(region):
                     rlatI = np.interp(lat, rlats, ry)
 
                     pdsp = pds.sel(time=ctime, method='nearest')
-                    pdsi = pdsp.interp(
+                    pdsi = pdsp.sel(
                         x=rlonI,
                         y=rlatI,
+                        method='nearest'
                         # depth=xr.DataArray(depths_interp, dims='depth')
                     )
                     
                     # Calculate density for rtofs profile
-                    # rdsi['pressure'] = xr.apply_ufunc(seawater.eos80.pres, rdsi.depth, rdsi.lat)
-                    # rdsi['density'] = xr.apply_ufunc(seawater.eos80.dens, rdsi.salinity, rdsi.temperature, rdsi.pressure)
-
                     pdsi['density'] = density(pdsi.temperature, -pdsi.depth, pdsi.salinity, pdsi.lat, pdsi.lon)
 
                     # Calculate ocean heat content for profile
@@ -401,15 +401,14 @@ def process_argo(region):
                 try:
                     # Copernicus
                     cdsp = cds.sel(time=ctime, method='nearest')
-                    cdsi = cdsp.interp(
+                    cdsi = cdsp.sel(
                         lon=lon, 
                         lat=lat,
+                        method='nearest'
                         # depth=xr.DataArray(depths_interp, dims='depth')
                         )
                     
                     # Calculate density for rtofs profile
-                    # cdsi['pressure'] = xr.apply_ufunc(seawater.eos80.pres, cdsi.depth, cdsi.lat)
-                    # cdsi['density'] = xr.apply_ufunc(seawater.eos80.dens, cdsi.salinity, cdsi.temperature, cdsi.pressure)
                     cdsi['density'] = density(cdsi.temperature, -cdsi.depth, cdsi.salinity, cdsi.lat, cdsi.lon)
 
                     clon = cdsi.lon.data.round(2)
@@ -435,9 +434,10 @@ def process_argo(region):
                 try:
                     # AMSEAS
                     adsp = ams.sel(time=ctime, method='nearest')
-                    adsi = adsp.interp(
+                    adsi = adsp.sel(
                         lon=lon180to360(lon), # Convert longitude to 360 convention
-                        lat=lat
+                        lat=lat,
+                        method='nearest'
                     )
                     # Convert the lon back to a 180 degree lon
                     adsi['lon'] = lon360to180(adsi['lon'])
@@ -486,8 +486,8 @@ def process_argo(region):
             ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
             ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
 
-            # GOFS
-            if gofs_flag:
+            # ESPC
+            if espc_flag:
                 ax1.plot(gdsi['temperature'], gdsi['depth'], linestyle='-',  marker='o',color='green', label=glabel)
                 ax2.plot(gdsi['salinity'], gdsi['depth'],linestyle= '-',   marker='o', color='green', label=glabel)
                 ax3.plot(gdsi['density'], gdsi['depth'], linestyle='-',   marker='o', color='green', label=glabel)
@@ -542,17 +542,22 @@ def process_argo(region):
             ax5.plot(lon, lat, 'bo', transform=conf.projection['data'], zorder=101)
             ax5.streamplot(tmp.lon.data, tmp.lat.data, tmp.u.data, tmp.v.data, transform=conf.projection['data'], density=1.5, linewidth=1, color='lightgray', zorder=100)
 
+            import shapely
+            bathy_flag=False
             if bathy_flag:
-                ax5.contourf(
-                    bathy['longitude'],
-                    bathy['latitude'],
-                    bathy['elevation'],
-                    levels,
-                    colors=colors,
-                    transform=conf.projection['data'],
-                    ticks=False,
-                    zorder=98
-                    )
+                try:
+                    ax5.contourf(
+                        bathy['longitude'],
+                        bathy['latitude'],
+                        bathy['z'],
+                        levels,
+                        colors=colors,
+                        transform=conf.projection['data'],
+                        ticks=False,
+                        zorder=98
+                        )
+                except shapely.errors.GEOSException:
+                    pass
         
             h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
 
@@ -588,10 +593,10 @@ def process_argo(region):
                 pass
             
             try:           
-                if np.isnan(ohc_gofs):
-                    ohc_string += 'GOFS: N/A,  '
+                if np.isnan(ohc_espc):
+                    ohc_string += 'ESPC: N/A,  '
                 else:
-                    ohc_string += f"GOFS: {ohc_gofs:.4f},  "
+                    ohc_string += f"ESPC: {ohc_espc:.4f},  "
             except:
                 pass
                 
@@ -750,6 +755,7 @@ def main():
         elif isinstance(parallel, int):
             workers = parallel
 
+        print(f"Running in parallel mode with {workers} workers")
         with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
             executor.map(process_argo, conf.regions)
     else:
