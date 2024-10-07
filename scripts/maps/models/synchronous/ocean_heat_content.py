@@ -12,14 +12,15 @@ from ioos_model_comparisons.calc import (lon180to360,
                              )
 from ioos_model_comparisons.platforms import (get_active_gliders, 
                                   get_argo_floats_by_time,
-                                  get_bathymetry)
+                                  )
 from ioos_model_comparisons.plotting import plot_ohc
 from ioos_model_comparisons.regions import region_config
 from shapely.errors import TopologicalError
 from ioos_model_comparisons.models import rtofs as r
-from ioos_model_comparisons.models import gofs as g
-from ioos_model_comparisons.models import cmems as c
+from ioos_model_comparisons.models import espc as g
+from ioos_model_comparisons.models import CMEMS as c
 from ioos_model_comparisons.models import amseas as a
+from cool_maps.plot import get_bathymetry
 
 import xarray as xr
 
@@ -30,16 +31,17 @@ parallel = True # utilize parallel processing?
 
 # Which models should we plot?
 plot_rtofs = True
-plot_gofs = True
+plot_espc = True
 plot_cmems = True
-plot_amseas = True
+plot_amseas = False
+plot_para = True
 
 # Set path to save plots
 path_save = (conf.path_plots / "maps")
 
 # For debug
 # conf.days = 1
-# conf.regions = ['gom']
+conf.regions = ['gom']
 
 # initialize keyword arguments. Grab anything from configs.py
 kwargs = dict()
@@ -53,7 +55,6 @@ today = dt.date.today()
 date_end = today + dt.timedelta(days=1)
 date_start = today - dt.timedelta(days=conf.days)
 freq = '6H'
-
 # Create dates that we want to plot
 date_list = pd.date_range(date_start, date_end, freq=freq)
 
@@ -109,7 +110,24 @@ if plot_rtofs:
     grid_x = rds.x.values
     grid_y = rds.y.values
 
-if plot_gofs:
+if plot_para:
+    # Load RTOFS and subset to global_extent of regions we are looking at.
+    rdsp = r(source='parallel')
+    lons_ind = np.interp(global_extent[:2], rdsp.lon.values[0,:], rdsp.x.values)
+    lats_ind = np.interp(global_extent[2:], rdsp.lat.values[:,0], rdsp.y.values)
+
+    rdsp = rdsp.isel(
+        x=slice(np.floor(lons_ind[0]).astype(int), np.ceil(lons_ind[1]).astype(int)), 
+        y=slice(np.floor(lats_ind[0]).astype(int), np.ceil(lats_ind[1]).astype(int))
+        )
+
+    # # Save rtofs lon and lat as variables to speed up indexing calculation
+    # grid_lons = rds.lon.values[0,:]
+    # grid_lats = rds.lat.values[:,0]
+    # grid_x = rds.x.values
+    # grid_y = rds.y.values
+
+if plot_espc:
     # Load GOFS
     gds = g(rename=True).sel(
         lon=slice(lon_transform[0], lon_transform[1]),
@@ -118,10 +136,18 @@ if plot_gofs:
 
 if plot_cmems:
     # Load Copernicus
-    cds = c(rename=True).sel(
+    # cds = c(rename=True).sel(
+    #     lon=slice(global_extent[0], global_extent[1]),
+    #     lat=slice(global_extent[2], global_extent[3]) 
+    # )
+    cds = c()
+    cds = cds.data
+    cds.attrs['model'] = 'CMEMS'
+
+    cds = cds.sel(
         lon=slice(global_extent[0], global_extent[1]),
-        lat=slice(global_extent[2], global_extent[3]) 
-    )
+        lat=slice(global_extent[2], global_extent[3])
+        )
 
 
 if plot_amseas:
@@ -131,6 +157,33 @@ if plot_amseas:
         lon=slice(lon_transform[0], lon_transform[1]),
         lat=slice(global_extent[2], global_extent[3])
         )
+    
+# from tropycal import realtime
+# from tropycal.utils.generic_utils import wind_to_category, generate_nhc_cone
+
+# realtime_obj = realtime.Realtime()
+
+# storm_dict = {}
+# storms = [realtime_obj.get_storm(key) for key in realtime_obj.list_active_storms(basin='north_atlantic')]
+# for s in storms:
+#     if s.name == 'IDALIA':
+#         storm_dict[s.name] = {}
+#         storm_dict[s.name]['track'] = pd.DataFrame({"date": s.date, "lon": s.lon, "lat": s.lat}).set_index('date')
+#         storm_dict[s.name]['cone'] = {}
+
+#         for t in date_list:
+#             storm_dict[s.name]['cone'][t] = generate_nhc_cone(s.get_nhc_forecast_dict(t), s.basin, cone_days=5)
+
+# kwargs['storms'] = storm_dict
+
+# storm_dict = {}
+# # storms = [realtime_obj.get_storm(key) for key in realtime_obj.list_active_storms(basin='north_atlantic')]
+# from tropycal import tracks
+# # import pandas as pd
+# from tropycal import realtime
+
+# basin = tracks.TrackDataset(basin='north_atlantic', source='ibtracs', include_btk=False)
+# storms = basin.get_storm(('idalia', 2023))
 
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
@@ -163,7 +216,31 @@ def plot_ctime(ctime):
             print(f"RTOFS: False")
             rdt_flag = False
 
-    if plot_gofs:
+    if plot_para:
+        try:
+            rdsp_time = rdsp.sel(time=ctime)
+            # startTime = time.time()
+            rdsp_time['density'] = xr.apply_ufunc(density, 
+                                    rdsp_time['temperature'], 
+                                    -rdsp_time['depth'],
+                                    rdsp_time['salinity'], 
+                                    rdsp_time['lat'], 
+                                    rdsp_time['lon']
+                                    )
+            rdsp_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+                                rdsp_time.depth, 
+                                rdsp_time.temperature, 
+                                rdsp_time.density, 
+                                input_core_dims=[['depth'], ['depth'], ['depth']], 
+                                vectorize=True)
+            # print('RTOFS - Execution time in seconds: ' + str(time.time() - startTime))
+            print(f"RTOFS Parallel: True")
+            rdtp_flag = True
+        except KeyError as error:
+            print(f"RTOFS Parallel: False")
+            rdtp_flag = False  
+
+    if plot_espc:
         try:
             gds_time = gds.sel(time=ctime)
             # startTime = time.time()
@@ -302,6 +379,26 @@ def plot_ctime(ctime):
                 x=slice(extent_ind[0], extent_ind[1]), 
                 y=slice(extent_ind[2], extent_ind[3])
                 )
+
+        if rdtp_flag:
+            # Find x, y indexes of the area we want to subset
+            lons_ind = np.interp(extent_data[:2], grid_lons, grid_x)
+            lats_ind = np.interp(extent_data[2:], grid_lats, grid_y)
+
+            # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice 
+            # in order to widen the area of the extent slightly.
+            extent_ind = [
+                np.floor(lons_ind[0]).astype(int),
+                np.ceil(lons_ind[1]).astype(int),
+                np.floor(lats_ind[0]).astype(int),
+                np.ceil(lats_ind[1]).astype(int)
+                ]
+
+            # Use .isel selector on x/y since we know indexes that we want to slice
+            rdsp_slice = rdsp_time.sel(
+                x=slice(extent_ind[0], extent_ind[1]), 
+                y=slice(extent_ind[2], extent_ind[3])
+                )
             
         if gdt_flag:
             # subset dataset to the proper extents for each region
@@ -369,6 +466,9 @@ def plot_ctime(ctime):
 
             if rdt_flag and amt_flag:
                 plot_ohc(rds_slice, amt_slice, extent, configs['name'], **kwargs)
+
+            if rdt_flag and rdtp_flag:
+                plot_ohc(rds_slice, rdsp_slice, extent, configs['name'], **kwargs)
 
             # Delete some keyword arguments that may not be defined in all
             # regions. We don't want to plot the regions with wrong inputs 
