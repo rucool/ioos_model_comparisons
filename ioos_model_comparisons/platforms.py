@@ -418,47 +418,6 @@ def get_ndbc(bbox=None, time_start=None, time_end=None, buoy=None):
     return df
 
 
-def get_bathymetry(bbox=None):
-    """
-    Function to select bathymetry within a bounding box.
-    This function pulls GEBCO 2014 bathy data from hfr.marine.rutgers.edu 
-
-    Args:
-        bbox (list, optional): Cartopy bounding box. Defaults to None.
-
-    Returns:
-        xarray.Dataset: xarray Dataset containing bathymetry data
-    """
-    bbox = bbox or [-100, -45, 5, 46]
-
-    lons = bbox[:2]
-    lats = bbox[2:]
-
-    e = ERDDAP(
-        server="https://hfr.marine.rutgers.edu/erddap/",
-        protocol="griddap",
-        response='opendap'
-    )
-
-    e.dataset_id = "bathymetry_gebco_2014_grid"
-
-    e.griddap_initialize()
-
-    # Modify constraints
-    # e.constraints["latitude<="] = max(lats)
-    # e.constraints["latitude>="] = min(lats)
-    # e.constraints["longitude>="] = max(lons)
-    # e.constraints["longitude<="] = min(lons)
-    # ds = 
-    ds = e.to_xarray().sel(
-        longitude=slice(bbox[0], bbox[1]),
-        latitude=slice(bbox[2], bbox[3])
-        )
-
-    # return xarray dataset
-    return ds
-
-
 def get_ohc(bbox=None, time=None):
     bbox = bbox or [-100, -45, 5, 46]
 

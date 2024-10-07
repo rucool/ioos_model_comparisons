@@ -269,49 +269,95 @@ def depth_averaged_current_vectorized(depths, u_currents, v_currents):
 
 #     return temp
 
+from typing import Optional, List
+
+
 def depth_interpolate(
-    df,
-    depth_var="depth",
-    depth_min=0,
-    depth_max=1000,
-    stride=10,
-    bins=None,
-    method="linear",
-    index=None,
-):
+    df: pd.DataFrame,
+    depth_var: str = "depth",
+    depth_min: Optional[float] = 0,
+    depth_max: Optional[float] = None,
+    stride: float = 10,
+    bins: Optional[np.ndarray] = None,
+    method: str = "linear",
+    index: Optional[str] = None,
+    drop_cols: Optional[List[str]] = None,
+    interpolation_direction: str = "both",
+) -> pd.DataFrame:
+    """
+    Interpolates the data along the depth axis for a given dataframe.
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        Input dataframe with depth and associated data.
+    depth_var : str
+        Column name representing depth.
+    depth_min : Optional[float]
+        Minimum depth for interpolation. If None, uses the smallest depth in the dataframe.
+    depth_max : Optional[float]
+        Maximum depth for interpolation. If None, uses the deepest depth in the dataframe.
+    stride : float
+        Depth increment for interpolation.
+    bins : Optional[np.ndarray]
+        Custom depth bins to interpolate over. If None, bins are created using depth_min, depth_max, and stride.
+    method : str
+        Interpolation method. Options include 'linear', 'polynomial', 'cubic', etc.
+    index : Optional[str]
+        Column to use as the index after interpolation.
+    drop_cols : Optional[List[str]]
+        Columns to drop before interpolation.
+    interpolation_direction : str
+        Direction of interpolation. Can be 'forward', 'backward', or 'both'.
+    
+    Returns:
+    --------
+    pd.DataFrame
+        Interpolated dataframe with the specified depth bins.
+    """
     if df.empty:
         raise ValueError("Dataframe is empty")
         
     if depth_var not in df.columns:
         raise ValueError(f"'{depth_var}' is not a valid column in the dataframe")
 
+    if stride <= 0:
+        raise ValueError(f"Stride must be positive, but got {stride}")
+
+    # Handle depth_max as optional
+    actual_depth_max = df[depth_var].max()
+    if depth_max is None:
+        depth_max = actual_depth_max
+    else:
+        depth_max = min(depth_max, actual_depth_max)
+
+    # Ensure depth_min is valid
+    actual_depth_min = df[depth_var].min()
+    if depth_min is None or depth_min < actual_depth_min:
+        depth_min = actual_depth_min
+
     # Generate bins if not provided
     if bins is None:
-        # Handle depth_min and depth_max arguments
-        for var_name, default_val in [("depth_min", df[depth_var].min()), ("depth_max", df[depth_var].max())]:
-            var_val = eval(var_name)
-            if isinstance(var_val, str):
-                if var_val.lower() == "round":
-                    locals()[var_name] = round(default_val)
-                else:
-                    try:
-                        locals()[var_name] = int(var_val)
-                    except ValueError:
-                        raise ValueError(f"Invalid value '{var_val}' for {var_name}. Expected 'round' or a number.")
         bins = np.arange(depth_min, depth_max + stride, stride)
 
-    temp = df.set_index(depth_var)
-    temp = temp[~temp.index.duplicated()]
-    temp = temp.reindex(temp.index.union(bins))
-    
-    if "time" in temp.columns:
-        temp = temp.drop("time", axis=1)
-        
-    # temp = temp.interpolate(method=method, limit_direction="both")
-    temp = temp.interpolate(method=method, limit_direction='both')
-    temp = temp.reindex(index=bins)
-    temp = temp.reset_index()
+    # Remove duplicate depth values, handle them as needed (e.g., take the mean)
+    df = df.groupby(depth_var).mean().reset_index()
 
+    # Reindex for interpolation
+    temp = df.set_index(depth_var)
+    temp = temp.reindex(temp.index.union(bins))
+
+    # Optionally drop specified columns before interpolation
+    if drop_cols:
+        temp = temp.drop(columns=drop_cols, errors='ignore')
+
+    # Interpolate missing values
+    temp = temp.interpolate(method=method, limit_direction=interpolation_direction)
+
+    # Reindex back to the bins and reset index
+    temp = temp.reindex(index=bins).reset_index()
+
+    # Optionally set the provided index column
     if index:
         temp = temp.set_index(index)
 

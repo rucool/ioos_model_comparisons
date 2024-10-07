@@ -2131,8 +2131,8 @@ def salinity_max_comparison(ds1, ds2, extent, region_name,
         #                    )
             
         # Add eez lines
-        if eez:
-            map_add_eez(ax, color='white', zorder=10, linewidth=1)
+        # if eez:
+            # map_add_eez(ax, color='white', zorder=10, linewidth=1)
 
         # Plot gliders and argo floats 
         plot_regional_assets(ax, **rargs)
@@ -2348,7 +2348,7 @@ def plot_ohc(ds1, ds2, extent, region_name,
             add_bathymetry(ax,
                            bathy.longitude.values, 
                            bathy.latitude.values, 
-                           bathy.elevation.values,
+                           bathy.z.values,
                            levels=(-1000, -100),
                            zorder=1.5
                            )
@@ -2568,7 +2568,7 @@ def plot_ohc_single(ds1, extent, region_name,
 
 
     # Create an additional axes for the legend at the bottom
-    ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
+    # ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
 
     create(extent, ax=ax1, ticks=False)
         
@@ -2576,7 +2576,7 @@ def plot_ohc_single(ds1, extent, region_name,
         add_bathymetry(ax1,
                         bathy.longitude.values, 
                         bathy.latitude.values, 
-                        bathy.elevation.values,
+                        bathy.z.values,
                         levels=(-1000, -100),
                         zorder=1.5
                         )
@@ -2645,30 +2645,30 @@ def plot_ohc_single(ds1, extent, region_name,
     leg1 = ax1.legend(h0, l0, loc='upper left', fontsize=9)
 
     # # Deal with the third axes
-    h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
-    if (len(h) > 0) & (len(l) > 0):
+    # h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+    # if (len(h) > 0) & (len(l) > 0):
  
-        # Add handles to legend
-        leg = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
+    #     # Add handles to legend
+    #     leg = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
 
-        # Add title to legend
-        t0 = []
-        if isinstance(argo, DataFrame):
-            if not argo.empty:
-                t0.append(argo.index.min()[1])
+    #     # Add title to legend
+    #     t0 = []
+    #     if isinstance(argo, DataFrame):
+    #         if not argo.empty:
+    #             t0.append(argo.index.min()[1])
 
-        if isinstance(gliders, DataFrame):
-            if not gliders.empty:
-                t0.append(gliders.index.min()[1])
+    #     if isinstance(gliders, DataFrame):
+    #         if not gliders.empty:
+    #             t0.append(gliders.index.min()[1])
 
-        if len(t0) > 0:
-            t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
-        else:
-            t0 = None
-        legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
-        leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
-        # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
-    ax3.set_axis_off()
+    #     if len(t0) > 0:
+    #         t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+    #     else:
+    #         t0 = None
+    #     legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
+    #     leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
+    #     # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+    # ax3.set_axis_off()
 
 
     leg1.set_zorder(10001)
@@ -2682,43 +2682,16 @@ def plot_ohc_single(ds1, extent, region_name,
     # ax1.set_title(f"{ds1.model.upper()}", fontsize=16, fontweight='bold')
     fig.suptitle(f"Ocean Heat Content - {ds1.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
 
-    from ioos_model_comparisons.plotting_hurricanes import plot_storms
-    # from tropycal import realtime
-    # import datetime as dt
-    
-    # realtime_obj = realtime.Realtime()
+    # from ioos_model_comparisons.plotting_hurricanes import plot_storms
+    # import tropycal.tracks as tracks
 
-    # realtime_obj.list_active_storms(basin='north_atlantic')
+    # hurricane_data = tracks.TrackDataset(basin='north_atlantic', include_btk=True)
+    # idalia = hurricane_data.get_storm(("helene", 2024))
 
-    # realtime_obj.plot_summary(domain={'w':-100,'e':-10,'s':4,'n':60})
-    # import pandas as pd
-    from tropycal.utils.generic_utils import generate_nhc_cone
-    import tropycal.tracks as tracks
-
-    hurricane_data = tracks.TrackDataset(basin='north_atlantic', include_btk=True)
-    idalia = hurricane_data.get_storm(("idalia", 2023))
-    
-    fcast = idalia.get_nhc_forecast_dict(time=pd.Timestamp(2023, 8, 28))  # This will return the NHC forecast dictionary
-
-    # cone = generate_nhc_cone(fcast, basin='north_atlantic')
-
-    # # #Get realtime forecasts
-    # forecasts = []
-    # for key in realtime_obj.storms:
-    #     if realtime_obj[key].invest == False:
-    #         try:
-    #             forecasts.append(realtime_obj.get_storm(key).get_forecast_realtime(True))
-    #         except:
-    #             forecasts.append({})
-    #     else:
-    #         forecasts.append({})
-    # forecasts = [entry if 'init' in entry.keys() and (dt.datetime.utcnow() - entry['init']).total_seconds() / 3600.0 <= 12 else {} for entry in forecasts]
-    # storms = [realtime_obj.get_storm(key) for key in realtime_obj.storms]
-    forecasts = [fcast]
-    storms = [idalia]
-
-    plot_storms(ax1, storms, forecasts, zorder=80)
-
+    # fcast = idalia.get_nhc_forecast_dict(time=pd.Timestamp(2024, 9, 26))  # This will return the NHC forecast dictionary
+    # forecasts = [fcast]
+    # storms = [idalia]
+    # plot_storms(ax1, storms, forecasts, zorder=80)
 
     # Hide x labels and tick labels for top plots and y ticks for right plots.
     # for axs in ax.flat:
@@ -2785,7 +2758,7 @@ def plot_salt_single(ds1, extent, region_name,
 
 
     # Create an additional axes for the legend at the bottom
-    ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
+    # ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
 
     create(extent, ax=ax1, ticks=False)
         
@@ -2793,7 +2766,7 @@ def plot_salt_single(ds1, extent, region_name,
         add_bathymetry(ax1,
                         bathy.longitude.values, 
                         bathy.latitude.values, 
-                        bathy.elevation.values,
+                        bathy.z.values,
                         levels=(-1000, -100),
                         zorder=1.5
                         )
@@ -2815,8 +2788,8 @@ def plot_salt_single(ds1, extent, region_name,
 
     # Calculate contours
     # if limits:
-    ohc_min = 32.0
-    ohc_max = 36.4
+    ohc_min = 32.5
+    ohc_max = 36.5
     ohc_stride = .1
     # else:
     #     # Calculate the colorbar limits automatically
@@ -2861,31 +2834,31 @@ def plot_salt_single(ds1, extent, region_name,
     # l0.append('Past 5 days')
     leg1 = ax1.legend(h0, l0, loc='upper left', fontsize=9)
 
-    # # Deal with the third axes
-    h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
-    if (len(h) > 0) & (len(l) > 0):
+    # # # Deal with the third axes
+    # h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+    # if (len(h) > 0) & (len(l) > 0):
  
-        # Add handles to legend
-        leg = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
+    #     # Add handles to legend
+    #     leg = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
 
-        # Add title to legend
-        t0 = []
-        if isinstance(argo, pd.DataFrame):
-            if not argo.empty:
-                t0.append(argo.index.min()[1])
+    #     # Add title to legend
+    #     t0 = []
+    #     if isinstance(argo, pd.DataFrame):
+    #         if not argo.empty:
+    #             t0.append(argo.index.min()[1])
 
-        if isinstance(gliders, pd.DataFrame):
-            if not gliders.empty:
-                t0.append(gliders.index.min()[1])
+    #     if isinstance(gliders, pd.DataFrame):
+    #         if not gliders.empty:
+    #             t0.append(gliders.index.min()[1])
 
-        if len(t0) > 0:
-            t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
-        else:
-            t0 = None
-        legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
-        leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
-        # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
-    ax3.set_axis_off()
+    #     if len(t0) > 0:
+    #         t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+    #     else:
+    #         t0 = None
+    #     legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
+    #     leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
+    #     # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+    # ax3.set_axis_off()
 
 
     leg1.set_zorder(10001)
@@ -2899,30 +2872,15 @@ def plot_salt_single(ds1, extent, region_name,
     # ax1.set_title(f"{ds1.model.upper()}", fontsize=16, fontweight='bold')
     fig.suptitle(f"Salinity - {ds1.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
 
+    # import tropycal.tracks as tracks
     # from ioos_model_comparisons.plotting_hurricanes import plot_storms
-    # from tropycal import realtime
-    # import datetime as dt
-    
-    # realtime_obj = realtime.Realtime()
 
-    # realtime_obj.list_active_storms(basin='north_atlantic')
-
-    # # realtime_obj.plot_summary(domain={'w':-100,'e':-10,'s':4,'n':60})
-
-    # #Get realtime forecasts
-    # forecasts = []
-    # for key in realtime_obj.storms:
-    #     if realtime_obj[key].invest == False:
-    #         try:
-    #             forecasts.append(realtime_obj.get_storm(key).get_forecast_realtime(True))
-    #         except:
-    #             forecasts.append({})
-    #     else:
-    #         forecasts.append({})
-    # forecasts = [entry if 'init' in entry.keys() and (dt.utcnow() - entry['init']).total_seconds() / 3600.0 <= 12 else {} for entry in forecasts]
-    # storms = [realtime_obj.get_storm(key) for key in realtime_obj.storms]
-
-    # plot_storms(ax, storms, forecasts, zorder=80)
+    # hurricane_data = tracks.TrackDataset(basin='north_atlantic', include_btk=True)
+    # idalia = hurricane_data.get_storm(("idalia", 2023))
+    # fcast = idalia.get_nhc_forecast_dict(time=pd.Timestamp(2023, 8, 28))  # This will return the NHC forecast dictionary
+    # forecasts = [fcast]
+    # storms = [idalia]
+    # plot_storms(ax1, storms, forecasts, zorder=80)
 
 
     # Hide x labels and tick labels for top plots and y ticks for right plots.

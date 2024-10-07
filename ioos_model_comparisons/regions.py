@@ -200,7 +200,7 @@ def region_config(regions=None, model=None):
         # Gulf of Mexico Limits
         name = "Gulf of Mexico"
         folder = "gulf_of_mexico"
-        extent = [-99, -79, 18, 31]
+        extent = [-99, -78, 18, 33]
         sea_water_temperature = [
             dict(depth=0, limits=[25, 31.5, .5]),
             dict(depth=150, limits=[14, 26, .5]),
@@ -208,8 +208,8 @@ def region_config(regions=None, model=None):
             ]
         salinity = [
             dict(depth=0, limits=[32.0, 36.6, .1]), 
-            dict(depth=150, limits=[35.6, 37.0, .1]),
-            dict(depth=200, limits=[35.7, 36.8, .1]),
+            dict(depth=150, limits=[35.6, 37.1, .1]),
+            dict(depth=200, limits=[35.7, 37.1, .1]),
             ]
         sea_surface_height = [
             # dict(depth=0, limits=[-.6, .7, .1])
@@ -253,7 +253,7 @@ def region_config(regions=None, model=None):
             ]
         salinity = [
             dict(depth=0, limits=[36, 36.9, .1]),
-            dict(depth=150, limits=[36, 36.9, .05]),
+            dict(depth=150, limits=[36, 37.05, .05]),
             # dict(depth=200, limits=[35.8, 36.8, .1])
             ]
         sea_surface_height = [
@@ -377,13 +377,13 @@ def region_config(regions=None, model=None):
             dict(depth=0, limits=[28, 31.75, .25]),
             # dict(depth=100, limits=[18, 27.5, .5]),
             dict(depth=150, limits=[17, 25, .5]),
-            # dict(depth=200, limits=[14, 22.5, .5])
+            dict(depth=200, limits=[14, 22.5, .5])
             ]
         salinity = [
             dict(depth=0, limits=[34.6, 36.8, .1]),
             # dict(depth=100, limits=[35.5, 37.1, .1]),
             dict(depth=150, limits=[35.7, 37.4, .1]),
-            # dict(depth=200, limits=[35.6, 37, .1])
+            dict(depth=200, limits=[35.6, 37.1, .1])
             ]
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
