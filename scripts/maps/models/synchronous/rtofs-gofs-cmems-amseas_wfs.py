@@ -49,7 +49,7 @@ plot_cnaps = False
 kwargs = {
     'transform': conf.projection,
     'dpi': conf.dpi,
-    'overwrite': True,
+    'overwrite': False,
     'colorbar': True,
     'legend': True,
 }
