@@ -39,7 +39,7 @@ path_save = conf.path_plots / "maps"
 
 # Model selection flags
 plot_rtofs = True
-plot_para = False
+plot_para = True
 plot_espc = True
 plot_cmems = True
 plot_amseas = False
@@ -55,8 +55,8 @@ kwargs = {
 }
 
 # Configuration for regions and days to process
-conf.days = 2
-conf.regions = ['hawaii', 'mexico_pacific']
+conf.days = 1
+conf.regions = ['mab']
 
 # Date range for processing
 today = dt.date.today()
@@ -118,7 +118,7 @@ def load_model(model_func, model_name, source=None, rename=True):
         return None
 
 # Load selected models with error handling
-rds = load_model(rtofs, 'RTOFS', source='west') if plot_rtofs else None
+rds = load_model(rtofs, 'RTOFS')
 rtofs_para = load_model(rtofs, 'RTOFS Parallel', source='parallel') if plot_para else None
 # gds = load_model(espc, 'ESPC') if plot_espc else None
 gds_instance = ESPC() if plot_espc else None

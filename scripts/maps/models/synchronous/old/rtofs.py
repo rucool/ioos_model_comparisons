@@ -5,10 +5,13 @@ import ioos_model_comparisons.configs as configs
 import numpy as np
 import pandas as pd
 from ioos_model_comparisons.models import rtofs
-from ioos_model_comparisons.platforms import (get_active_gliders, get_argo_floats_by_time,
-                                  get_bathymetry)
+from ioos_model_comparisons.platforms import (
+    get_active_gliders, 
+    get_argo_floats_by_time
+    )
 from ioos_model_comparisons.plotting import plot_model_region
 from ioos_model_comparisons.regions import region_config
+from cool_maps.download import get_bathymetry
 
 # Get path information about this script
 script_name = Path(__file__).name
@@ -27,6 +30,9 @@ kwargs['dpi'] = configs.dpi
 today = dt.date.today() 
 tomorrow = today + dt.timedelta(days=1)
 past = today - dt.timedelta(days=configs.days)
+
+past = pd.Timestamp(2024, 5, 1, 0, 0, 0)
+tomorrow = pd.Timestamp(2024, 10, 11, 0, 0, 0)
 
 # Create dates that we want to plot
 date_list = pd.date_range(past, tomorrow, freq='6H')

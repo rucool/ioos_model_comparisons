@@ -388,7 +388,7 @@ def plot_model_region(ds, region,
                 add_bathymetry(ax,
                                 bathy.longitude.values, 
                                 bathy.latitude.values, 
-                                bathy.elevation.values,
+                                bathy.z.values,
                                 levels=(-1000, -100),
                                 zorder=1.5)
 
@@ -452,15 +452,15 @@ def plot_model_region(ds, region,
 
             fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             
-            # Add currents
-            if currents['bool']:
-                quiver_dir = save_dir_final / "currents"
-                os.makedirs(quiver_dir, exist_ok=True)
+            # # Add currents
+            # if currents['bool']:
+            #     quiver_dir = save_dir_final / "currents"
+            #     os.makedirs(quiver_dir, exist_ok=True)
                 
-                save_file_q = quiver_dir / f"{sname}.png"
-                coarsen = currents['coarsen']
-                map_add_currents(ax, da, coarsen=coarsen[model], **currents['kwargs'])
-                fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            #     save_file_q = quiver_dir / f"{sname}.png"
+            #     coarsen = currents['coarsen']
+            #     map_add_currents(ax, da, coarsen=coarsen[model], **currents['kwargs'])
+            #     fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             
             plt.close()
 
@@ -949,7 +949,8 @@ def plot_model_region_comparison(ds1, ds2, region,
                                        figsize=(14,8),
                                        dpi=150,
                                        colorbar=True,
-                                       overwrite=False
+                                       overwrite=False,
+                                       legend=True,
                                        ):
     
     # Convert ds.time value to a normal datetime
@@ -1052,7 +1053,7 @@ def plot_model_region_comparison(ds1, ds2, region,
     ax1.set_title(ds1.model, fontsize=16, fontweight="bold")
     ax2.set_title(ds2.model, fontsize=16, fontweight="bold")
     txt = plt.suptitle("", fontsize=22, fontweight="bold")
-    
+
     # Deal with the third axes
     h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
     if (len(h) > 0) & (len(l) > 0):
@@ -1564,7 +1565,8 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
                                                 figsize=(14,8),
                                                 dpi=150,
                                                 colorbar=True,
-                                                overwrite=False
+                                                overwrite=False, 
+                                                legend=True,
                                                 ):
 
     time = pd.to_datetime(ds1.time.data)

@@ -4,8 +4,8 @@ import datetime as dt
 from tqdm import tqdm
 from pathlib import Path
 
-# ddir = Path('/Users/mikesmith/Documents/data/rtofs/')
-ddir = Path('/home/hurricaneadm/data/rtofs')
+ddir = Path('/Users/mikesmith/Documents/data/rtofs/')
+# ddir = Path('/home/hurricaneadm/data/rtofs')
 
 url = 'ftp.ncep.noaa.gov'
 rtofs_dir = 'pub/data/nccf/com/rtofs/'

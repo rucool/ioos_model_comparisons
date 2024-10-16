@@ -16,10 +16,6 @@ from ioos_model_comparisons.platforms import (get_active_gliders,
 from ioos_model_comparisons.plotting import plot_ohc
 from ioos_model_comparisons.regions import region_config
 from shapely.errors import TopologicalError
-from ioos_model_comparisons.models import rtofs as r
-from ioos_model_comparisons.models import espc as g
-from ioos_model_comparisons.models import CMEMS as c
-from ioos_model_comparisons.models import amseas as a
 from cool_maps.plot import get_bathymetry
 
 import xarray as xr
@@ -27,7 +23,7 @@ import xarray as xr
 startTime = time.time()
 matplotlib.use('agg')
 
-parallel = True # utilize parallel processing?
+parallel = False # utilize parallel processing?
 
 # Which models should we plot?
 plot_rtofs = True
@@ -41,7 +37,7 @@ path_save = (conf.path_plots / "maps")
 
 # For debug
 # conf.days = 1
-conf.regions = ['gom']
+conf.regions = ['mab', 'sab', 'gom', 'caribbean', 'tropical_western_atlantic']
 
 # initialize keyword arguments. Grab anything from configs.py
 kwargs = dict()
@@ -52,7 +48,7 @@ kwargs['overwrite'] = False
 # Get today and yesterday dates
 today = dt.date.today()
 # today = dt.datetime(*dt.date.today().timetuple()[:3]) + dt.timedelta(hours=12)
-date_end = today + dt.timedelta(days=1)
+date_end = today + dt.timedelta(days=2)
 date_start = today - dt.timedelta(days=conf.days)
 freq = '6H'
 # Create dates that we want to plot
@@ -94,6 +90,8 @@ if conf.bathy:
     bathy_data = get_bathymetry(global_extent)
 
 if plot_rtofs:
+    from ioos_model_comparisons.models import rtofs as r
+
     # Load RTOFS and subset to global_extent of regions we are looking at.
     rds = r()
     lons_ind = np.interp(global_extent[:2], rds.lon.values[0,:], rds.x.values)
@@ -128,29 +126,30 @@ if plot_para:
     # grid_y = rds.y.values
 
 if plot_espc:
+    from ioos_model_comparisons.models import ESPC as g
+
     # Load GOFS
-    gds = g(rename=True).sel(
-        lon=slice(lon_transform[0], lon_transform[1]),
-        lat=slice(global_extent[2], global_extent[3])
-    )
+    gds = g()
+    gds = gds.get_combined_subset(global_extent[:2], global_extent[2:])
+    # .sel(
+    #     lon=slice(lon_transform[0], lon_transform[1]),
+    #     lat=slice(global_extent[2], global_extent[3])
+    # )
 
 if plot_cmems:
+    from ioos_model_comparisons.models import CMEMS as c
+
     # Load Copernicus
     # cds = c(rename=True).sel(
     #     lon=slice(global_extent[0], global_extent[1]),
     #     lat=slice(global_extent[2], global_extent[3]) 
     # )
     cds = c()
-    cds = cds.data
-    cds.attrs['model'] = 'CMEMS'
-
-    cds = cds.sel(
-        lon=slice(global_extent[0], global_extent[1]),
-        lat=slice(global_extent[2], global_extent[3])
-        )
-
+    cds = cds.get_combined_subset(global_extent[:2], global_extent[2:])
 
 if plot_amseas:
+    from ioos_model_comparisons.models import amseas as a
+
     # Load amseas
     am = a(rename=True)
     ads = am.sel(
@@ -403,12 +402,12 @@ def plot_ctime(ctime):
         if gdt_flag:
             # subset dataset to the proper extents for each region
             gds_slice = gds_time.sel(
-                lon=slice(lon360[0], lon360[1]),
+                lon=slice(extent_data[0], extent_data[1]),
                 lat=slice(extent_data[2], extent_data[3])
             )
 
             # Convert from 0,360 lon to -180,180
-            gds_slice['lon'] = lon360to180(gds_slice['lon'])
+            # gds_slice['lon'] = lon360to180(gds_slice['lon'])
 
         if cdt_flag:
             cds_slice= cds_time.sel(

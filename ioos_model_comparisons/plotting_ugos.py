@@ -341,15 +341,15 @@ def surface_current_fronts_single(ds1, region,
         bh = cplt.add_bathymetry(ax,
                                  bathy['longitude'],
                                  bathy['latitude'],
-                                 bathy['elevation'], 
+                                 bathy['z'], 
                                  levels=(-1000, -100)
                                  )
         levels = [-8000, -1000, -100, 0]
         colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
         cs1 = ax.contourf(bathy['longitude'],
-                         bathy['latitude'],
-                         bathy['elevation'],
-                         levels, colors=colors, transform=ccrs.PlateCarree(), ticks=False)
+                          bathy['latitude'],
+                          bathy['z'],
+                          levels, colors=colors, transform=ccrs.PlateCarree(), ticks=False)
 
     add_ticks(ax, extent, gridlines=True)
 

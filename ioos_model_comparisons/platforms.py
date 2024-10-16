@@ -14,6 +14,13 @@ from numpy import isin
 from requests.exceptions import HTTPError as rHTTPError
 import requests
 import re
+import xarray as xr
+
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 Argo = namedtuple('Argo', ['name', 'lon', 'lat'])
 Glider = namedtuple('Glider', ['name', 'lon', 'lat'])
@@ -451,3 +458,14 @@ def get_ohc(bbox=None, time=None):
     except requests.exceptions.HTTPError:
         print("No data available for this time period.")
         return
+
+def get_goes():
+    # Load SST data with error handling
+    try:
+        sstdata = xr.open_dataset('http://basin.ceoe.udel.edu/thredds/dodsC/GOESNOAASST.nc')
+        sstdata = sstdata.rename({'latitude': 'lat', 'longitude': 'lon'})
+        sst_sorted = sstdata.isel(time=~sstdata['time'].to_series().duplicated()).sortby('time')
+        logger.info('SST data loaded successfully.')
+    except Exception as e:
+        logger.error(f"Failed to load SST data: {e}")
+        sst_sorted = None  # Set to None to avoid using it later if it fails

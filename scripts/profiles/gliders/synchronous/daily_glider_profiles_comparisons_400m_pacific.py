@@ -9,22 +9,16 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 from cool_maps.plot import (
-    # add_features, 
     create
     )
 
 import ioos_model_comparisons.configs as configs
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import (density,
-                                         lon180to360,
-                                         lon360to180,
                                          ocean_heat_content,
-                                        #  depth_interpolate, 
                                          depth_bin
                                          )
-from ioos_model_comparisons.models import rtofs, CMEMS, espc
 from ioos_model_comparisons.platforms import get_active_gliders, get_ohc
-# from ioos_model_comparisons.plotting import map_add_inset
 from ioos_model_comparisons.regions import region_config
 import pandas
 import matplotlib.pyplot as plt
@@ -33,13 +27,15 @@ from datetime import datetime
 import cartopy.feature as cfeature
 import math
 from cool_maps.plot import get_bathymetry
+import logging
+logging.basicConfig(level=logging.INFO)  # or adjust logging level as needed
 
 # %%
 # set path to save plots
 path_save = (configs.path_plots / "profiles" / "gliders")
 
 # dac access
-parallel = True
+parallel = False
 timeout = 60
 days = 2
 today = dt.date.today()
@@ -95,7 +91,8 @@ gliders = pd.concat(region_gliders)
 def pick_region_map(regions, point):
     distances = []
     for region in regions:
-        x0, x1, y0, y1 = region
+        extent = region_config(region)["extent"]
+        x0, x1, y0, y1 = extent
         center_x = (x0 + x1) / 2
         center_y = (y0 + y1) / 2
         distance = math.sqrt((point[0] - center_x)**2 + (point[1] - center_y)**2)
@@ -104,13 +101,15 @@ def pick_region_map(regions, point):
 
 # %% Load models
 if plot_espc:
+    from ioos_model_comparisons.models import ESPC
     print('Loading ESPC')
     # Read ESPC output
-    gofs = espc(rename=True).sel(depth=slice(0,400))
+    espc_loaded = ESPC()
     print('ESPC loaded')
     glabel = f'ESPC' # Legend labels
 
 if plot_para:
+    from ioos_model_comparisons.models import rtofs
     print('Loading RTOFS Parallel')
     # RTOFS Parallel
     rtofs_para = rtofs(source='parallel').sel(depth=slice(0,400))
@@ -128,6 +127,7 @@ if plot_para:
     rtofs_para.attrs['model'] = 'RTOFS (Parallel)'
 
 if plot_rtofs:
+    from ioos_model_comparisons.models import rtofs
     print('Loading RTOFS')
     # Read RTOFS grid and time
     rtofs = rtofs(source="west").sel(depth=slice(0,400))
@@ -141,9 +141,10 @@ if plot_rtofs:
     ry = rtofs.y.data
 
 if plot_cmems:
+    from ioos_model_comparisons.models import CMEMS
     print('Loading CMEMS')
+    
     # Read Copernicus
-    # cmems = cmems(rename=True).sel(depth=slice(0,400))
     cobj = CMEMS()
     print('CMEMS loaded')
     clabel = f"CMEMS" # Legend labels
@@ -167,9 +168,6 @@ def line_limits(fax, delta=1):
     maxs = [np.nanmax(line.get_xdata()) for line in fax.lines]
     return min(mins)-delta, max(maxs)+delta
 
-# spath = path_save / str(today.year) / today.strftime('%m-%d')
-# os.makedirs(spath, exist_ok=True)
-
 levels = [-8000, -1000, -100, 0]
 colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
 
@@ -189,9 +187,9 @@ def plot_glider_profiles(id, gliders):
     df = list(df.groupby('region'))[0][1]
 
     # Get extent for inset map
-    # try:
-    region_name = df['region'].iloc[0]
-    extent = region_config(region_name)["extent"]
+    # Find which region it's in most recently
+    found = pick_region_map(conf.regions, (df.lon.iloc[-1], df.lat.iloc[-1]))
+    extent = region_config(found[1])["extent"]
 
     try:
         bathy = get_bathymetry(extent)
@@ -317,29 +315,9 @@ def plot_glider_profiles(id, gliders):
             ohc_nesdis = nesdis.sel(longitude=mlon, latitude=mlat, method='nearest')
             ohc_nesdis = ohc_nesdis.ohc.values
         
-        if plot_espc:
-            # Convert glider lon from -180,180 to 0,359
-            lon_glider_gofs = lon180to360(mlon)
-        
+        if plot_espc:        
             # Select the nearest model time to the glider time for this profile
-            gds = gofs.sel(time=time_glider, method="nearest")
-
-            # Interpolate the model to the nearest point
-            if interp:
-                gds = gds.interp(
-                    lon=lon_glider_gofs,
-                    lat=mlat,
-                    )
-            else:
-                # select nearest neighbor grid point
-                gds = gds.sel(
-                    lon=lon_glider_gofs,
-                    lat=mlat,
-                    method="nearest"
-                )
-            
-            # Convert lon from 0,259 to -180,180
-            gds['lon'] = lon360to180(gds['lon'])
+            gds = espc_loaded.get_point(mlon, mlat, time_glider, interp=False)
 
             # Calculate density
             gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
@@ -400,27 +378,14 @@ def plot_glider_profiles(id, gliders):
             
         if plot_cmems:
             # CMEMS
-            # cds = cmems.sel(time=time_glider, method="nearest")
-            # cobj.cmems_load(extent, time_glider, subset_extent=True, subset_depth=True)
-            cds = cobj.data.sel(depth=slice(0,400)).squeeze()
-            cds = cds.sel(time=time_glider, method="nearest")
+            cds = cobj.get_point(mlon, mlat, time_glider, interp=False)
+            cds = cds.sel(depth=slice(0,400)).squeeze()
             print(f"CMEMS - Time: {pd.to_datetime(cds.time.values)}")
             # delta_time = np.abs(time_glider - pd.to_datetime(cds.time.values))
             # print(f"Threshold time: {delta_time}")
             # if delta_time < time_threshold:
             #     print(f"Difference between profile and nearest CMEMS time is {delta_time}. Interpolating to profile")
 
-            if interp:
-                cds = cds.interp(
-                    lon=mlon,
-                    lat=mlat
-                )
-            else:
-                cds = cds.sel(
-                    lon=mlon,
-                    lat=mlat,
-                    method='nearest'
-                )
             # Calculate density
             cds['density'] = density(cds['temperature'].values, -cds['depth'].values, cds['salinity'].values, cds['lat'].values, cds['lon'].values)
             ohc_cmems = ocean_heat_content(cds['depth'].values, cds['temperature'].values, cds['density'].values)
@@ -572,6 +537,9 @@ def plot_glider_profiles(id, gliders):
                         bathy['latitude'],
                         bathy['z'],
                         levels, colors=colors, transform=configs.projection['data'], ticks=False)
+
+        mpax.tick_params(axis='x', labelrotation=45)
+
         
         # Create inset axis for glider track
         # axin = map_add_inset(mpax, extent=extent, zoom_extent=extent_inset)
