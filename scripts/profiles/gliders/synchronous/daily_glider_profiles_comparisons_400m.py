@@ -321,6 +321,7 @@ def plot_glider_profiles(id, gliders):
         if plot_espc:        
             # Select the nearest model time to the glider time for this profile
             gds = espc_loaded.get_point(mlon, mlat, time_glider, interp=False)
+            gds = gds.sel(depth=slice(0,400)).squeeze()
 
             # Calculate density
             gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
@@ -629,7 +630,7 @@ def plot_glider_profiles(id, gliders):
 
         plt.savefig(fullfile, dpi=configs.dpi, bbox_inches='tight', pad_inches=0.1)
         plt.close() 
-    
+
 from functools import partial
 from joblib import Parallel, delayed
 
@@ -651,7 +652,7 @@ def main():
         # results = Parallel(n_jobs=workers)(delayed(f)(x) for x in active_gliders)
     else:
         for id in active_gliders:
-            plot_glider_profiles(id, gliders)
+            plot_glider_profiles(id, active_gliders)
 
 
 if __name__ == "__main__":
