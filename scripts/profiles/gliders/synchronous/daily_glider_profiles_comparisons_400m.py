@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO)  # or adjust logging level as needed
 path_save = (configs.path_plots / "profiles" / "gliders")
 
 # dac access
-parallel = False
+parallel = True
 timeout = 60
 days = 2
 today = dt.date.today()
