@@ -257,6 +257,7 @@ class ESPC:
         Returns:
         - xarray.Dataset: Dataset containing temperature, salinity, u, and v at the specific point and time.
         """
+        lon = lon180to360(lon)
         temperature = self.get_variable('temperature')
         salinity = self.get_variable('salinity')
         u = self.get_variable('u')
@@ -278,7 +279,7 @@ class ESPC:
             salinity = salinity.sel(time=time, method='nearest')
             u = u.sel(time=time, method='nearest')
             v = v.sel(time=time, method='nearest')
-
+            
         # Combine the variables into a single dataset
         ds = xr.merge(
             [
@@ -296,7 +297,9 @@ class ESPC:
                 'water_u': 'u',
                 'water_v': 'v'
                 }
-        )     
+        )
+
+        ds['lon'] = lon360to180(ds['lon'])
         return ds
 
 class CMEMS:
