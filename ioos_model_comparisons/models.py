@@ -139,7 +139,7 @@ class ESPC:
     Class for handling ESPC data with lazy loading and subsetting for specific times and regions.
     '''
 
-    def __init__(self) -> None:
+    def __init__(self, uv=True) -> None:
         '''
         Initialize the ESPC instance by lazily loading the datasets.
         '''
@@ -149,10 +149,10 @@ class ESPC:
     def _load_data(self):
         """Load individual datasets lazily and store them."""
         datasets = {
-            'temperature': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/2024',
-            'salinity': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/s3z/2024',
-            'u': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/u3z/2024',
-            'v': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/2024'
+            'temperature': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/2025',
+            'salinity': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/s3z/2025',
+            'u': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/u3z/2025',
+            'v': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/2025'
         }
         # Lazy load and store each dataset in a dictionary
         for var, url in datasets.items():
@@ -197,10 +197,10 @@ class ESPC:
 
         subset['lon'] = lon360to180(subset['lon'])
         if time:
-            subset = subset.sel(time=time, method='nearest')
+            subset = subset.sel(time=time)  # Exact match only
         return subset
 
-    def get_combined_subset(self, lon_extent, lat_extent, time=None):
+    def get_combined_subset(self, lon_extent, lat_extent, time=None, uv=True):
         """
         Get a combined subset of all variables (temperature, salinity, u, v) for the given extents and time.
 
@@ -214,18 +214,19 @@ class ESPC:
         """
         temperature = self.get_subset('temperature', lon_extent, lat_extent, time)
         salinity = self.get_subset('salinity', lon_extent, lat_extent, time)
-        u = self.get_subset('u', lon_extent, lat_extent, time)
-        v = self.get_subset('v', lon_extent, lat_extent, time)
 
         # Lazily merge the variables into a single dataset when ready
         ds = xr.merge(
             [
                 temperature, 
                 salinity, 
-                u, 
-                v
-                ]
-            )
+            ]
+        )
+
+        if uv:
+            u = self.get_subset('u', lon_extent, lat_extent, time)
+            v = self.get_subset('v', lon_extent, lat_extent, time)
+            ds = xr.merge([ds, u, v])
 
         ds = ds.rename(
             {
@@ -260,33 +261,33 @@ class ESPC:
         lon = lon180to360(lon)
         temperature = self.get_variable('temperature')
         salinity = self.get_variable('salinity')
-        u = self.get_variable('u')
-        v = self.get_variable('v')
+        # u = self.get_variable('u')
+        # v = self.get_variable('v')
 
         if interp:
             temperature = temperature.interp(time=time, lon=lon, lat=lat)
             salinity = salinity.interp(time=time, lon=lon, lat=lat)
-            u = u.interp(time=time, lon=lon, lat=lat)
-            v = v.interp(time=time, lon=lon, lat=lat)
+            # u = u.interp(time=time, lon=lon, lat=lat)
+            # v = v.interp(time=time, lon=lon, lat=lat)
         else:
             temperature = temperature.sel(lon=lon, lat=lat, method='nearest')
             salinity = salinity.sel(lon=lon, lat=lat, method='nearest')
-            u = u.sel(lon=lon, lat=lat, method='nearest')
-            v = v.sel(lon=lon, lat=lat, method='nearest')
+            # u = u.sel(lon=lon, lat=lat, method='nearest')
+            # v = v.sel(lon=lon, lat=lat, method='nearest')
 
         if time:
             temperature = temperature.sel(time=time, method='nearest')
             salinity = salinity.sel(time=time, method='nearest')
-            u = u.sel(time=time, method='nearest')
-            v = v.sel(time=time, method='nearest')
+            # u = u.sel(time=time, method='nearest')
+            # v = v.sel(time=time, method='nearest')
             
         # Combine the variables into a single dataset
         ds = xr.merge(
             [
                 temperature, 
                 salinity, 
-                u, 
-                v
+                # u, 
+                # v
                 ]
             )
         ds.attrs['model'] = 'ESPC'
@@ -294,8 +295,8 @@ class ESPC:
         ds = ds.rename(
             {
                 'water_temp': 'temperature', 
-                'water_u': 'u',
-                'water_v': 'v'
+                # 'water_u': 'u',
+                # 'water_v': 'v'
                 }
         )
 
@@ -375,7 +376,7 @@ class CMEMS:
         subset = data.sel(longitude=slice(lon_extent[0], lon_extent[1]), 
                           latitude=slice(lat_extent[0], lat_extent[1]))
         if time:
-            subset = subset.sel(time=time, method='nearest')
+            subset = subset.sel(time=time)
         return subset
 
     def get_combined_subset(self, lon_extent, lat_extent, time=None):

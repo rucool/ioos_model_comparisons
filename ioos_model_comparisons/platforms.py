@@ -469,3 +469,39 @@ def get_goes():
     except Exception as e:
         logger.error(f"Failed to load SST data: {e}")
         sst_sorted = None  # Set to None to avoid using it later if it fails
+    return sst_sorted
+
+
+def get_bathymetry(bbox=None):
+    """
+    Function to select bathymetry within a bounding box.
+    This function pulls GEBCO 2014 bathy data from hfr.marine.rutgers.edu 
+
+    Args:
+        bbox (list, optional): Cartopy bounding box. Defaults to None.
+
+    Returns:
+        xarray.Dataset: xarray Dataset containing bathymetry data
+    """
+
+    # Set the bounding box
+    bbox = bbox or [-100, -45, 5, 46]
+    # lons = bbox[:2]
+    # lats = bbox[2:]
+    
+    ds = xr.open_dataset('https://tds.marine.rutgers.edu/thredds/dodsC/other/bathymetry/GEBCO_2023/GEBCO_2023_sub_ice_topo.nc')
+
+    ds = ds.sel(
+        lon=slice(bbox[0], bbox[1]),
+        lat=slice(bbox[2], bbox[3])
+    )
+
+    ds = ds.rename(
+        {
+            'lat': 'latitude',
+            'lon': 'longitude',
+            'elevation': 'z'
+            }
+        )
+    return ds
+    

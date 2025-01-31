@@ -62,6 +62,8 @@ conf.regions = ['gom']
 today = dt.date.today()
 date_start = today - dt.timedelta(days=conf.days)
 date_end = today + dt.timedelta(days=1)
+# date_start = pd.Timestamp(2024, 9, 24, 0, 0, 0)
+# date_end = pd.Timestamp(2024, 10, 15, 0, 0, 0)
 freq = '6H'
 date_list = pd.date_range(date_start, date_end, freq=freq)
 date_list_2 = pd.date_range(date_start - dt.timedelta(days=1), date_end, freq=freq)
@@ -133,27 +135,31 @@ if rds is not None:
     grid_x, grid_y = rds.x.values, rds.y.values
 
 def main():
-    for ctime in date_list:
-        logger.info(f"Starting processing for time: {ctime}")
+    import concurrent.futures
 
-        # Attempt to load data for each model
-        rdt_flag, rdt = attempt_data_load(rds, ctime, "RTOFS")
-        rdtp_flag, rdtp = attempt_data_load(rtofs_para, ctime, "RTOFS Parallel") if plot_para else (False, None)
-        amt_flag, amt = attempt_data_load(am, ctime, "AMSEAS") if plot_amseas else (False, None)
-        cnt_flag, cnt = attempt_data_load(cn, ctime, "CNAPS") if plot_cnaps else (False, None)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=6) as executor:
+        executor.map(process_time, date_list)
 
-        # Process each region
-        for item in conf.regions:
-            region = region_config(item)
 
-            gdt_flag, gdt = attempt_cmems_data_load(gds_instance, ctime, region['extent']) if plot_espc else (False, None)
-            cdt_flag, cdt = attempt_cmems_data_load(cmems_instance, ctime, region['extent']) if plot_cmems else (False, None)
-            logger.info(f"Processing region: {region['name']} at time: {ctime}")
-            process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt, cdt_flag, cdt,
-                           amt_flag, amt, cnt_flag, cnt, region)
+def process_time(ctime):
+    """Process data for a specific time."""
+    logger.info(f"Starting processing for time: {ctime}")
 
-    logger.info(f'All processing complete. Total execution time: {time.time() - start_time} seconds.')
+    # Attempt to load data for each model
+    rdt_flag, rdt = attempt_data_load(rds, ctime, "RTOFS")
+    rdtp_flag, rdtp = attempt_data_load(rtofs_para, ctime, "RTOFS Parallel") if plot_para else (False, None)
+    amt_flag, amt = attempt_data_load(am, ctime, "AMSEAS") if plot_amseas else (False, None)
+    cnt_flag, cnt = attempt_data_load(cn, ctime, "CNAPS") if plot_cnaps else (False, None)
 
+    # Process each region
+    for item in conf.regions:
+        region = region_config(item)
+        gdt_flag, gdt = attempt_cmems_data_load(gds_instance, ctime, region['extent']) if plot_espc else (False, None)
+        cdt_flag, cdt = attempt_cmems_data_load(cmems_instance, ctime, region['extent']) if plot_cmems else (False, None)
+        logger.info(f"Processing region: {region['name']} at time: {ctime}")
+        process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt, cdt_flag, cdt,
+                       amt_flag, amt, cnt_flag, cnt, region)
+        
 def attempt_data_load(model, ctime, model_name):
     """Attempt to load data for a given model and time."""
     try:
@@ -296,9 +302,9 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt, cdt_fla
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs AMSEAS at {ctime} for region {region['name']}: {e}")
 
-        if sst is not None:
-            plot_sst(rds_sub, sst, region, **remove_kwargs(['eez', 'currents']))
-            logger.info(f"Successfully plotted SST for region {region['name']} at time {ctime}")
+        # if sst is not None:
+        #     plot_sst(rds_sub, sst, region, **remove_kwargs(['eez', 'currents']))
+        #     logger.info(f"Successfully plotted SST for region {region['name']} at time {ctime}")
 
     except Exception as e:
         logger.error(f"Failed to process region {region['name']} at time {ctime}: {e}")
