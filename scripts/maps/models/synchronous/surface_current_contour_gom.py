@@ -4,19 +4,20 @@ import ioos_model_comparisons.configs as conf
 import numpy as np
 import pandas as pd
 from ioos_model_comparisons.calc import lon180to360, lon360to180
-from ioos_model_comparisons.models import gofs, rtofs, cmems, amseas
+from ioos_model_comparisons.models import ESPC, rtofs, CMEMS, amseas
 from ioos_model_comparisons.platforms import (get_active_gliders, 
                                   get_argo_floats_by_time,
-                                  get_bathymetry)
-from ioos_model_comparisons.plotting_ugos import (surface_current_fronts, 
-                                      surface_current_fronts_single,
-                                      surface_current_15knot_all
-                                    #   plot_model_region_comparison_streamplot
-                                      )
+                                  )
+from ioos_model_comparisons.plotting_ugos import (
+    surface_current_fronts, 
+    surface_current_fronts_single,
+    surface_current_15knot_all
+    )
 from ioos_model_comparisons.plotting import plot_model_region_comparison_streamplot
 from ioos_model_comparisons.regions import region_config
 import matplotlib
 import time
+from cool_maps.download import get_bathymetry
 
 startTime = time.time() # Start time to see how long the script took
 matplotlib.use('agg')
@@ -26,9 +27,9 @@ path_save = (conf.path_plots / "maps")
 
 # Which models should we plot?
 plot_rtofs = True
-plot_gofs = True
+plot_espc = True
 plot_cmems = True
-plot_amseas = True
+plot_amseas = False
 plot_cnaps = False
 
 # initialize keyword arguments for map plots
@@ -38,7 +39,7 @@ kwargs['dpi'] = conf.dpi
 kwargs['overwrite'] = False
 
 # For debug purposes. Comment this out when commiting to repo.
-conf.days = 2
+conf.days = 1
 
 # Get today and yesterday dates
 target_time = dt.time(12, 0, 0)
@@ -82,23 +83,19 @@ if plot_rtofs:
     grid_x = rds.x.values
     grid_y = rds.y.values
 
-if plot_gofs:
-    # Load GOFS DataSet
-    gds = gofs(rename=True)
+if plot_espc:
+    # Load ESPC DataSet
+    # gds = espc(rename=True)
+    gds = ESPC()
 
 if plot_cmems:
+    cds = CMEMS()
     # Load Copernicus
-    cds = cmems(rename=True)
+    # cds = cmems(rename=True)
 
 if plot_amseas:
     # Load AMSEAS
     am = amseas(rename=True)
-
-# Load TOPS
-# import xarray as xr
-# fname = '/Users/mikesmith/Downloads/GOM22 Fronts/tops_IAS16_20220904_20220904.nc'
-# tops = xr.open_dataset(fname).rename({"sst": "temperature", "sss": "salinity", 'uvel': 'u', 'vvel': 'v'})
-# tops.attrs['model'] = 'TOPS'
 
 # Loop through times
 for ctime in date_list:
@@ -118,15 +115,20 @@ for ctime in date_list:
         rdt_flag = False
 
     try:
-        gdt = gds.sel(time=ctime, depth=0)
-        print(f"GOFS: True")
+        gdt = gds.get_combined_subset(extent[:2],extent[-2:], time=ctime)
+        gdt = gdt.sel(depth=0).squeeze()
+        print(f"ESPC: True")
         gdt_flag = True
     except (KeyError, NameError) as error:
-        print(f"GOFS: False - {error}")
+        print(f"ESPC: False - {error}")
         gdt_flag = False
 
     try:
-        cdt = cds.sel(time=ctime, depth=0, method='nearest')
+        cdt = cds.get_combined_subset(extent[:2],extent[-2:], time=ctime)
+        cdt = cdt.sel(depth=0, method='nearest').squeeze()
+        # cdt = cds.data.sel(time=str(ctime), depth=0, method='nearest').squeeze()
+        # cdt = cobj.data.sel(depth=0, method='nearest').squeeze()
+        # cdt = cds.sel(time=ctime, depth=0, method='nearest')
         print(f"CMEMS: True")
         cdt_flag = True
     except (KeyError, NameError) as error:
@@ -147,7 +149,7 @@ for ctime in date_list:
     #     tops_flag = True
     # except KeyError as error:
     #     print(f"TOPS: False - {error}")
-    #     tops_flag = False
+        # tops_flag = False
     print("\n")
 
     if 'eez' in region:
@@ -257,16 +259,16 @@ for ctime in date_list:
         #         region,ummus
         #         **kwargs
         #         )
-    try:
-        surface_current_fronts_single(rds_sub, region, **kwargs)
-    except Exception as e:
-        print(f"Failed to process RTOFS at {ctime}")
-        print(f"Error: {e}")
+    # try:
+    surface_current_fronts_single(rds_sub, region, **kwargs)
+    # except Exception as e:
+        # print(f"Failed to process RTOFS at {ctime}")
+        # print(f"Error: {e}")
 
     try:
         surface_current_fronts_single(gds_sub, region, **kwargs)
     except Exception as e:
-        print(f"Failed to process GOFS at {ctime}")
+        print(f"Failed to process ESPC at {ctime}")
         print(f"Error: {e}")
 
     try:
@@ -280,7 +282,7 @@ for ctime in date_list:
         print(f"Failed to process AMSEAS at {ctime}")
         print(f"Error: {e}")
         
-        # surface_current_15knot_all(rds_sub, gds_sub, cds_sub, am_sub, region, **kwargs)
+    # surface_current_15knot_all(rds_sub, gds_sub, cds_sub, am_sub, region, **kwargs)
 
     # url = 'http://3.236.148.88:8080/thredds/dodsC/fmrc/useast_coawst_roms/COAWST-ROMS_SWAN_Forecast_Model_Run_Collection_best.ncd'
     # import xarray as xr
