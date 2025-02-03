@@ -1884,8 +1884,8 @@ def plot_model_region_comparison_idalia(ds1, ds2, region,
         # plt.figtext(0.5, 0.001, legstr, ha="center", fontsize=10, fontweight='bold')
     ax3.set_axis_off()
 
-    plot_hurricane_track(ax1, time, basin, storm_id="AL102023")
-    plot_hurricane_track(ax2, time, basin, storm_id="AL102023")
+    # plot_hurricane_track(ax1, time, basin, storm_id="AL102023")
+    # plot_hurricane_track(ax2, time, basin, storm_id="AL102023")
     # AL102023 Idalia
     # AL092024 Helene
     # AL142024 Milton
@@ -2955,8 +2955,8 @@ def plot_model_region_comparison_streamplot_idalia(ds1, ds2, region,
         ax1.set_title(ds1.model.upper(), fontsize=16, fontweight="bold")
         ax2.set_title(ds2.model.upper(), fontsize=16, fontweight="bold")
 
-        plot_hurricane_track(ax1, time, basin, storm_id="AL102023")
-        plot_hurricane_track(ax2, time, basin, storm_id="AL102023")
+        # plot_hurricane_track(ax1, time, basin, storm_id="AL102023")
+        # plot_hurricane_track(ax2, time, basin, storm_id="AL102023")
         # AL102023 Idalia
         # AL092024 Helene
         # AL142024 Milton
@@ -3643,8 +3643,8 @@ def plot_ohc(ds1, ds2, extent, region_name,
         # AL102023 Idalia
         # AL092024 Helene
         # AL142024 Milton
-        plot_hurricane_track(ax, time, basin, storm_id="AL092024", markersize=20)
-        plot_hurricane_track(ax, time, basin, storm_id="AL142024", linecolor='green', markersize=20)
+        # plot_hurricane_track(ax, time, basin, storm_id="AL092024", markersize=20)
+        # plot_hurricane_track(ax, time, basin, storm_id="AL142024", linecolor='green', markersize=20)
 
     # Add ticks
     add_ticks(ax1, extent, label_left=True)
@@ -4651,7 +4651,7 @@ def plot_model_region_single_streamplot(ds1, region,
         # leg1.set_zorder(10001)  
           
         # plot_hurricane_track(ax1, time, basin, storm_id="AL092024", linecolor='white', markersize=60)
-        plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='white', markersize=60)
+        # plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='white', markersize=60)
     
         # Add colorbar to first axes
         cb = fig.colorbar(m1, ax=ax1, orientation="vertical", shrink=.8, aspect=20)#, shrink=0.7, aspect=20*0.7)
