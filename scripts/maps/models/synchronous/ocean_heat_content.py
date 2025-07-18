@@ -17,6 +17,7 @@ from ioos_model_comparisons.plotting import plot_ohc
 from ioos_model_comparisons.regions import region_config
 from shapely.errors import TopologicalError
 from cool_maps.plot import get_bathymetry
+import concurrent.futures
 
 import xarray as xr
 
@@ -29,7 +30,6 @@ parallel = False # utilize parallel processing?
 plot_rtofs = True
 plot_espc = True
 plot_cmems = True
-plot_amseas = False
 plot_para = True
 
 # Set path to save plots
@@ -38,7 +38,6 @@ path_save = (conf.path_plots / "maps")
 # For debug
 # conf.days = 1
 conf.regions = ['mab', 'sab', 'gom', 'caribbean', 'tropical_western_atlantic']
-
 # initialize keyword arguments. Grab anything from configs.py
 kwargs = dict()
 kwargs['transform'] = conf.projection
@@ -75,14 +74,21 @@ global_extent = [
 
 lon_transform = lon180to360(global_extent[:2])
 
+conf.argo = True
 if conf.argo:
     argo_data = get_argo_floats_by_time(global_extent, search_start, date_end)
 else:
     argo_data = pd.DataFrame()
 
+conf.gliders = True
 if conf.gliders:
     glider_data = get_active_gliders(global_extent, search_start, date_end, 
                                      parallel=False)
+    # Split the 'glider' index by the last '-'
+    glider_data.index = glider_data.index.set_levels([
+        glider_data.index.levels[0].str.rsplit('-', n=1).str[0],  # Corrected by specifying `n=1` as a keyword
+        glider_data.index.levels[1]
+    ])
 else:
     glider_data = pd.DataFrame()
 
@@ -94,6 +100,7 @@ if plot_rtofs:
 
     # Load RTOFS and subset to global_extent of regions we are looking at.
     rds = r()
+    rds = rds[['temperature', 'salinity']]
     lons_ind = np.interp(global_extent[:2], rds.lon.values[0,:], rds.x.values)
     lats_ind = np.interp(global_extent[2:], rds.lat.values[:,0], rds.y.values)
 
@@ -111,6 +118,7 @@ if plot_rtofs:
 if plot_para:
     # Load RTOFS and subset to global_extent of regions we are looking at.
     rdsp = r(source='parallel')
+    rdsp = rdsp[['temperature', 'salinity']]
     lons_ind = np.interp(global_extent[:2], rdsp.lon.values[0,:], rdsp.x.values)
     lats_ind = np.interp(global_extent[2:], rdsp.lat.values[:,0], rdsp.y.values)
 
@@ -126,11 +134,11 @@ if plot_para:
     # grid_y = rds.y.values
 
 if plot_espc:
-    from ioos_model_comparisons.models import ESPC as g
+    from ioos_model_comparisons.models import espc_ts
 
     # Load GOFS
-    gds = g()
-    gds = gds.get_combined_subset(global_extent[:2], global_extent[2:])
+    gds = espc_ts(rename=True)
+    # gds = gds.get_combined_subset(global_extent[:2], global_extent[2:])
     # .sel(
     #     lon=slice(lon_transform[0], lon_transform[1]),
     #     lat=slice(global_extent[2], global_extent[3])
@@ -146,16 +154,6 @@ if plot_cmems:
     # )
     cds = c()
     cds = cds.get_combined_subset(global_extent[:2], global_extent[2:])
-
-if plot_amseas:
-    from ioos_model_comparisons.models import amseas as a
-
-    # Load amseas
-    am = a(rename=True)
-    ads = am.sel(
-        lon=slice(lon_transform[0], lon_transform[1]),
-        lat=slice(global_extent[2], global_extent[3])
-        )
     
 # from tropycal import realtime
 # from tropycal.utils.generic_utils import wind_to_category, generate_nhc_cone
@@ -195,67 +193,33 @@ def plot_ctime(ctime):
         try:
             rds_time = rds.sel(time=ctime)
             # startTime = time.time()
-            rds_time['density'] = xr.apply_ufunc(density, 
-                                    rds_time['temperature'], 
-                                    -rds_time['depth'],
-                                    rds_time['salinity'], 
-                                    rds_time['lat'], 
-                                    rds_time['lon']
-                                    )
-            rds_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
-                                rds_time.depth, 
-                                rds_time.temperature, 
-                                rds_time.density, 
-                                input_core_dims=[['depth'], ['depth'], ['depth']], 
-                                vectorize=True)
             # print('RTOFS - Execution time in seconds: ' + str(time.time() - startTime))
             print(f"RTOFS: True")
             rdt_flag = True
         except KeyError as error:
             print(f"RTOFS: False")
             rdt_flag = False
+    else:
+        rdt_flag = False
 
     if plot_para:
         try:
             rdsp_time = rdsp.sel(time=ctime)
             # startTime = time.time()
-            rdsp_time['density'] = xr.apply_ufunc(density, 
-                                    rdsp_time['temperature'], 
-                                    -rdsp_time['depth'],
-                                    rdsp_time['salinity'], 
-                                    rdsp_time['lat'], 
-                                    rdsp_time['lon']
-                                    )
-            rdsp_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
-                                rdsp_time.depth, 
-                                rdsp_time.temperature, 
-                                rdsp_time.density, 
-                                input_core_dims=[['depth'], ['depth'], ['depth']], 
-                                vectorize=True)
             # print('RTOFS - Execution time in seconds: ' + str(time.time() - startTime))
             print(f"RTOFS Parallel: True")
             rdtp_flag = True
         except KeyError as error:
             print(f"RTOFS Parallel: False")
-            rdtp_flag = False  
+            rdtp_flag = False
+    else:
+        rdtp_flag = False  
 
     if plot_espc:
         try:
             gds_time = gds.sel(time=ctime)
             # startTime = time.time()
-            gds_time['density'] = xr.apply_ufunc(density, 
-                                    gds_time['temperature'], 
-                                    -gds_time['depth'],
-                                    gds_time['salinity'], 
-                                    gds_time['lat'], 
-                                    gds_time['lon']
-                                    )
-            gds_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
-                                gds_time.depth, 
-                                gds_time.temperature, 
-                                gds_time.density, 
-                                input_core_dims=[['depth'], ['depth'], ['depth']], 
-                                vectorize=True)
+
             # print('GOFS - Execution time in seconds: ' + str(time.time() - startTime))
             print(f"GOFS: True")
             gdt_flag = True
@@ -268,20 +232,6 @@ def plot_ctime(ctime):
     if plot_cmems:
         try:
             cds_time = cds.sel(time=ctime) #CMEMS
-            # startTime = time.time()
-            cds_time['density'] = xr.apply_ufunc(density, 
-                                    cds_time['temperature'], 
-                                    -cds_time['depth'],
-                                    cds_time['salinity'], 
-                                    cds_time['lat'], 
-                                    cds_time['lon']
-                                    )
-            cds_time['ohc'] = xr.apply_ufunc(ocean_heat_content, 
-                                cds_time.depth, 
-                                cds_time.temperature, 
-                                cds_time.density, 
-                                input_core_dims=[['depth'], ['depth'], ['depth']], 
-                                vectorize=True)
             # print('CMEMS: Execution time in seconds: ' + str(time.time() - startTime))
             print(f"CMEMS: True")
             cdt_flag = True
@@ -291,30 +241,6 @@ def plot_ctime(ctime):
         print("\n")
     else:
         cdt_flag = False
-
-    if plot_amseas:
-        try:
-            amt = ads.sel(time=ctime)
-            amt['density'] = xr.apply_ufunc(density, 
-                            amt['temperature'], 
-                            -amt['depth'],
-                            amt['salinity'], 
-                            amt['lat'], 
-                            amt['lon']
-                            )
-            amt['ohc'] = xr.apply_ufunc(ocean_heat_content, 
-                                amt.depth, 
-                                amt.temperature, 
-                                amt.density, 
-                                input_core_dims=[['depth'], ['depth'], ['depth']], 
-                                vectorize=True)
-            print(f"AMSEAS: True")
-            amt_flag = True
-        except KeyError as error:
-            print(f"AMSEAS: False - {error}")
-            amt_flag = False
-    else:
-        amt_flag = False
 
     search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
     search_window_t1 = ctime.strftime(tstr)
@@ -376,8 +302,26 @@ def plot_ctime(ctime):
             # Use .isel selector on x/y since we know indexes that we want to slice
             rds_slice = rds_time.sel(
                 x=slice(extent_ind[0], extent_ind[1]), 
-                y=slice(extent_ind[2], extent_ind[3])
+                y=slice(extent_ind[2], extent_ind[3]),
+                # depth=slice(0, 400)
                 )
+            rds_slice.load()
+                        
+            rds_slice['density'] = xr.apply_ufunc(density, 
+                        rds_slice['temperature'], 
+                        -rds_slice['depth'],
+                        rds_slice['salinity'], 
+                        rds_slice['lat'], 
+                        rds_slice['lon']
+                        )
+            rds_slice['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+                                rds_slice.depth, 
+                                rds_slice.temperature, 
+                                rds_slice.density, 
+                                input_core_dims=[['depth'], ['depth'], ['depth']], 
+                                vectorize=True,
+                                # dask='parallelized'
+                                )
 
         if rdtp_flag:
             # Find x, y indexes of the area we want to subset
@@ -398,13 +342,46 @@ def plot_ctime(ctime):
                 x=slice(extent_ind[0], extent_ind[1]), 
                 y=slice(extent_ind[2], extent_ind[3])
                 )
+            rdsp_slice.load()
+
+            rdsp_slice['density'] = xr.apply_ufunc(density, 
+                                    rdsp_slice['temperature'], 
+                                    -rdsp_slice['depth'],
+                                    rdsp_slice['salinity'], 
+                                    rdsp_slice['lat'], 
+                                    rdsp_slice['lon']
+                                    )
+            rdsp_slice['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+                                rdsp_slice.depth, 
+                                rdsp_slice.temperature, 
+                                rdsp_slice.density, 
+                                input_core_dims=[['depth'], ['depth'], ['depth']], 
+                                vectorize=True)
             
         if gdt_flag:
             # subset dataset to the proper extents for each region
             gds_slice = gds_time.sel(
-                lon=slice(extent_data[0], extent_data[1]),
+                lon=slice(lon180to360(extent_data[0]), lon180to360(extent_data[1])),
                 lat=slice(extent_data[2], extent_data[3])
             )
+
+            # Convert from 0,360 lon to -180,180
+            gds_slice['lon'] = lon360to180(gds_slice['lon'])
+
+            gds_slice['density'] = xr.apply_ufunc(density, 
+                        gds_slice['temperature'], 
+                        -gds_slice['depth'],
+                        gds_slice['salinity'], 
+                        gds_slice['lat'], 
+                        gds_slice['lon']
+                        )
+            gds_slice['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+                                gds_slice.depth, 
+                                gds_slice.temperature, 
+                                gds_slice.density, 
+                                input_core_dims=[['depth'], ['depth'], ['depth']], 
+                                vectorize=True)
+
 
             # Convert from 0,360 lon to -180,180
             # gds_slice['lon'] = lon360to180(gds_slice['lon'])
@@ -414,16 +391,22 @@ def plot_ctime(ctime):
                 lon=slice(extent_data[0], extent_data[1]),
                 lat=slice(extent_data[2], extent_data[3])
                 )
-            
-        if amt_flag:
-            # subset dataset to the proper extents for each region
-            amt_slice = amt.sel(
-                lon=slice(lon360[0], lon360[1]),
-                lat=slice(extent_data[2], extent_data[3])
-            )
+            cds_slice.load()
 
-            # Convert from 0,360 lon to -180,180
-            amt_slice['lon'] = lon360to180(amt_slice['lon'])
+            # startTime = time.time()
+            cds_slice['density'] = xr.apply_ufunc(density, 
+                                    cds_slice['temperature'], 
+                                    -cds_slice['depth'],
+                                    cds_slice['salinity'], 
+                                    cds_slice['lat'], 
+                                    cds_slice['lon']
+                                    )
+            cds_slice['ohc'] = xr.apply_ufunc(ocean_heat_content, 
+                                cds_slice.depth, 
+                                cds_slice.temperature, 
+                                cds_slice.density, 
+                                input_core_dims=[['depth'], ['depth'], ['depth']], 
+                                vectorize=True)
 
         # Subset downloaded Argo data to this region and time
         if not argo_data.empty:
@@ -462,9 +445,6 @@ def plot_ctime(ctime):
                 
             if rdt_flag and cdt_flag:
                 plot_ohc(rds_slice, cds_slice, extent, configs['name'], **kwargs)
-
-            if rdt_flag and amt_flag:
-                plot_ohc(rds_slice, amt_slice, extent, configs['name'], **kwargs)
 
             if rdt_flag and rdtp_flag:
                 plot_ohc(rds_slice, rdsp_slice, extent, configs['name'], **kwargs)

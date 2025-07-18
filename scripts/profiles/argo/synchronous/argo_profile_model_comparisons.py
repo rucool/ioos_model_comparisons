@@ -11,11 +11,10 @@ from ioos_model_comparisons.calc import (
     # depth_interpolate,
     lon180to360, 
     lon360to180, 
-    # difference, 
+    difference, 
     density,
     ocean_heat_content
     )
-from ioos_model_comparisons.models import rtofs, amseas, CMEMS, espc
 from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_ohc
 from ioos_model_comparisons.regions import region_config
 import ioos_model_comparisons.configs as conf
@@ -30,14 +29,13 @@ from cool_maps.plot import get_bathymetry
 save_dir = conf.path_plots / 'profiles' / 'argo'
 
 # Configs
-parallel = True
+parallel = False
 depth = 400
 
 # Which models should we plot?
 plot_rtofs = True
 plot_espc = True
 plot_cmems = True
-plot_amseas = False
 plot_para = True
 
 # argos = ["4902350", "4903250", "6902854", "4903224", "4903227"]
@@ -51,20 +49,25 @@ depths = slice(0, depth)
 
 # Load models
 if plot_rtofs:
+    from ioos_model_comparisons.models import rtofs
     rds = rtofs().sel(depth=depths)
 
 if plot_para:
+    from ioos_model_comparisons.models import rtofs
     pds = rtofs(source='parallel').sel(depth=depths)
 
 if plot_espc:
-    gds = espc(rename=True).sel(depth=depths)
+    from ioos_model_comparisons.models import espc_ts
+    espc_loaded = espc_ts(rename=True)
+    # gds = espc(rename=True).sel(depth=depths)
+    # espc_obj = ESPC(uv=False)
+    # print()
+
 
 if plot_cmems:
+    from ioos_model_comparisons.models import CMEMS
     cobj = CMEMS()
-    cds = cobj.data.sel(depth=depths)
-
-if plot_amseas:
-    ams = amseas(rename=True).sel(depth=depths)
+    # cds = cobj.data.sel(depth=depths)
     
 # Create a date list ending today and starting x days in the past
 date_end = pd.Timestamp.utcnow().tz_localize(None)
@@ -77,7 +80,6 @@ then = pd.Timestamp(then.strftime('%Y-%m-%d')) # convert back to timestamp
 # Get extent for all configured regions to download argo/glider data one time
 extent_list = []
 conf.regions = ['caribbean', 'gom', 'sab', 'mab', 'tropical_western_atlantic']
-# conf.regions = ['gom']
 for region in conf.regions:
     extent_list.append(region_config(region)["extent"])
 
@@ -92,6 +94,9 @@ global_extent = [
     extent_df.latmin.min(),
     extent_df.latmax.max()
     ]
+
+# Formatter for date
+date_fmt = "%Y-%m-%dT%H:%MZ"
 
 # import time
 # startTime = time.time() # Start time to see how long the script took
@@ -178,12 +183,12 @@ def process_argo(region):
         ctime = gname[1] # time from gname
         print(f"Checking ARGO {wmo} for new profiles")
         
-        tstr = ctime.strftime("%Y-%m-%d %H:%M:%S") # create time string            
-        save_str = f'{wmo}-profile-{ctime.strftime("%Y-%m-%dT%H%M%SZ")}.png'
+        tstr = ctime.strftime(date_fmt) # create time string            
+        save_str = f'{wmo}-profile-{ctime.strftime("%Y-%m-%dT%H%MZ")}.png'
         tdir = temp_save_dir / ctime.strftime("%Y") / ctime.strftime("%m") / ctime.strftime("%d") 
         os.makedirs(tdir, exist_ok=True)
         full_file = tdir /  save_str
-        diff_file = tdir / ctime.strftime("%Y") / ctime.strftime("%m") / ctime.strftime("%d") / f'{wmo}-profile-difference-{ctime.strftime("%Y-%m-%dT%H%M%SZ")}.png'
+        diff_file = tdir / ctime.strftime("%Y") / ctime.strftime("%m") / ctime.strftime("%d") / f'{wmo}-profile-difference-{ctime.strftime("%Y-%m-%dT%H%MZ")}.png'
 
         profile_exist = False
         profile_diff_exist = False 
@@ -246,6 +251,8 @@ def process_argo(region):
             # Grab lon and lat of argo profile
             lon, lat = df['lon'].unique()[-1], df['lat'].unique()[-1]
 
+            mlon360 = lon180to360(lon)
+
             # %%
             # For each model, select nearest time to argo time
             # Interpolate to the argo float location and depths
@@ -260,23 +267,19 @@ def process_argo(region):
             alat = round(lat, 2) # argo lat
             alabel = f'{wmo} [{alon}, {alat}]'
             leg_str = f'Argo #{wmo}\n'
-            leg_str += f'ARGO:  { tstr }\n'
+            leg_str += f'ARGO: { tstr }\n'
 
-            # nesdis = get_ohc(extent, pd.to_datetime(tstr).date())   
-            # nesdis = nesdis.squeeze()
-            # ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
-            # ohc_nesdis = ohc_nesdis.ohc.values
+            nesdis = get_ohc(extent, pd.to_datetime(tstr).date())   
+            nesdis = nesdis.squeeze()
+            ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
+            ohc_nesdis = ohc_nesdis.ohc.values
             
             if plot_espc:
                 try:
                     # ESPC
-                    gdsp = gds.sel(time=ctime, method='nearest')
-                    gdsi = gdsp.sel(
-                        lon=lon180to360(lon), # Convert longitude to 360 convention
-                        lat=lat,
-                        method='nearest'
-                        # depth=xr.DataArray(depths_interp, dims='depth')
-                        )
+                    gdsi = espc_loaded.sel(lon=mlon360, lat=lat, method='nearest')
+                    gdsi = gdsi.sel(time=ctime, method="nearest")
+
                     # Convert the lon back to a 180 degree lon
                     gdsi['lon'] = lon360to180(gdsi['lon'])
 
@@ -293,7 +296,7 @@ def process_argo(region):
                     glon = gdsi.lon.data.round(2)
                     glat = gdsi.lat.data.round(2)
                     glabel = f'ESPC [{ glon }, { glat }]'
-                    leg_str += f'ESPC : {pd.to_datetime(gdsi.time.data)}\n'
+                    leg_str += f'ESPC : {pd.to_datetime(gdsi.time.data).strftime(date_fmt)}\n'
                     espc_flag = True
                 except KeyError as error:
                     print(f"ESPC: False - {error}")
@@ -315,6 +318,8 @@ def process_argo(region):
                         method='nearest'
                         # depth=xr.DataArray(depths_interp, dims='depth')
                     )
+
+                    rdsi.load()
                     
                     # Calculate density for rtofs profile
                     rdsi['density'] = density(rdsi.temperature, -rdsi.depth, rdsi.salinity, rdsi.lat, rdsi.lon)
@@ -327,8 +332,8 @@ def process_argo(region):
                         )
                     rlon = rdsi.lon.data.round(2)
                     rlat = rdsi.lat.data.round(2)
-                    rlabel = f'RTOFS [{ rlon }, { rlat }]'
-                    leg_str += f'RTOFS: {pd.to_datetime(rdsi.time.data)}\n'
+                    rlabel = f'RTOFS [{rlon:.2f}, {rlat:.2f}]'
+                    leg_str += f'RTOFS: {pd.to_datetime(rdsi.time.data).strftime(date_fmt)}\n'
 
                     # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice 
                     # in order to widen the area of the extent slightly.
@@ -339,7 +344,7 @@ def process_argo(region):
                         np.ceil(lats_ind[1]).astype(int)
                         ]
                     
-                    tmp = rdsp.isel(depth=0,
+                    rdsp = rdsp.isel(depth=0,
                                     x=slice(extent_ind[0], extent_ind[1]), 
                                     y=slice(extent_ind[2], extent_ind[3]))
                     rtofs_flag = True
@@ -363,6 +368,7 @@ def process_argo(region):
                         method='nearest'
                         # depth=xr.DataArray(depths_interp, dims='depth')
                     )
+                    pdsi.load()
                     
                     # Calculate density for rtofs profile
                     pdsi['density'] = density(pdsi.temperature, -pdsi.depth, pdsi.salinity, pdsi.lat, pdsi.lon)
@@ -375,8 +381,8 @@ def process_argo(region):
                         )
                     rlon = pdsi.lon.data.round(2)
                     rlat = pdsi.lat.data.round(2)
-                    plabel = f'RTOFS (Parallel) [{ rlon }, { rlat }]'
-                    leg_str += f'RTOFS (Parallel): {pd.to_datetime(pdsi.time.data)}\n'
+                    plabel = f'RTOFS-P [{rlon:.2f}, {rlat:.2f}]'
+                    leg_str += f'RTOFS-P: {pd.to_datetime(pdsi.time.data).strftime(date_fmt)}\n'
 
                     # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice 
                     # in order to widen the area of the extent slightly.
@@ -386,9 +392,9 @@ def process_argo(region):
                         np.floor(lats_ind[0]).astype(int),
                         np.ceil(lats_ind[1]).astype(int)
                         ]
-                    
-                    tmp = pdsp.isel(depth=0,
-                                    x=slice(extent_ind[0], extent_ind[1]), 
+
+                    rdsp = pdsp.isel(depth=0,
+                                    x=slice(extent_ind[0], extent_ind[1]),
                                     y=slice(extent_ind[2], extent_ind[3]))
                     rtofsp_flag = True
                 except KeyError as error:
@@ -400,13 +406,14 @@ def process_argo(region):
             if plot_cmems:
                 try:
                     # Copernicus
-                    cdsp = cds.sel(time=ctime, method='nearest')
-                    cdsi = cdsp.sel(
-                        lon=lon, 
-                        lat=lat,
-                        method='nearest'
-                        # depth=xr.DataArray(depths_interp, dims='depth')
-                        )
+                    cdsi = cobj.get_point(lon, lat, ctime)
+                    # cdsi = cds.sel(time=ctime, method='nearest')
+                    # cdsi = cdsp.sel(
+                    #     lon=lon, 
+                    #     lat=lat,
+                    #     method='nearest'
+                    #     # depth=xr.DataArray(depths_interp, dims='depth')
+                    #     )
                     
                     # Calculate density for rtofs profile
                     cdsi['density'] = density(cdsi.temperature, -cdsi.depth, cdsi.salinity, cdsi.lat, cdsi.lon)
@@ -422,46 +429,13 @@ def process_argo(region):
                         )
                     
                     clabel = f"Copernicus [{ clon }, { clat }]"
-                    leg_str += f'CMEMS: {pd.to_datetime(cdsi.time.data)}\n'
+                    leg_str += f'CMEMS: {pd.to_datetime(cdsi.time.data).strftime(date_fmt)}\n'
                     cmems_flag = True
                 except KeyError as error:
                     print(f"CMEMS: False - {error}")
                     cmems_flag = False 
             else:
                 cmems_flag = False
-
-            if plot_amseas:
-                try:
-                    # AMSEAS
-                    adsp = ams.sel(time=ctime, method='nearest')
-                    adsi = adsp.sel(
-                        lon=lon180to360(lon), # Convert longitude to 360 convention
-                        lat=lat,
-                        method='nearest'
-                    )
-                    # Convert the lon back to a 180 degree lon
-                    adsi['lon'] = lon360to180(adsi['lon'])
-
-                    # Calculate density for amseas profile
-                    adsi['density'] = density(adsi.temperature, -adsi.depth, adsi.salinity, adsi.lat, adsi.lon)
-                    amlon = adsi.lon.data.round(2)
-                    amlat = adsi.lat.data.round(2)
-
-                    # Calculate ocean heat content for profile
-                    ohc_amseas = ocean_heat_content(
-                        adsi['depth'].values,
-                        adsi['temperature'].values,
-                        adsi['density'].values
-                        )
-                    amlabel = f'AMSEAS [{ amlon }, { amlat }]'
-                    leg_str += f'AMSEAS : {pd.to_datetime(adsi.time.data)}\n'
-                    print(f"AMSEAS: True")
-                    amseas_flag = True
-                except KeyError as error:
-                    print(f"AMSEAS: False - {error}")
-                    amseas_flag = False
-            else:
-                amseas_flag = False
        
         # Plot the argo profile
         if not profile_exist:
@@ -504,11 +478,6 @@ def process_argo(region):
                 ax2.plot(cdsi['salinity'], cdsi['depth'], linestyle='-',  marker='o', color='magenta', label=clabel)
                 ax3.plot(cdsi['density'], cdsi['depth'], linestyle='-',  marker='o',color='magenta', label=clabel)
 
-            if amseas_flag:
-                ax1.plot(adsi['temperature'], adsi['depth'], linestyle='-', marker='o', color='navy', label=amlabel)
-                ax2.plot(adsi['salinity'], adsi['depth'],  linestyle='-',  marker='o',color='navy', label=amlabel)
-                ax3.plot(adsi['density'], adsi['depth'], linestyle='-',  marker='o',color='navy', label=amlabel)
-
             if rtofsp_flag:
                 ax1.plot(pdsi['temperature'], pdsi['depth'], linestyle='-',  marker='o', color='orange', label=plabel)
                 ax2.plot(pdsi['salinity'], pdsi['depth'], linestyle='-', marker='o', color='orange', label=plabel)
@@ -540,7 +509,7 @@ def process_argo(region):
             cplt.create(extent, ax=ax5, bathymetry=False)
             cplt.add_ticks(ax5, extent, fontsize=8)
             ax5.plot(lon, lat, 'bo', transform=conf.projection['data'], zorder=101)
-            ax5.streamplot(tmp.lon.data, tmp.lat.data, tmp.u.data, tmp.v.data, transform=conf.projection['data'], density=1.5, linewidth=1, color='lightgray', zorder=100)
+            # ax5.streamplot(tmp.lon.data, tmp.lat.data, tmp.u.data, tmp.v.data, transform=conf.projection['data'], density=1.5, linewidth=1, color='lightgray', zorder=100)
 
             import shapely
             bathy_flag=False
@@ -609,17 +578,9 @@ def process_argo(region):
                 pass
             
             try:
-                if np.isnan(ohc_amseas):
-                    ohc_string += 'AMSEAS: N/A,  '
-                else:
-                    ohc_string += f"AMSEAS: {ohc_amseas:.4f},  "
+                ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
             except:
-                pass
-
-            # try:
-            #     ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
-            # except:
-            #     pass   
+                pass   
             
             plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
  

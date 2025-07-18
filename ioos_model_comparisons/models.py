@@ -10,6 +10,15 @@ import copernicusmarine as cm
 from dateutil import parser
 import logging
 logging.basicConfig(level=logging.INFO)  # or adjust logging level as needed
+import cftime
+import xarray as xr
+import pandas as pd
+from scipy.spatial import cKDTree
+
+edict = {'water_temp': 'temperature',
+        'water_u': 'u',
+        'water_v': 'v',
+        }
 
 def amseas(rename=False):
     url = "https://www.ncei.noaa.gov/thredds-coastal/dodsC/ncom_amseas_agg/AmSeas_Dec_17_2020_to_Current_best.ncd"
@@ -27,7 +36,7 @@ def amseas(rename=False):
     return ds
 
 
-def rtofs(rename=None, source='east'):
+def rtofs(rename=None, source='east', chunks={"time": 1}):
     if source == 'east':
         url = "https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_scraped"
         model = 'RTOFS'
@@ -36,18 +45,18 @@ def rtofs(rename=None, source='east'):
         model = 'RTOFS (West Coast)'
     elif source == 'parallel':
         url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_parallel_scraped'
-        model = 'RTOFS (Parallel)'
-    ds = xr.open_dataset(url)
+        model = 'RTOFS-P'
 
-    ds = ds.rename(
-        {'Longitude': 'lon', 
-         'Latitude': 'lat',
-         'MT': 'time',
-         'Depth': 'depth',
-         'X': 'x', 
-         'Y': 'y'
-         }
-        )
+    ds = xr.open_dataset(url, chunks={"MT":1})  # <--- key change
+
+    ds = ds.rename({
+        'Longitude': 'lon', 
+        'Latitude': 'lat',
+        'MT': 'time',
+        'Depth': 'depth',
+        'X': 'x', 
+        'Y': 'y'
+    })
     ds = ds.set_coords(['lon', 'lat'])
     ds.attrs['model'] = model
     return ds
@@ -132,35 +141,97 @@ def gofs(rename=False):
             )
     return ds
 
-import xarray as xr
+def espc_uv(rename=False):
+    url_uv = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_uv3z/FMRC_ESPC-D-V02_uv3z_best.ncd"
+    # url_ts = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_ts3z/FMRC_ESPC-D-V02_ts3z_best.ncd"
+
+    # Open only selected variables
+    ds_uv = xr.open_dataset(url_uv, drop_variables="tau")[["water_u", "water_v"]]
+    # ds_ts = xr.open_dataset(url_ts, drop_variables="tau")#[["water_temp", 'salinity']]
+
+    ds = ds_uv
+    # Manually combine variables into one dataset (no merge)
+    # ds = xr.Dataset()
+    ds["water_u"] = ds_uv["water_u"]
+    ds["water_v"] = ds_uv["water_v"]
+    # ds["water_temp"] = ds_ts["water_temp"]
+    # ds["salinity"] = ds_ts["salinity"]
+
+    ds.attrs['model'] = 'ESPC'
+
+    if rename:
+        ds = ds.rename(
+            {
+                # "water_temp": "temperature",
+                "water_u": "u",
+                "water_v": "v"
+            }
+        )
+
+    return ds
+
+def espc_ts(rename=False, chunks=None):
+    # url_uv = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_uv3z/FMRC_ESPC-D-V02_uv3z_best.ncd"
+    url_ts = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_ts3z/FMRC_ESPC-D-V02_ts3z_best.ncd"
+
+    # Open only selected variables
+    # ds_uv = xr.open_dataset(url_uv, drop_variables="tau")[["water_u", "water_v"]]
+
+    if chunks:
+        ds_ts = xr.open_dataset(url_ts, drop_variables="tau", chunks=chunks)
+    else:
+        ds_ts = xr.open_dataset(url_ts, drop_variables="tau")#[["water_temp", 'salinity']]
+
+    ds = ds_ts
+    # Manually combine variables into one dataset (no merge)
+    # ds = xr.Dataset()
+    # # ds["water_u"] = ds_uv["water_u"]
+    # # ds["water_v"] = ds_uv["water_v"]
+    # ds["water_temp"] = ds_ts["water_temp"]
+    # ds["salinity"] = ds_ts["salinity"]
+
+    ds.attrs['model'] = 'ESPC'
+
+    if rename:
+        ds = ds.rename(
+            {
+                "water_temp": "temperature",
+                # "water_u": "u",
+                # "water_v": "v"
+            }
+        )
+
+    return ds
+
+
 
 class ESPC:
     '''
     Class for handling ESPC data with lazy loading and subsetting for specific times and regions.
     '''
 
-    def __init__(self, uv=True) -> None:
+    def __init__(self, uv=True, year=pd.Timestamp.now().year) -> None:
         '''
         Initialize the ESPC instance by lazily loading the datasets.
         '''
         self.datasets = {}  # Store datasets lazily in a dictionary
+        self.year_loaded = year
         self._load_data()
+        self.snapshot_cache = {}
 
     def _load_data(self):
         """Load individual datasets lazily and store them."""
         datasets = {
-            'temperature': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/2025',
-            'salinity': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/s3z/2025',
-            'u': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/u3z/2025',
-            'v': 'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/2025'
+            'water_temp': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/{self.year_loaded}',
+            'salinity': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/s3z/{self.year_loaded}',
+            'water_u': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/u3z/{self.year_loaded}',
+            'water_v': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/{self.year_loaded}'
         }
         # Lazy load and store each dataset in a dictionary
         for var, url in datasets.items():
-            self.datasets[var] = self._load_single_dataset(url)
+            print(f"Loading {var} dataset...")
+            self.datasets[var] = xr.open_dataset(url, drop_variables='tau', chunks={"MT": 1})  # Lazy load by default
 
-    def _load_single_dataset(self, url):
-        """Lazy load a single dataset from a given URL."""
-        return xr.open_dataset(url, drop_variables='tau')  # Lazy load by default with xarray
 
     def get_variable(self, var_name):
         """
@@ -173,9 +244,8 @@ class ESPC:
         - xarray.DataArray: The lazy-loaded variable.
         """
         if var_name in self.datasets:
-            return self.datasets[var_name]
-        else:
-            raise ValueError(f"Variable {var_name} not recognized.")
+            return self.datasets[var_name][var_name]
+        raise ValueError(f"Variable {var_name} not found.")
 
     def get_subset(self, var_name, lon_extent, lat_extent, time=None):
         """
@@ -212,29 +282,35 @@ class ESPC:
         Returns:
         - xarray.Dataset: Dataset with temperature, salinity, u, and v.
         """
-        temperature = self.get_subset('temperature', lon_extent, lat_extent, time)
-        salinity = self.get_subset('salinity', lon_extent, lat_extent, time)
+        # temperature = self.get_subset('temperature', lon_extent, lat_extent, time)
+        # salinity = self.get_subset('salinity', lon_extent, lat_extent, time)
+
+        # # Lazily merge the variables into a single dataset when ready
+        # ds = xr.Dataset(
+        #     {'temperature': temperature,
+        #      'salinity': salinity, 
+        #      }
+        #     )
+        
+        # if uv:
+        u = self.get_subset('water_u', lon_extent, lat_extent, time)
+        v = self.get_subset('water_v', lon_extent, lat_extent, time)
 
         # Lazily merge the variables into a single dataset when ready
-        ds = xr.merge(
-            [
-                temperature, 
-                salinity, 
-            ]
-        )
-
-        if uv:
-            u = self.get_subset('u', lon_extent, lat_extent, time)
-            v = self.get_subset('v', lon_extent, lat_extent, time)
-            ds = xr.merge([ds, u, v])
-
-        ds = ds.rename(
-            {
-                'water_u': 'u',
-                'water_v': 'v',
-                'water_temp': 'temperature'
-                }
+        # ds = xr.merge([ds, u, v])
+        ds = xr.Dataset(
+            {'u': u,
+             'v': v, 
+             }
             )
+
+        # ds = ds.rename(
+        #     {
+        #         'water_u': 'u',
+        #         'water_v': 'v',
+        #         # 'water_temp': 'temperature'
+        #         }
+        #     )
         # xr.Dataset(
         #     {'temperature': temperature,
         #      'salinity': salinity, 
@@ -245,62 +321,70 @@ class ESPC:
         ds.attrs['model'] = 'ESPC'
 
         return ds
+    
 
-    def get_point(self, lon, lat, time=None, interp=False):
+
+    def get_point(self, lon, lat, time, interp=False, vars=None):
         """
-        Retrieve data for a specific longitude and latitude point at a certain time.
-
-        Args:
-        - lon (float): Longitude of the point.
-        - lat (float): Latitude of the point.
-        - time (datetime, optional): Time for subsetting. Defaults to None.
+        Retrieve data for a specific lon/lat/time point.
 
         Returns:
-        - xarray.Dataset: Dataset containing temperature, salinity, u, and v at the specific point and time.
+        - xarray.Dataset
         """
+
+        if vars is None:
+            vars = ['temperature', 'salinity', 'u', 'v']
+
+        def convert_var(var):
+            """
+            Convert variable names to standard names.
+
+            Args:
+            - var (str): Variable name to convert.
+
+            Returns:
+            - str: Converted variable name.
+            """
+
+            if var == 'temperature':
+                return 'water_temp'
+            elif var == 'u':
+                return 'water_u'
+            elif var == 'v':
+                return 'water_v'
+
+
         lon = lon180to360(lon)
-        temperature = self.get_variable('temperature')
-        salinity = self.get_variable('salinity')
-        # u = self.get_variable('u')
-        # v = self.get_variable('v')
 
-        if interp:
-            temperature = temperature.interp(time=time, lon=lon, lat=lat)
-            salinity = salinity.interp(time=time, lon=lon, lat=lat)
-            # u = u.interp(time=time, lon=lon, lat=lat)
-            # v = v.interp(time=time, lon=lon, lat=lat)
-        else:
-            temperature = temperature.sel(lon=lon, lat=lat, method='nearest')
-            salinity = salinity.sel(lon=lon, lat=lat, method='nearest')
-            # u = u.sel(lon=lon, lat=lat, method='nearest')
-            # v = v.sel(lon=lon, lat=lat, method='nearest')
+        var_data = []
 
-        if time:
-            temperature = temperature.sel(time=time, method='nearest')
-            salinity = salinity.sel(time=time, method='nearest')
-            # u = u.sel(time=time, method='nearest')
-            # v = v.sel(time=time, method='nearest')
-            
-        # Combine the variables into a single dataset
-        ds = xr.merge(
-            [
-                temperature, 
-                salinity, 
-                # u, 
-                # v
-                ]
-            )
+        for var in vars:
+
+            var = convert_var(var)
+
+            da = self.get_variable(var)
+            if interp:
+                da = da.interp(time=time, lon=lon, lat=lat)
+            else:
+                da = da.sel(time=time, lon=lon, lat=lat, method='nearest', drop=True)
+            var_data.append(da)
+
+        ds = xr.merge(var_data, compat='override')
+
+        # Rename variables only if needed
+        rename_map = {
+            # 'water_temp': 'temperature',
+            'water_u': 'u',
+            'water_v': 'v'
+        }
+        ds = ds.rename({k: v for k, v in rename_map.items() if k in ds.data_vars})
+
+        # Adjust lon back to -180 to 180
+        if 'lon' in ds.coords:
+            ds['lon'] = lon360to180(ds['lon'])
+
         ds.attrs['model'] = 'ESPC'
 
-        ds = ds.rename(
-            {
-                'water_temp': 'temperature', 
-                # 'water_u': 'u',
-                # 'water_v': 'v'
-                }
-        )
-
-        ds['lon'] = lon360to180(ds['lon'])
         return ds
 
 class CMEMS:
@@ -338,6 +422,8 @@ class CMEMS:
             dataset_id=dataset_id,
             username=self.username,
             password=self.password,
+            chunk_size_limit=0,
+            service = "arco-geo-series"
         )  # Lazy load by default
 
     def get_variable(self, var_name):
@@ -413,7 +499,7 @@ class CMEMS:
             )
         return ds
 
-    def get_point(self, lon, lat, time=None, interp=False):
+    def get_point(self, lon, lat, time, interp=False, vars=None):
         """
         Retrieve data for a specific longitude and latitude point at a certain time.
 
@@ -425,35 +511,48 @@ class CMEMS:
         Returns:
         - xarray.Dataset: Dataset containing temperature, salinity, u, and v at the specific point and time.
         """
-        temperature = self.get_variable('temperature')
-        salinity = self.get_variable('salinity')
-        u = self.get_variable('uo')
-        v = self.get_variable('vo')
-        
-        if interp:
-            temperature = temperature.interp(time=time, longitude=lon, latitude=lat)
-            salinity = salinity.interp(time=time, longitude=lon, latitude=lat)
-            u = u.interp(time=time, longitude=lon, latitude=lat)
-            v = v.interp(time=time, longitude=lon, latitude=lat)
-        else:
-            temperature = temperature.sel(longitude=lon, latitude=lat, method='nearest')
-            salinity = salinity.sel(longitude=lon, latitude=lat, method='nearest')
-            u = u.sel(longitude=lon, latitude=lat, method='nearest')
-            v = v.sel(longitude=lon, latitude=lat, method='nearest')
-            
-        if time:
-            temperature = temperature.sel(time=time, method='nearest')
-            salinity = salinity.sel(time=time, method='nearest')
-            u = u.sel(time=time, method='nearest')
-            v = v.sel(time=time, method='nearest')
+        # Check if vars is provided, if not, use default variables
+        if vars is None:
+            vars = ['temperature', 'salinity', 'uo', 'vo']
+        # lon = lon180to360(lon)
 
-        # Combine the variables into a single dataset
-        ds = xr.Dataset(
-            {'temperature': temperature,
-                'salinity': salinity,
-                'u': u,
-                'v': v}
-        )
+        xr_dict = {}
+
+        # Retrieve the variables
+        if 'temperature' in vars:
+            temperature = self.get_variable('temperature')
+
+            if interp:
+                temperature = temperature.interp(time=time, longitude=lon, latitude=lat)
+            else:
+                temperature = temperature.sel(time=time, longitude=lon, latitude=lat, method='nearest')
+            
+            xr_dict['temperature'] = temperature
+
+        if 'salinity' in vars:
+            salinity = self.get_variable('salinity')
+            if interp:
+                salinity = salinity.interp(time=time, longitude=lon, latitude=lat)
+            else:
+                salinity = salinity.sel(time=time, longitude=lon, latitude=lat, method='nearest')
+
+            xr_dict['salinity'] = salinity
+
+        if 'currents' in vars:
+            u = self.get_variable('uo')
+            v = self.get_variable('vo')
+            if interp:
+                u = u.interp(time=time, longitude=lon, latitude=lat)
+                v = v.interp(time=time, longitude=lon, latitude=lat)
+            else:
+                u = u.sel(longitude=lon, latitude=lat, method='nearest')
+                v = v.sel(longitude=lon, latitude=lat, method='nearest')
+            
+            xr_dict['u'] = u
+            xr_dict['v'] = v
+        # Iteratively merge the variables into a single dataset when ready
+
+        ds = xr.Dataset(xr_dict)
         ds.attrs['model'] = 'CMEMS'
 
         ds = ds.rename(
@@ -462,10 +561,9 @@ class CMEMS:
                 'latitude': 'lat'
                 }
             )
+        ds.load()
 
         return ds
-
-
 
 
 def cnaps(rename=False):

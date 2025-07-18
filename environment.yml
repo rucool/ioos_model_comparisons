@@ -1,9 +1,9 @@
-name: production
+name: model_comps
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.11
+  - python=3.12
   - xarray
   - netcdf4
   - beautifulsoup4

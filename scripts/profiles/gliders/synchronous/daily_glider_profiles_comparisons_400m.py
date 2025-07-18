@@ -16,7 +16,10 @@ import ioos_model_comparisons.configs as configs
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import (density,
                                          ocean_heat_content,
-                                         depth_bin
+                                         depth_bin,
+                                         depth_interpolate,
+                                         difference,
+                                         lon180to360
                                          )
 from ioos_model_comparisons.platforms import get_active_gliders, get_ohc
 from ioos_model_comparisons.regions import region_config
@@ -40,22 +43,24 @@ timeout = 60
 days = 2
 today = dt.date.today()
 interp = False
-workers = 6
+workers = 4
 
 # Region selection
-conf.regions = ['mab', 'sab', 'caribbean', 'gom']
+conf.regions = ['caribbean', 'gom', 'mab', 'sab']
 
 # Model selection
 plot_rtofs = True
 plot_espc = True
 plot_cmems = True
-plot_amseas = True
 plot_para = True
 
 # Subplot selection
 plot_temperature = True
 plot_salinity = True
 plot_density = True
+
+# Depth
+depth = 1000
 
 # Time threshold (in hours). If a profile time is greater than this, we won't 
 # grab the corresponding profile from the model
@@ -78,7 +83,6 @@ vars = ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity',
         'density', 'profile_id']
 
 region_gliders = []
-
 for region in conf.regions:
     print('Region:', region)
     extent = region_config(region)["extent"]
@@ -104,10 +108,12 @@ def pick_region_map(regions, point):
 
 # %% Load models
 if plot_espc:
-    from ioos_model_comparisons.models import ESPC
+    from ioos_model_comparisons.models import espc_ts #ESPC
     print('Loading ESPC')
     # Read ESPC output
-    espc_loaded = ESPC()
+    # espc_loaded = ESPC(uv=False)
+    espc_loaded = espc_ts(rename=True)
+
     print('ESPC loaded')
     glabel = f'ESPC' # Legend labels
 
@@ -115,25 +121,25 @@ if plot_para:
     from ioos_model_comparisons.models import rtofs
     print('Loading RTOFS Parallel')
     # RTOFS Parallel
-    rtofs_para = rtofs(source='parallel').sel(depth=slice(0,400))
+    rtofs_para = rtofs(source='parallel').sel(depth=slice(0, depth))
     print('RTOFS Parallel loaded')
     # from glob import glob
     # import xarray as xr
     # import os
-    rplabel = "RTOFS (Parallel)"
+    rplabel = "RTOFS-P"
     # url = '/Users/mikesmith/Downloads/rtofs.parallel.v2.3/'
     # rtofs_files = [glob(os.path.join(url, x.strftime('rtofs.%Y%m%d'), '*.nc')) for x in date_list]
     # rtofs_files = sorted([inner for outer in rtofs_files for inner in outer])
 
     # rtofs_para = xr.open_mfdataset(rtofs_files)
     # rtofs_para = rtofs_para.rename({'Longitude': 'lon', 'Latitude': 'lat', 'MT': 'time', 'Depth': 'depth', 'X': 'x', 'Y': 'y'})
-    rtofs_para.attrs['model'] = 'RTOFS (Parallel)'
+    rtofs_para.attrs['model'] = 'RTOFS-P'
 
 if plot_rtofs:
     from ioos_model_comparisons.models import rtofs
     print('Loading RTOFS')
     # Read RTOFS grid and time
-    rtofs = rtofs().sel(depth=slice(0,400))
+    rtofs = rtofs().sel(depth=slice(0, depth))
     print('RTOFS loaded')
     rlabel = f'RTOFS' # Legend labels
 
@@ -180,7 +186,7 @@ def round_to_nearest_ten(n):
     else:
         return (n // 10) * 10
 
-def plot_glider_profiles(id, gliders):
+def plot_glider_profiles(id, gliders):    
     print('Plotting ' + id)
 
     # Subset the glider dataframe by a given id
@@ -220,6 +226,7 @@ def plot_glider_profiles(id, gliders):
         os.makedirs(spath, exist_ok=True)
         
         fullfile = spath / f"{id}_{t0.strftime('%Y%m%d')}_to_{t1.strftime('%Y%m%d')}_400m.png"
+        diff_file = spath / f"{id}_{t0.strftime('%Y%m%d')}_to_{t1.strftime('%Y%m%d')}_400m_difference.png"
 
         # Initialize plot
         fig = plt.figure(constrained_layout=True, figsize=(16, 8))
@@ -262,7 +269,8 @@ def plot_glider_profiles(id, gliders):
                 if not pdf.empty:
                     print(f'plotting profile {name}')
                     pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
-                    tmp_depth = depth_bin(pdf.select_dtypes(exclude=['object']), depth_var='depth', depth_min=0, depth_max=400, stride=10, aggregation='mean')
+                    tmp_depth = depth_bin(pdf.select_dtypes(exclude=['object']), depth_var='depth', depth_min=-1, depth_max=400, stride=5, aggregation='mean')
+                    # tmp_depth = depth_interpolate(pdf, depth_min=0, depth_max=400, bins=bins)
                     binned.append(tmp_depth)
                     pid = name[0]
                     time_glider = name[1] 
@@ -304,9 +312,12 @@ def plot_glider_profiles(id, gliders):
         else:
             continue
 
+        bin_avg = pd.concat(binned).groupby('depth').mean().reset_index()
+
         mlon = tdf['lon'].mean()
         mlat = tdf['lat'].mean()
 
+        mlon360 = lon180to360(mlon)
         # time_glider_str = time_glider.strftime("%Y-%m-%d")
         try:
             nesdis = get_ohc(extent, time_glider.date())
@@ -320,8 +331,14 @@ def plot_glider_profiles(id, gliders):
         
         if plot_espc:        
             # Select the nearest model time to the glider time for this profile
-            gds = espc_loaded.get_point(mlon, mlat, time_glider, interp=False)
-            gds = gds.sel(depth=slice(0,400)).squeeze()
+            # gds = espc_loaded.get_point(mlon, mlat, time_glider, interp=False) #Archive data
+            gds = espc_loaded.sel(lon=mlon360, lat=mlat, method='nearest')
+            gds = gds.sel(time=time_glider, method="nearest")
+
+            # espc_loaded
+            gds = gds.sel(depth=slice(0, depth)).squeeze()
+            gds['salinity'].load()
+            gds['temperature'].load()
 
             # Calculate density
             gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
@@ -352,7 +369,8 @@ def plot_glider_profiles(id, gliders):
                     )
             
             # Calculate density 
-            rds['density'] = density(rds['temperature'].values, -rds['depth'].values, rds['salinity'].values, rds['lat'].values, rds['lon'].values)
+            d_g = density(rds['temperature'].values, -rds['depth'].values, rds['salinity'].values, rds['lat'].values, rds['lon'].values)
+            rds['density'] = (('depth'), d_g)
             ohc_rtofs = ocean_heat_content(rds['depth'].values, rds['temperature'].values, rds['density'].values)
 
         if plot_para:
@@ -377,13 +395,21 @@ def plot_glider_profiles(id, gliders):
                     )
             
             # Calculate density 
-            rdsp['density'] = density(rdsp['temperature'].values, -rdsp['depth'].values, rdsp['salinity'].values, rdsp['lat'].values, rdsp['lon'].values)
+            d_g = density(rdsp['temperature'].values, -rdsp['depth'].values, rdsp['salinity'].values, rdsp['lat'].values, rdsp['lon'].values)
+            rdsp['density'] = (('depth'), d_g)
             ohc_rtofsp = ocean_heat_content(rdsp['depth'].values, rdsp['temperature'].values, rdsp['density'].values)
             
         if plot_cmems:
             # CMEMS
-            cds = cobj.get_point(mlon, mlat, time_glider, interp=False)
-            cds = cds.sel(depth=slice(0,400)).squeeze()
+            if interp:
+                cds = cobj.get_point(mlon, mlat, time_glider, interp=True)
+            else:
+                cds = cobj.get_point(mlon, mlat, time_glider, interp=False)
+            cds = cds.sel(depth=slice(0, depth)).squeeze()
+
+            cds['salinity'].load()
+            cds['temperature'].load()
+
             print(f"CMEMS - Time: {pd.to_datetime(cds.time.values)}")
             # delta_time = np.abs(time_glider - pd.to_datetime(cds.time.values))
             # print(f"Threshold time: {delta_time}")
@@ -416,12 +442,13 @@ def plot_glider_profiles(id, gliders):
             dax.plot(cds['density'], cds["depth"], '.-', color="magenta", label='_nolegend_')
 
         # Plot glider profile
-        bin_avg = pd.concat(binned).groupby('depth').mean().reset_index()
         tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=alabel)
         sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=alabel)
         dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=alabel)
 
         # Plot model profiles
+        rlabel = 'RTOFS'
+        rplabel = 'RTOFS-P'
         if plot_rtofs:
             tax.plot(rds['temperature'], rds['depth'], '-o', color='red', label=rlabel)
             sax.plot(rds['salinity'], rds['depth'], '-o', color='red', label=rlabel)
@@ -629,8 +656,152 @@ def plot_glider_profiles(id, gliders):
         plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
 
         plt.savefig(fullfile, dpi=configs.dpi, bbox_inches='tight', pad_inches=0.1)
-        plt.close() 
+        plt.close()
 
+        # # Interpolate model to glider depth
+        # if plot_rtofs:
+        #     rdsi = rds.interp(depth=bin_avg['depth'])
+
+        # if plot_para:
+        #     rdsip = rdsp.interp(depth=bin_avg['depth'])
+
+        # if plot_espc:
+        #     gdsi = gds.interp(depth=bin_avg['depth'])
+
+        # if plot_cmems:
+        #     cdsi = cds.interp(depth=bin_avg['depth'])
+            
+        # # plot difference
+        # fig = plt.figure(constrained_layout=True, figsize=(16, 6))
+        # widths = [1, 1, 1, 1]
+        # heights = [1, 2, 1]
+
+        # gs = fig.add_gridspec(3, 4, width_ratios=widths,
+        #                         height_ratios=heights)
+
+        # tax = fig.add_subplot(gs[:, 0]) # Temperature
+        # sax = fig.add_subplot(gs[:, 1], sharey=tax)  # Salinity
+        # plt.setp(sax.get_yticklabels(), visible=False)
+        # dax = fig.add_subplot(gs[:, 2], sharey=tax) # Density
+        # plt.setp(dax.get_yticklabels(), visible=False)
+        # ax4 = fig.add_subplot(gs[0, -1]) # Title
+        # mpax = fig.add_subplot(gs[1, -1], projection=configs.projection['map']) # Map
+        # lax = fig.add_subplot(gs[2, -1]) # Legend
+
+        # # Temperature 
+        # diff_g = difference(gdsi['temperature'], df['temp (degree_Celsius)'])
+        # diff_r = difference(rdsi['temperature'], bin_avg['temperature'])
+        # diff_rd = difference(rdsip['temperature'], bin_avg['temperature'])
+        # diff_c = difference(cds['temperature'], df['temp (degree_Celsius)'])
+            
+        # # glabel = f'{diff_g[1]}, {diff_g[2]}'
+        # rlabel = f'{diff_r[1]}, {diff_r[2]}'
+        # rlabel1 = f'{diff_rd[1]}, {diff_rd[2]}'
+        # # clabel = f"{diff_c[1]}, {diff_c[2]}"
+            
+        # # ax1.plot(diff_g[0], gdsi['depth'], 'g-o', label=glabel)
+        # tax.plot(diff_r[0], rdsi['depth'], 'r-o', label=rlabel)
+        # tax.plot(diff_rd[0], bin_avg['depth'], '-o', color='orange', label=rlabel1)
+        # # ax1.plot(diff_c[0], cdsi['depth'], 'm-o', label=clabel)
+        # tax.axvline(0)
+        # tax.set_ylim([400, 0])
+        # tax.set_xlim([-3, 3])
+        # tax.grid(True, linestyle='--', linewidth=.5)
+        # tax.tick_params(axis='both', labelsize=13)
+        # tax.set_xlabel('Temperature (˚C)', fontsize=14, fontweight='bold')
+        # tax.set_ylabel('Depth (m)', fontsize=14, fontweight='bold')
+        # tax.legend(title="bias, rms", loc=3, fontsize='small',)
+
+        # # Salinity
+        # # diff_g = difference(gdsi['salinity'], df['psal (PSU)'])
+        # diff_r = difference(rdsi['salinity'], bin_avg['salinity'])
+        # diff_rd = difference(rdsip['salinity'], bin_avg['salinity'])
+        # # diff_c = difference(cdsi['salinity'], df['psal (PSU)'])
+        
+        # # glabel = f'{diff_g[1]}, {diff_g[2]}'
+        # rlabel = f'{diff_r[1]}, {diff_r[2]}'
+        # rlabel1 = f'{diff_rd[1]}, {diff_rd[2]}'
+        # # clabel = f"{diff_c[1]}, {diff_c[2]}"
+            
+        # # ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
+        # # ax2.plot(diff_g[0], gdsi['depth'], 'g-o', label=glabel)
+        # sax.plot(diff_r[0], rdsi['depth'], 'r-o', label=rlabel)
+        # sax.plot(diff_rd[0], bin_avg['depth'], '-o', color='orange', label=rlabel1)
+        # # ax2.plot(diff_c[0], cdsi['depth'], 'm-o', label=clabel)
+        # sax.axvline(0)
+        # sax.set_ylim([400, 0])
+        # sax.set_xlim([-1, 1])
+        # sax.grid(True, linestyle='--', linewidth=.5)
+        # sax.tick_params(axis='both', labelsize=13)
+        # sax.set_xlabel('Salinity (psu)', fontsize=14, fontweight='bold')
+        # sax.legend(title="bias, rms", loc=3, fontsize='small',)
+        # # ax2.set_ylabel('Depth (m)', fontsize=14)
+
+        # # Density
+        # # diff_g = difference(gdsi['density'], df['density'])
+        # diff_r = difference(rdsi['density'], bin_avg['density'])
+        # diff_rd = difference(rdsip['density'], bin_avg['density'])
+        # # diff_c = difference(cdsi['density'], df['density'])
+        
+        # # glabel = f'{diff_g[1]}, {diff_g[2]}'
+        # rlabel = f'{diff_r[1]}, {diff_r[2]}'
+        # rlabel1 = f'{diff_rd[1]}, {diff_rd[2]}'
+        # # clabel = f"{diff_c[1]}, {diff_c[2]}"
+        
+        # # ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
+        # # ax3.plot(diff_g[0], gdsi['depth'],'g-o', label=glabel)
+        # dax.plot(diff_r[0], rdsi['depth'], 'r-o', label=rlabel)
+        # dax.plot(diff_rd[0], bin_avg['depth'], '-o', color='orange', label=rlabel1)
+        # # ax3.plot(diff_c[0], cdsi['depth'], 'm-o', label=clabel)
+        # dax.set_ylim([400, 0])
+        # dax.set_xlim([-.3, .3])
+        # dax.grid(True, linestyle='--', linewidth=.5)
+        # dax.tick_params(axis='both', labelsize=13)
+        # dax.set_xlabel('Density', fontsize=14, fontweight='bold')
+        # dax.legend(title="bias, rms", loc=3, fontsize='small',)
+        # dax.axvline(0)
+        # ax3.set_ylabel('Depth (m)', fontsize=14)
+
+        # text = ax4.text(0.125, 1.0, 
+        #                 f'Glider: {glid}\n'
+        #                 f'ARGO:  { tstr }\n'
+        #                 f'RTOFS: {pd.to_datetime(rdsi.time.data)}\n'
+        #                 f'GOFS : {pd.to_datetime(gdsi.time.data)}\n'
+        #                 f'CMEMS: {pd.to_datetime(cdsi.time.data)}',
+        #                 ha='left', va='top', size=15, fontweight='bold')
+        
+        # text = ax4.text(0.125, 1.0, 
+        #         f'Glider: {glid}\n'
+        #         f'RTOFS: {pd.to_datetime(rdsi.time.data)}\n'
+        #         f'RTOFS (Parallel): {pd.to_datetime(rdsp.time.data)}\n',
+        #         ha='left', va='top', size=15, fontweight='bold')
+
+
+        # text.set_path_effects([path_effects.Normal()])
+        # ax4.set_axis_off()
+
+        # # map_create(extent, ax=ax5, ticks=False)
+        # # map_add_ticks(ax5, extent, fontsize=10)
+        # create(extent, ax=mpax)
+        
+        # mpax.plot(bin_avg['lon'][0], bin_avg['lat'][0], 'ro', transform=conf.projection['data'], zorder=10000)
+
+        # h, l = sax.get_legend_handles_labels()  # get labels and handles from ax1
+
+        # # lax.legend(h, [f'GOFS [{ glon }, { glat }]', f'RTOFS [{ rlon }, { rlat }]', f"Copernicus [{ clon }, { clat }]"], ncol=1, loc='center', fontsize=12)
+        # lax.legend(h, [ f'RTOFS', 'RTOFS (Parallel)'], ncol=1, loc='center', fontsize=12)
+        # lax.set_axis_off()
+        
+        # # plt.figtext(0.15, 0.001, f'Depths interpolated to every {conf.stride}m', ha="center", fontsize=10, fontstyle='italic')
+
+        # fig.tight_layout()
+        # fig.subplots_adjust(top=0.9)
+        
+        # # diff_file = temp_save_dir / f'{wmo}-profile-difference-{ctime.strftime("%Y-%m-%dT%H%M%SZ")}.png' 
+
+        # plt.savefig(diff_file, dpi=300, bbox_inches='tight', pad_inches=0.1)
+        # plt.close()
+        
 from functools import partial
 from joblib import Parallel, delayed
 
@@ -652,7 +823,7 @@ def main():
         # results = Parallel(n_jobs=workers)(delayed(f)(x) for x in active_gliders)
     else:
         for id in active_gliders:
-            plot_glider_profiles(id, active_gliders)
+            plot_glider_profiles(id, gliders)
 
 
 if __name__ == "__main__":

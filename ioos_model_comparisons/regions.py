@@ -58,7 +58,7 @@ def region_config(regions=None, model=None):
             # depths = [0, 150, 300, 600, 900],
             depths = [0],
             limits = [0, 1.5, .1],
-            coarsen=dict(rtofs=5, gofs=6),
+            coarsen=dict(rtofs=5, espc=6),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -101,7 +101,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0, 150],
             limits = [0, 1.5, .1],
-            coarsen=dict(rtofs=5, gofs=6),
+            coarsen=dict(rtofs=5, espc=6),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -143,7 +143,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0, 150, 200],
             limits = [0, 1.5, .1],
-            coarsen=dict(rtofs=1, gofs=1),
+            coarsen=dict(rtofs=1, espc=1),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -182,7 +182,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0, 30],
             limits = [0, 2.0, .1],
-            coarsen=dict(rtofs=7, gofs=8),
+            coarsen=dict(rtofs=7, espc=8),
             contours=[0.771667], # m/s
             kwargs=dict(
                 ptype="streamplot",
@@ -201,6 +201,9 @@ def region_config(regions=None, model=None):
         name = "Gulf of Mexico"
         folder = "gulf_of_mexico"
         extent = [-99, -78, 18, 33]
+        # extent = [-100, -40, 5, 35]
+        # extent = [-91, -81, 20, 28]
+
         sea_water_temperature = [
             dict(depth=0, limits=[25, 31.5, .5]),
             dict(depth=150, limits=[14, 26, .5]),
@@ -223,11 +226,11 @@ def region_config(regions=None, model=None):
             )
         currents = dict(
             bool=True,
-            depths = [0, 150],
+            depths = [0],
             limits = [0, 1.5, .1],
             # depths = [0,],
             # limits = [0, 1.5, .1],
-            coarsen=dict(rtofs=7, gofs=8, hafs=7),
+            coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
             kwargs=dict(
                 ptype="streamplot",
                 color="black",
@@ -237,8 +240,58 @@ def region_config(regions=None, model=None):
         eez=False
         figure = dict(
             legend = dict(columns=10),
-            figsize = (13, 7.5)
+            figsize = (12.125, 7.5)
             )
+        
+    key = "grase"
+    if key in regions:
+        # Gulf of Mexico Limits
+        name = "Gulf of Mexico"
+        folder = "grase"
+        # extent = [-99, -78, 18, 33]
+        # extent = [-100, -40, 5, 35]
+        extent = [-91, -81, 18, 29]
+
+        sea_water_temperature = [
+            dict(depth=0, limits=[25, 31.5, .5]),
+            dict(depth=150, limits=[14, 26, .5]),
+            dict(depth=200, limits=[12, 23, .5])
+            ]
+        salinity = [
+            dict(depth=0, limits=[32.0, 36.6, .1]), 
+            dict(depth=150, limits=[35.6, 37.1, .1]),
+            dict(depth=200, limits=[35.7, 37.1, .1]),
+            ]
+        sea_surface_height = [
+            # dict(depth=0, limits=[-.6, .7, .1])
+            ]
+        salinity_max = dict(
+            figsize=(14, 6.5),
+            limits=[36, 37, .1]
+        )
+        ocean_heat_content = dict(
+            limits= [0, 160, 10]
+            )
+        currents = dict(
+            bool=True,
+            depths = [0, 80, 1500],
+            limits = [0, 1.5, .1],
+            # depths = [0,],
+            # limits = [0, 1.5, .1],
+            coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
+            kwargs=dict(
+                ptype="streamplot",
+                color="black",
+                density=3
+                )
+            )
+        eez=False
+        figure = dict(
+            legend = dict(columns=10),
+            figsize = (12.125, 7.5)
+            )
+        
+        
 
     key = "sab"
     if key in regions:
@@ -270,7 +323,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0, 150, 200],
             limits = [0, 1.5, .1],
-            coarsen=dict(rtofs=7, gofs=8),
+            coarsen=dict(rtofs=7, espc=8),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -315,7 +368,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0, 100, 150, 200],
             limits = [0, 1.5, .1],
-            coarsen=dict(rtofs=5, gofs=6),
+            coarsen=dict(rtofs=5, espc=6),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -356,7 +409,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0],
             limits = [0, 1.5, .1],
-            coarsen=dict(rtofs=11, gofs=12),
+            coarsen=dict(rtofs=11, espc=12),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -399,7 +452,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0, 150, 200],
             limits = [0, 1.5, .1],
-            coarsen=dict(rtofs=11, gofs=12),
+            coarsen=dict(rtofs=11, espc=12),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -442,7 +495,7 @@ def region_config(regions=None, model=None):
             # coarsen=dict(rtofs=None, gofs=None),
             depths = [0, 150, 200],
             limits = [0, 1.3, .1],
-            coarsen=dict(rtofs=5, gofs=6),
+            coarsen=dict(rtofs=5, espc=6),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -477,7 +530,7 @@ def region_config(regions=None, model=None):
             bool=True,
             # coarsen=dict(rtofs=None, gofs=None),
             depths = [0, 160, 200],
-            coarsen=dict(rtofs=5, gofs=6),
+            coarsen=dict(rtofs=5, espc=6),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -514,7 +567,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             depths = [0, 150, 200],
-            coarsen=dict(rtofs=11, gofs=12),
+            coarsen=dict(rtofs=11, espc=12),
             kwargs=dict(
                 ptype="streamplot",
                 color="black", 
@@ -557,7 +610,7 @@ def region_config(regions=None, model=None):
             limits = [0, 1.6, .1],
             coarsen=dict(
                 rtofs=14,
-                gofs=15,
+                espc=15,
                 cmems=14,
                 amseas=13
                 ),
@@ -608,7 +661,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0, 150, 300],
             limits = [0, 1.5, .1],
-            coarsen=dict(rtofs=5, gofs=6),
+            coarsen=dict(rtofs=5, espc=6),
             kwargs=dict(
                 ptype="streamplot",
                 color="black"
@@ -651,7 +704,7 @@ def region_config(regions=None, model=None):
             limits = [0, 1.6, .1],
             coarsen=dict(
                 rtofs=14,
-                gofs=15,
+                espc=15,
                 cmems=14,
                 amseas=13
                 ),
@@ -699,7 +752,7 @@ def region_config(regions=None, model=None):
             limits = [0, 1.6, .1],
             coarsen=dict(
                 rtofs=14,
-                gofs=15,
+                espc=15,
                 cmems=14,
                 amseas=13
                 ),

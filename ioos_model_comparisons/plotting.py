@@ -43,6 +43,8 @@ import matplotlib.pyplot as plt
 from tropycal import tracks
 from datetime import datetime
 import numpy as np
+from matplotlib.ticker import FormatStrFormatter
+
 
 # basin = tracks.TrackDataset(basin='north_atlantic', include_btk=True)
 
@@ -90,14 +92,24 @@ def cmaps(variable):
 
 def map_add_argo(ax, df, transform=proj['data']):
     tdf = df.reset_index()
-    most_recent = tdf.loc[tdf.groupby('argo')['time'].idxmax()]
+    # most_recent = tdf.loc[tdf.groupby('argo')['time'].idxmax()]
+    most_recent = tdf
+    
+
+    # Limit the dataframe to the most recent 50 floats
+    # most_recent = most_recent[most_recent['time'] == most_recent['time'].max()]
 
     if most_recent.shape[0] > 50:
-        custom_cmap = matplotlib.colors.ListedColormap('red', N=most_recent.shape[0])
-        marker = cycle(['o'])
-    else:
-        custom_cmap = categorical_cmap(10, 5, cmap="tab10")
-        marker = cycle(['o', 'h', 'p'])
+        most_recent = tdf.sample(n=50, random_state=1)
+    #     custom_cmap = matplotlib.colors.ListedColormap('red', N=most_recent.shape[0])
+    #     marker = cycle(['o'])
+    # else:
+    
+    # Sort most_recent
+    most_recent = most_recent.sort_values(by='argo')
+
+    custom_cmap = categorical_cmap(10, 5, cmap="tab10")
+    marker = cycle(['o', 'h', 'p'])
 
     n = 0
     for float in most_recent.itertuples():
@@ -105,6 +117,39 @@ def map_add_argo(ax, df, transform=proj['data']):
                 marker=next(marker), linestyle="None",
                 markersize=7, markeredgecolor='black', 
                 color=custom_cmap.colors[n],
+                label=float.argo,
+                transform=transform,
+                zorder=10000)
+        # map_add_legend(ax)
+        n = n + 1
+    
+def map_add_argo_single_color(ax, df, transform=proj['data']):
+    tdf = df.reset_index()
+    # most_recent = tdf.loc[tdf.groupby('argo')['time'].idxmax()]
+    most_recent = tdf
+    
+
+    # Limit the dataframe to the most recent 50 floats
+    # most_recent = most_recent[most_recent['time'] == most_recent['time'].max()]
+
+    if most_recent.shape[0] > 50:
+        most_recent = tdf.sample(n=50, random_state=1)
+    #     custom_cmap = matplotlib.colors.ListedColormap('red', N=most_recent.shape[0])
+    #     marker = cycle(['o'])
+    # else:
+    
+    # Sort most_recent
+    most_recent = most_recent.sort_values(by='argo')
+
+    custom_cmap = categorical_cmap(10, 5, cmap="tab10")
+    marker = cycle(['o', 'h', 'p'])
+
+    n = 0
+    for float in most_recent.itertuples():
+        ax.plot(float.lon, float.lat, 
+                marker=next(marker), linestyle="None",
+                markersize=7, markeredgecolor='black', 
+                color='lime',
                 label=float.argo,
                 transform=transform,
                 zorder=10000)
@@ -221,12 +266,28 @@ def map_add_gliders(ax, df, transform=proj['data'], color='white'):
     for g, new_df in df.groupby(level=0):
         # if 'ru29' in g:
         q = new_df.iloc[-1]
+        # ax.plot(new_df['lon'], new_df['lat'], color=color,
+        #         linewidth=2, transform=transform, zorder=10000)
+        # ax.plot(q['lon'], q['lat'], marker='^', markeredgecolor='black',
+        #         markersize=7, label=g, transform=transform, zorder=10000)
         ax.plot(new_df['lon'], new_df['lat'], color=color,
-                linewidth=8, transform=transform, zorder=10000)
+                linewidth=3, transform=transform, zorder=10000)
         ax.plot(q['lon'], q['lat'], marker='^', markeredgecolor='black',
-                markersize=14, label=g, transform=transform, zorder=10000)
+                markersize=9, label=g, transform=transform, zorder=10000)
         # map_add_legend(ax)
 
+def map_add_gliders_single_color(ax, df, transform=proj['data'], color='white'):
+    for g, new_df in df.groupby(level=0):
+        # if 'ru29' in g:
+        q = new_df.iloc[-1]
+        # ax.plot(new_df['lon'], new_df['lat'], color=color,
+        #         linewidth=2, transform=transform, zorder=10000)
+        # ax.plot(q['lon'], q['lat'], marker='^', markeredgecolor='black',
+        #         markersize=7, label=g, transform=transform, zorder=10000)
+        ax.plot(new_df['lon'], new_df['lat'], color=color,
+                linewidth=3, transform=transform, zorder=10000)
+        ax.plot(q['lon'], q['lat'], color='deeppink', marker='^', markeredgecolor='black',
+                markersize=10, label=g, transform=transform, zorder=10000)
 
 def map_add_inset(ax, x=.8, y=.3, size=.5, extent=None, zoom_extent=None):
     """_summary_
@@ -359,6 +420,7 @@ def plot_model_region(ds, region,
 
         # Iterate through values of the key
         for item in values:
+            print(f"Plotting {key} at {item['depth']} m")
             depth = item['depth']
 
             # Select variable and depth to plot
@@ -460,17 +522,17 @@ def plot_model_region(ds, region,
                     legstr = f'Glider/Argo Search Window: {str(t0)} to {str(time)}'
                     plt.figtext(0.5, -0.07, legstr, ha="center", fontsize=10, fontweight='bold')
 
-            fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            # fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             
             # # Add currents
-            # if currents['bool']:
-            #     quiver_dir = save_dir_final / "currents"
-            #     os.makedirs(quiver_dir, exist_ok=True)
+            if currents['bool']:
+                quiver_dir = save_dir_final / "currents"
+                os.makedirs(quiver_dir, exist_ok=True)
                 
-            #     save_file_q = quiver_dir / f"{sname}.png"
-            #     coarsen = currents['coarsen']
-            #     map_add_currents(ax, da, coarsen=coarsen[model], **currents['kwargs'])
-            #     fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+                save_file_q = quiver_dir / f"{sname}.png"
+                coarsen = currents['coarsen']
+                map_add_currents(ax, da, coarsen=coarsen[model], **currents['kwargs'])
+                fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             
             plt.close()
 
@@ -1526,6 +1588,12 @@ def plot_model_region_comparison(ds1, ds2, region,
     ax2 = axs[1] # Model 2
     ax3 = axs[2] # Legend for argo/gliders
 
+    # Plot transect line on each map
+    point1 = (-87, 23)
+    point2 = (-83, 25)
+    ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+    ax2.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+
     # Set map extent
     ax1.set_extent(extent)
     ax2.set_extent(extent)
@@ -2469,6 +2537,27 @@ def plot_regional_assets(ax, argo=None, gliders=None,
     if not transects.empty:
         map_add_transects(ax, transects, transform)
 
+def plot_regional_assets_single_color(ax, argo=None, gliders=None, 
+                         transects=None,
+                         transform=None):
+    if argo is None:
+        argo = pd.DataFrame()
+
+    if gliders is None:
+        gliders = pd.DataFrame()
+
+    if transects is None:
+        transects = pd.DataFrame()
+
+    if not argo.empty:
+        map_add_argo_single_color(ax, argo, transform)
+
+    if not gliders.empty:
+        map_add_gliders_single_color(ax, gliders, transform)
+
+    # if not transects.empty:
+        # map_add_transects(ax, transects, transform)
+
 
 def transect(fig, ax, x, y, z, c, cmap=None, levels=None, isobath=None, flip_y=None):
     cmap = cmap or 'parula'
@@ -2564,6 +2653,12 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
     time = pd.to_datetime(ds1.time.data)
     time1 = time
     time2 = pd.to_datetime(ds2.time.data)
+
+    # Formatter for time
+    formatter ='%Y-%m-%dT%H:%MZ'
+    time1_str = time1.strftime(formatter)
+    time2_str = time2.strftime(formatter)
+
     extent = region['extent']
     cdict = region['currents']
     
@@ -2571,13 +2666,15 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
     RG
     LL
     """
+    
     # Add loop current contour from WHO Group
-    # fname = '/Users/mikesmith/Downloads/GOM22 Fronts/2022-09-04_fronts.mat'
+    # fname = '/Users/mikesmith/Downloads/2025-02-03_fronts.mat'
     # data = loadmat(fname)
 
     # Iterate through the variables to be plotted for each region. 
     # This dict contains information on what variables and depths to plot. 
     for depth in cdict['depths']:
+
         print(f"Plotting currents @ {depth}m")
         ds1_depth = ds1.sel(depth=depth)
 
@@ -2613,8 +2710,11 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         qargs['extend'] = "max"
 
         if 'limits' in cdict:
-            lims = cdict['limits']
-            qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+            if depth == 1500:
+                qargs['levels'] = np.arange(0, 0.4, 0.05)
+            else:
+                lims = cdict['limits']
+                qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
 
         # Initialize figure
         fig, _ = plt.subplot_mosaic(
@@ -2635,6 +2735,12 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         ax1 = axs[0] # rtofs
         ax2 = axs[1] # gofs
         ax3 = axs[2] # legend for argo/gliders
+
+        #  # Plot transect line on each map
+        # point1 = (-87, 23)
+        # point2 = (-83, 24.75)
+        # ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+        # ax2.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
 
         # Set map extents
         ax1.set_extent(extent)
@@ -2670,12 +2776,39 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         rargs['argo'] = argo
         rargs['gliders'] = gliders
         rargs['transform'] = transform['data']  
+
+        # for ax in [ax1, ax2]:
+        #         if argo is None:
+        #             argo = pd.DataFrame()
+
+        #         if gliders is None:
+        #             gliders = pd.DataFrame()
+
+        #         if transects is None:
+        #             transects = pd.DataFrame()
+
+        #         if not argo.empty:
+        #             if depth == 1500:
+        #                 map_add_argo(ax, argo, transform['data'])
+        #             else:
+        #                 print()
+
+        #         if not gliders.empty:
+        #             if depth == 1500:
+        #                 continue
+        #             else:
+        #                 map_add_gliders(ax, gliders, transform['data'])
+
+        #         if not transects.empty:
+        #             map_add_transects(ax, transects, transform['data'])
+
+
         plot_regional_assets(ax1, **rargs)
         plot_regional_assets(ax2, **rargs)
 
         # Label the subplots
-        ax1.set_title(f"{ds1.model.upper()} - {time1}", fontsize=16, fontweight="bold")
-        ax2.set_title(f"{ds2.model.upper()} - {time2}", fontsize=16, fontweight="bold")
+        ax1.set_title(f"{ds1.model.upper()} - {time1_str}", fontsize=16, fontweight="bold")
+        ax2.set_title(f"{ds2.model.upper()} - {time2_str}", fontsize=16, fontweight="bold")
 
         # plot_hurricane_track(ax1, time, basin, storm_id="AL092024", markersize=30)
         # plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='green', markersize=30)
@@ -2737,7 +2870,7 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         #                 )
         # fronts.reverse()
 
-        # Deal with the third axes
+        # # Deal with the third axes
         h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
 
         h_n = h #+ fronts
@@ -2777,11 +2910,11 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
             coarsen = region['currents']['coarsen']
         else:
             coarsen['rtofs'] = 1
-            coarsen['gofs'] = 1
+            coarsen['espc'] = 1
 
         # Add streamlines
         s1 = map_add_currents(ax1, ds1_depth, coarsen=coarsen["rtofs"], **currents["kwargs"])
-        s2 = map_add_currents(ax2, ds2_depth, coarsen=coarsen["gofs"], **currents["kwargs"])
+        s2 = map_add_currents(ax2, ds2_depth, coarsen=coarsen["espc"], **currents["kwargs"])
 
         # Add EEZ
         if eez:
@@ -3557,9 +3690,10 @@ def plot_ohc(ds1, ds2, extent, region_name,
 
     # Convert ds.time value to a normal datetime
     time = pd.to_datetime(ds1.time.values)
+    time2 = pd.to_datetime(ds2.time.values)
     
     # Formatter for time
-    tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
+    tstr_title = time.strftime('%Y-%m-%d %HZ')
     tstr_folder = time.strftime('%Y-%m-%dT%H%M%SZ')
     year = time.strftime("%Y")
     month = time.strftime("%m")
@@ -3758,9 +3892,9 @@ def plot_ohc(ds1, ds2, extent, region_name,
     cb.set_label('kJ/cm^2', fontsize=12, fontweight="bold")
 
     # Set title for each axes
-    ax1.set_title(f"{ds1.model.upper()}", fontsize=16, fontweight='bold')
-    ax2.set_title(f"{ds2.model.upper()}", fontsize=16, fontweight='bold')
-    fig.suptitle(f"Ocean Heat Content - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
+    ax1.set_title(f"{ds1.model.upper()} - {time.strftime(tstr_title)}", fontsize=16, fontweight='bold')
+    ax2.set_title(f"{ds2.model.upper()} - {time2.strftime(tstr_title)}", fontsize=16, fontweight='bold')
+    fig.suptitle(f"Ocean Heat Content", fontweight="bold", fontsize=20)
 
     # from ioos_model_comparisons.plotting_hurricanes import plot_storms
     # from tropycal import realtime
@@ -4489,7 +4623,7 @@ def plot_model_region_single_streamplot(ds1, region,
                                         argo=None,
                                         gliders=None,
                                         currents=None,
-                                        eez=False,
+                                        eez=True,
                                         cols=6,
                                         transform=dict(map=proj['map'], 
                                                         data=proj['data']
@@ -4498,7 +4632,8 @@ def plot_model_region_single_streamplot(ds1, region,
                                         figsize=(14,8),
                                         dpi=150,
                                         colorbar=True,
-                                        overwrite=False
+                                        overwrite=False,
+                                        legend=False
                                         ):
 
     time = pd.to_datetime(ds1.time.data)
@@ -4538,7 +4673,14 @@ def plot_model_region_single_streamplot(ds1, region,
 
         if 'limits' in cdict:
             lims = cdict['limits']
-            qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+
+            if depth == 1500:
+                # qargs['vmin'] = lims[0]
+                # qargs['vmax'] = lims[1]
+                qargs['levels'] = np.arange(0, 0.4, 0.05)
+            else:
+                qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+
 
         # Initialize figure
         # Adjust the figure size to create more space at the bottom
@@ -4565,8 +4707,8 @@ def plot_model_region_single_streamplot(ds1, region,
                 print("Bathymetry deeper than specified levels.")
 
         # Add EEZ
-        if eez:
-            eez1 = map_add_eez(ax1, zorder=1, color='red', linewidth=2, linestyle='-')
+        # if eez:
+        eez1 = map_add_eez(ax1, zorder=10000, color='blue', linewidth=2, linestyle='-')
                 
         # Setup keyword arguments dictionary for plot_regional_assets
         rargs = {}
@@ -4593,13 +4735,13 @@ def plot_model_region_single_streamplot(ds1, region,
         # Manually add labeled ticks at every 5 degrees on both axes
         # Longitude (x-axis)
         # ax1.set_xticks(range(int(extent[0]), int(extent[1]) + 1, 5), crs=ccrs.PlateCarree())
-        ax1.set_xticks(np.arange(-90, -75, 5), crs=ccrs.PlateCarree())
+        ax1.set_xticks(np.arange(-91, -80, 1), crs=ccrs.PlateCarree())
         ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
         ax1.xaxis.set_minor_formatter(cticker.LongitudeFormatter())
         
         # Latitude (y-axis)
         # ax1.set_yticks(range(int(extent[2]), int(extent[3]) + 1, 5), crs=ccrs.PlateCarree())
-        ax1.set_yticks(np.arange(20, 35, 5), crs=ccrs.PlateCarree())
+        ax1.set_yticks(np.arange(21, 30, 1), crs=ccrs.PlateCarree())
         ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
         ax1.yaxis.set_minor_formatter(cticker.LatitudeFormatter())
 
@@ -4620,36 +4762,84 @@ def plot_model_region_single_streamplot(ds1, region,
         m1 = ax1.contourf(ds1_depth["lon"], ds1_depth["lat"], mag_r, **qargs)
 
         # Add streamlines
-        s1 = map_add_currents(ax1, ds1_depth, coarsen=coarsen[ds1.model.lower()], **currents["kwargs"])
-        
-        # # # Deal with the third axes
-        # h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
-        # if (len(h) > 0) & (len(l) > 0):
-    
-        #     # Add handles to legend
-        #     leg = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
+        try:
+            s1 = map_add_currents(ax1, ds1_depth, coarsen=coarsen[ds1.model.lower()], **currents["kwargs"])
+        except KeyError:
+            s1 = map_add_currents(ax1, ds1_depth, coarsen=coarsen['rtofs'], **currents["kwargs"])
 
-        #     # Add title to legend
-        #     t0 = []
-        #     if isinstance(argo, pd.DataFrame):
-        #         if not argo.empty:
-        #             t0.append(argo.index.min()[1])
+        # Get the clicked point(s) in display coordinates (projected x, y)
+        # points_proj = plt.ginput(n=1, timeout=0)
+        # print("Projected coordinates (meters):", points_proj)
 
-        #     if isinstance(gliders, pd.DataFrame):
-        #         if not gliders.empty:
-        #             t0.append(gliders.index.min()[1])
+        # x = np.array([pt[0] for pt in points_proj])
+        # y = np.array([pt[1] for pt in points_proj])
 
-        #     if len(t0) > 0:
-        #         t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+        # # Always double check projection object here
+        # lonlat = ccrs.PlateCarree().transform_points(ccrs.Mercator(), x, y)
+
+        # # Extract and print lon/lat
+        # for i, (lon, lat, _) in enumerate(lonlat):
+        #     if np.isnan(lon) or np.isnan(lat):
+        #         print(f"Point {i}: ❌ Failed to transform (outside valid bounds)")
         #     else:
-        #         t0 = None
-        #     legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
-        #     leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
-        #     # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
-        # ax3.set_axis_off()
+        #         print(f"Point {i}: ✅ (lon, lat) = ({lon:.6f}, {lat:.6f})")
 
-        # leg1.set_zorder(10001)  
-          
+           # Plot transect line on each map
+        # point1 = (-87, 22.65) #EW
+        # point2 = (-83, 24.25) #EW
+
+        point1 = -89, 26.25 #NS
+        point2 = -81.5, 23 #NS
+
+        point1 = -89.01, 25.25
+        point2 = -82.99, 25.25
+        
+
+        # ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+
+        # # Extract lon/lat and plot
+        # for lon, lat, _ in lonlat:
+        #     print(f"Picked point (lon, lat): ({lon:.6f}, {lat:.6f})")
+        #     ax1.plot(lon, lat, 'rx', markersize=8, transform=ccrs.PlateCarree(), zorder=14000)
+        
+        if legend:
+            h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+
+            # Add legend to below the plot axes
+            ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
+            leg = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
+            
+            # Add title to legend
+            # leg.set_title('Argo Search Window', loc="center", fontsize=9, fontweight="bold", style='italic')
+            ax3.set_axis_off()
+
+            # # # Deal with the third axes
+            # if (len(h) > 0) & (len(l) > 0):
+        
+            #     # Add handles to legend
+            #     leg = ax1.legend(h, l, ncol=cols, loc='center', fontsize=8)
+
+            #     # Add title to legend
+            #     t0 = []
+            #     if isinstance(argo, pd.DataFrame):
+            #         if not argo.empty:
+            #             t0.append(argo.index.min()[1])
+
+            #     if isinstance(gliders, pd.DataFrame):
+            #         if not gliders.empty:
+            #             t0.append(gliders.index.min()[1])
+
+            #     if len(t0) > 0:
+            #         t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+            #     else:
+            #         t0 = None
+            #     legstr = f'Argo Search Window: {t0} to {str(time)}'
+            #     leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
+            #     # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+            # ax1.set_axis_off()
+
+            # leg.set_zorder(10001)  
+            
         # plot_hurricane_track(ax1, time, basin, storm_id="AL092024", linecolor='white', markersize=60)
         # plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='white', markersize=60)
     
@@ -4658,8 +4848,12 @@ def plot_model_region_single_streamplot(ds1, region,
         cb.ax.tick_params(labelsize=12)
         cb.set_label(f'Magnitude (m/s)', fontsize=12, fontweight="bold")
 
+        # Set tick labels to 2 decimal places
+        cb.formatter = FormatStrFormatter('%.2f')
+        cb.update_ticks()
+
         # Create a string for the title of the plot
-        title_time = time.strftime("%Y-%m-%d %H:%M:%S")
+        title_time = time.strftime("%Y-%m-%d %H:%MZ")
         title_str = f"Currents ({depth} m) - {ds1.model} - {title_time}\n"
         ax1.set_title(title_str, fontsize=18, fontweight='bold')
         # plt.suptitle(title_str, fontsize=20, fontweight="bold")
@@ -4677,6 +4871,662 @@ def plot_model_region_single_streamplot(ds1, region,
         s1.lines.remove()
         remove_quiver_handles(ax1)
         [x.remove() for x in m1.collections]
+
+def plot_model_region_single_streamplot_grase(ds1, region,
+                                        bathy=None,
+                                        argo=None,
+                                        gliders=None,
+                                        currents=None,
+                                        eez=True,
+                                        cols=6,
+                                        transform=dict(map=proj['map'], 
+                                                        data=proj['data']
+                                                        ),
+                                        path_save=os.getcwd(),
+                                        figsize=(14,8),
+                                        dpi=150,
+                                        colorbar=True,
+                                        overwrite=False,
+                                        legend=False,
+                                        point1 = None,
+                                        point2 = None
+                                        ):
+
+    time = pd.to_datetime(ds1.time.data)
+    extent = region['extent']
+    cdict = region['currents']
+    
+    # Iterate through the variables to be plotted for each region. 
+    # This dict contains information on what variables and depths to plot. 
+    for depth in cdict['depths']:
+        print(f"Plotting currents @ {depth}m")
+        ds1_depth = ds1.sel(depth=depth, method='nearest')
+
+        # Plot currents with magnitude and direction
+        quiver_dir = path_save / f"currents_{depth}m" / time.strftime('%Y/%m')
+        os.makedirs(quiver_dir, exist_ok=True)
+
+        # Generate descriptive filename
+        sname = f'{region["folder"]}_{time.strftime("%Y-%m-%dT%HZ")}_currents-{depth}m_{ds1.model.lower()}'
+        save_file_q = quiver_dir / f"{sname}.png"
+
+        # Check if filename already exists
+        if save_file_q.is_file():
+            if not overwrite:
+                print(f"{sname} exists. Overwrite: False. Skipping.")
+                continue
+            else:
+                print(f"{sname} exists. Overwrite: True. Replotting.")
+
+        # Convert u and v radial velocities to magnitude
+        _, mag_r = uv2spdir(ds1_depth['u'], ds1_depth['v'])
+
+        # Initialize qargs dictionary for input into contour plot of magnitude
+        qargs = {}
+        qargs['transform'] = transform['data']
+        qargs['cmap'] = cmocean.cm.speed
+        qargs['extend'] = "max"
+
+        if 'limits' in cdict:
+            lims = cdict['limits']
+            if depth == 1500:
+                qargs['levels'] = np.arange(0, 0.4, 0.05)
+            else:
+                qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+
+
+        # Initialize figure
+        # Adjust the figure size to create more space at the bottom
+        fig = plt.figure(figsize=figsize)  # Adjusted figure size
+
+        # Create main plot axes
+        ax1 = fig.add_subplot(1, 1, 1, projection=proj['map'])
+
+        # Create an additional axes for the legend at the bottom
+        # ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
+        
+        create(extent, ax=ax1, ticks=False)
+
+        if bathy:       
+            try:
+                add_bathymetry(ax1,
+                            bathy.longitude.values, 
+                            bathy.latitude.values, 
+                            bathy.z.values,
+                            levels=(-1000, -100),
+                            zorder=1.5
+                            )
+            except ValueError:
+                print("Bathymetry deeper than specified levels.")
+
+        # Add EEZ
+        # if eez:
+        eez1 = map_add_eez(ax1, zorder=10000, color='blue', linewidth=2, linestyle='-')
+                
+        # Setup keyword arguments dictionary for plot_regional_assets
+        rargs = {}
+        rargs['argo'] = argo
+        rargs['gliders'] = gliders
+        rargs['transform'] = transform['data']  
+
+        # Plot gliders and argo floats
+        plot_regional_assets(ax1, **rargs)
+        # plot_regional_assets_single_color(ax1, **rargs)
+        import cartopy.mpl.ticker as cticker
+
+        # Add gridlines at every 1 degree without labels
+        gl = ax1.gridlines(
+            crs=ccrs.PlateCarree(),
+            draw_labels=False,           # Disable automatic labels
+            linestyle="--",
+            color="black",
+            alpha=0.5,
+        )
+        gl.xlocator = plt.MultipleLocator(1)  # Set 1-degree interval for gridlines
+        gl.ylocator = plt.MultipleLocator(1)
+        gl.set_zorder(9000)
+
+       # Set major ticks every 2 degrees (these will have labels)
+        ax1.set_xticks(np.arange(-91, -80, 2), crs=ccrs.PlateCarree())
+        ax1.set_yticks(np.arange(18, 30, 2), crs=ccrs.PlateCarree())
+
+        # Set minor ticks every 1 degree (these won't have labels)
+        ax1.set_xticks(np.arange(-91, -80, 1), minor=True, crs=ccrs.PlateCarree())
+        ax1.set_yticks(np.arange(18, 30, 1), minor=True, crs=ccrs.PlateCarree())
+
+        # Apply formatters only to major ticks
+        ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
+        ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
+
+        # Customize tick parameters
+        ax1.tick_params(axis='both', which='major', labelsize=12, direction='out', length=6, width=1)
+        ax1.tick_params(axis='both', which='minor', direction='out', length=6, width=1)
+
+        # # Add ticks
+        # add_ticks(ax1, extent)
+
+        # Set coarsening configs to a variable
+        if 'coarsen' in cdict:
+            coarsen = region['currents']['coarsen']
+        else:
+            coarsen['rtofs'] = 1
+            coarsen['gofs'] = 1
+            coarsen['rtofs (parallel)'] = 1
+
+        # Filled contour for each model variable
+        m1 = ax1.contourf(ds1_depth["lon"], ds1_depth["lat"], mag_r, **qargs)
+
+        currents["kwargs"]['density'] = 3
+
+        # Add streamlines
+        s1 = map_add_currents(ax1, ds1_depth, coarsen=coarsen['rtofs'], **currents["kwargs"])
+
+        #    # Plot transect line on each map
+        # point1 = (-87, 22.65)
+        # point2 = (-83, 24.25)
+        # # point1 = -89, 26.75
+        # # point2 = -82, 23
+
+        # # ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+        # # ax2.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+        # point1 = -89.01, 23
+        # point2 = -83.99, 26
+
+        # # point1 = -89.01, 25.25
+        # # point2 = -82.99, 25.25
+        
+
+        # # ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+
+        
+        # point1 = -88.01, 23 # ESPC
+        # point2 = -83.99, 24.75 #ESPC
+
+        if point1 is not None and point2 is not None:
+            if int(depth) == 0:
+                ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+
+        if int(depth) == 0: 
+            try:
+                # Add loop current contour from WHO Group
+                ftime = time.strftime('%Y-%m-%d')
+                fname = f'/Users/mikesmith/Downloads/{ftime}_fronts.mat'
+                data = loadmat(fname)
+            
+                fronts = []
+                for item in data['BZ_all'][0]:
+                    loop_y = item['y'].T
+                    loop_x = item['x'].T
+
+                    hf = ax1.plot(loop_x, loop_y,
+                                linestyle=item['LineStyle'][0],
+                                color='cyan',
+                                linewidth=3, 
+                                transform=ccrs.PlateCarree(), 
+                                zorder=120
+                                )
+                    fronts.append(hf)
+
+                    # Add arrows
+                    start_lon = item['bx'].T
+                    start_lat = item['by'].T
+                    end_lon = item['tx'].T
+                    end_lat = item['ty'].T
+
+                    for count, _ in enumerate(start_lon):
+                        ax1.arrow(
+                            start_lon[count][0],
+                            start_lat[count][0],
+                            end_lon[count][0]-start_lon[count][0],
+                            end_lat[count][0]-start_lat[count][0],
+                            linewidth=0, 
+                            head_width=0.1,
+                            shape='full', 
+                            fc='cyan', 
+                            ec='cyan',
+                            transform=ccrs.PlateCarree(),
+                            zorder=130,
+                            )
+                fronts.reverse()
+            except FileNotFoundError:
+                    print(f"File not found: {fname}. Skipping loop current plot.")
+                    fronts = []
+                    
+
+        if legend:
+            h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+
+            # h.append(hf[0])  # Add the loop current handles to the legend
+            # l.append('WHG')
+
+            # Add legend to below the plot axes
+            ax3 = fig.add_axes([0.1, 0.02, 0.8, 0.1])  # Adjust these values as needed
+
+            leg = ax3.legend(h, l, ncol=8, loc='center', fontsize=8)
+            
+            # Add title to legend
+            # leg.set_title('Argo Search Window', loc="center", fontsize=9, fontweight="bold", style='italic')
+            # ax3.set_axis_off()
+
+            # # # Deal with the third axes
+            # if (len(h) > 0) & (len(l) > 0):
+        
+            #     # Add handles to legend
+            #     leg = ax1.legend(h, l, ncol=cols, loc='center', fontsize=8)
+
+            #     # Add title to legend
+            #     t0 = []
+            #     if isinstance(argo, pd.DataFrame):
+            #         if not argo.empty:
+            #             t0.append(argo.index.min()[1])
+
+            #     if isinstance(gliders, pd.DataFrame):
+            #         if not gliders.empty:
+            #             t0.append(gliders.index.min()[1])
+
+            #     if len(t0) > 0:
+            #         t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+            #     else:
+            #         t0 = None
+
+            t0 = time - pd.Timedelta(hours=366)
+            t0_str = t0.strftime('%Y-%m-%dT%HZ')
+            t1_str = time.strftime('%Y-%m-%dT%HZ')
+            legstr = f'Argo Search Window: {t0_str} to {t1_str}'
+            leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
+            #     # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+            ax3.set_axis_off()
+
+            # leg.set_zorder(10001)  
+            
+        # plot_hurricane_track(ax1, time, basin, storm_id="AL092024", linecolor='white', markersize=60)
+        # plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='white', markersize=60)
+    
+        # Add colorbar to first axes
+        cb = fig.colorbar(m1, ax=ax1, orientation="vertical", shrink=.8, aspect=20)#, shrink=0.7, aspect=20*0.7)
+        cb.ax.tick_params(labelsize=12)
+        cb.set_label(f'Magnitude (m/s)', fontsize=12, fontweight="bold")
+
+        # Set tick labels to 2 decimal places
+        cb.formatter = FormatStrFormatter('%.2f')
+        cb.update_ticks()
+
+
+        # Create a string for the title of the plot
+        title_time = time.strftime("%Y-%m-%d %HZ")
+        title_str = f"Currents {depth}m - {ds1.model} - {title_time}\n"
+        ax1.set_title(title_str, fontsize=18, fontweight='bold')
+        # plt.suptitle(title_str, fontsize=20, fontweight="bold")
+        
+        # fig.tight_layout()
+        # fig.subplots_adjust(top=0.95, bottom=0.2)
+ 
+
+        # Save figure
+        fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        if colorbar:
+            cb.remove()
+            
+        # Delete contour handles and remove colorbar axes to use figure
+        s1.lines.remove()
+        remove_quiver_handles(ax1)
+        [x.remove() for x in m1.collections]
+
+
+def plot_model_region_single_streamplot_grase_cnaps(ds1, region,
+                                        bathy=None,
+                                        argo=None,
+                                        gliders=None,
+                                        currents=None,
+                                        eez=True,
+                                        cols=6,
+                                        transform=dict(map=proj['map'], 
+                                                        data=proj['data']
+                                                        ),
+                                        path_save=os.getcwd(),
+                                        figsize=(14,8),
+                                        dpi=150,
+                                        colorbar=True,
+                                        overwrite=False,
+                                        legend=False,
+                                        point1 = None,
+                                        point2 = None
+                                        ):
+
+    time = pd.to_datetime(ds1.time.data)
+    extent = region['extent']
+    cdict = region['currents']
+
+    # Define the region you want (lon/lat box)
+    lon_min, lon_max, lat_min, lat_max = extent
+
+    # build masks for each staggered grid ------------------------------------------
+    mask_u = (
+        (ds1.lon_u >= lon_min) & (ds1.lon_u <= lon_max) &
+        (ds1.lat_u >= lat_min) & (ds1.lat_u <= lat_max)
+    )
+    mask_v = (
+        (ds1.lon_v >= lon_min) & (ds1.lon_v <= lon_max) &
+        (ds1.lat_v >= lat_min) & (ds1.lat_v <= lat_max)
+    )
+    
+    # Iterate through the variables to be plotted for each region. 
+    # This dict contains information on what variables and depths to plot. 
+    for depth in cdict['depths']:
+        # Convert to negative depth
+        depth = -depth
+
+        print(f"Plotting currents @ {depth}m")
+        u = ds1.u.where(mask_u, drop=True).sel(z_rho_u=depth, method='nearest')   # surface layer
+        v = ds1.v.where(mask_v, drop=True).sel(z_rho_v=depth, method='nearest')
+        # ds1_depth = ds1.sel(depth=depth, method='nearest')
+
+        # ── 2.  average to ρ‑points (quick visual method) ─────────────────────────────
+        u_rho = 0.5 * (u + u.roll(xi_u=-1, roll_coords=False)).isel(xi_u=slice(None, -1))
+        v_rho = 0.5 * (v + v.roll(eta_v=-1, roll_coords=False)).isel(eta_v=slice(None, -1))
+
+        # lon/lat on the ρ grid, clipped to match the averaged arrays
+        lon = ds1.lon_rho.sel(
+            eta_rho=u_rho.eta_rho, xi_rho=u_rho.xi_u
+        )
+        lat = ds1.lat_rho.sel(
+            eta_rho=u_rho.eta_rho, xi_rho=u_rho.xi_u
+        )
+
+        # ── 3.  thin the field so lines don’t overlap ─────────────────────────────────
+        step = 4
+        x = lon[::step, ::step]
+        y = lat[::step, ::step]
+        u_plot = u_rho[::step, ::step]
+        v_plot = v_rho[::step, ::step]
+
+        # Plot currents with magnitude and direction
+        quiver_dir = path_save / f"currents_{-depth}m" / time.strftime('%Y/%m')
+        os.makedirs(quiver_dir, exist_ok=True)
+
+        # Generate descriptive filename
+        sname = f'{region["folder"]}_{time.strftime("%Y-%m-%dT%HZ")}_currents-{-depth}m_{ds1.model.lower()}'
+        save_file_q = quiver_dir / f"{sname}.png"
+
+        # Check if filename already exists
+        if save_file_q.is_file():
+            if not overwrite:
+                print(f"{sname} exists. Overwrite: False. Skipping.")
+                continue
+            else:
+                print(f"{sname} exists. Overwrite: True. Replotting.")
+
+        # Convert u and v radial velocities to magnitude
+        _, mag_r = uv2spdir(u_plot, v_plot)
+        # mag_r = np.hypot(u_plot, v_plot)
+
+        # Initialize qargs dictionary for input into contour plot of magnitude
+        qargs = {}
+        qargs['transform'] = transform['data']
+        qargs['cmap'] = cmocean.cm.speed
+        qargs['extend'] = "max"
+
+        if 'limits' in cdict:
+            lims = cdict['limits']
+            if depth == 1500:
+                qargs['levels'] = np.arange(0, 0.4, 0.05)
+            elif depth == -1500:
+                qargs['levels'] = np.arange(0, 0.4, 0.05)
+            else:
+                qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+
+
+        # Initialize figure
+        # Adjust the figure size to create more space at the bottom
+        fig = plt.figure(figsize=figsize)  # Adjusted figure size
+
+        # Create main plot axes
+        ax1 = fig.add_subplot(1, 1, 1, projection=proj['map'])
+
+        # Create an additional axes for the legend at the bottom
+        # ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
+        
+        create(extent, ax=ax1, ticks=False)
+
+        if bathy:       
+            try:
+                add_bathymetry(ax1,
+                            bathy.longitude.values, 
+                            bathy.latitude.values, 
+                            bathy.z.values,
+                            levels=(-1000, -100),
+                            zorder=1.5
+                            )
+            except ValueError:
+                print("Bathymetry deeper than specified levels.")
+
+        # Add EEZ
+        # if eez:
+        eez1 = map_add_eez(ax1, zorder=10000, color='blue', linewidth=2, linestyle='-')
+                
+        # Setup keyword arguments dictionary for plot_regional_assets
+        rargs = {}
+        rargs['argo'] = argo
+        rargs['gliders'] = gliders
+        rargs['transform'] = transform['data']  
+
+        # Plot gliders and argo floats
+        plot_regional_assets(ax1, **rargs)
+        # plot_regional_assets_single_color(ax1, **rargs)
+        import cartopy.mpl.ticker as cticker
+
+        # Add gridlines at every 1 degree without labels
+        gl = ax1.gridlines(
+            crs=ccrs.PlateCarree(),
+            draw_labels=False,           # Disable automatic labels
+            linestyle="--",
+            color="black",
+            alpha=0.5,
+        )
+        gl.xlocator = plt.MultipleLocator(1)  # Set 1-degree interval for gridlines
+        gl.ylocator = plt.MultipleLocator(1)
+        gl.set_zorder(9000)
+
+       # Set major ticks every 2 degrees (these will have labels)
+        ax1.set_xticks(np.arange(-91, -80, 2), crs=ccrs.PlateCarree())
+        ax1.set_yticks(np.arange(18, 30, 2), crs=ccrs.PlateCarree())
+
+        # Set minor ticks every 1 degree (these won't have labels)
+        ax1.set_xticks(np.arange(-91, -80, 1), minor=True, crs=ccrs.PlateCarree())
+        ax1.set_yticks(np.arange(18, 30, 1), minor=True, crs=ccrs.PlateCarree())
+
+        # Apply formatters only to major ticks
+        ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
+        ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
+
+        # Customize tick parameters
+        ax1.tick_params(axis='both', which='major', labelsize=12, direction='out', length=6, width=1)
+        ax1.tick_params(axis='both', which='minor', direction='out', length=6, width=1)
+
+        # # Add ticks
+        # add_ticks(ax1, extent)
+
+        # Set coarsening configs to a variable
+        if 'coarsen' in cdict:
+            coarsen = region['currents']['coarsen']
+        else:
+            coarsen['rtofs'] = 1
+            coarsen['gofs'] = 1
+            coarsen['rtofs (parallel)'] = 1
+            coarsen['cnaps'] = 1
+
+        # Filled contour for each model variable
+        m1 = ax1.contourf(x, y, mag_r, **qargs)
+
+        currents["kwargs"]['density'] = 3
+
+        # Add streamlines
+        # s1 = map_add_currents(ax1, ds1_depth, coarsen=coarsen['rtofs'], **currents["kwargs"])
+
+        lons = x
+        lats = y
+        u = u_plot
+        v = v_plot
+
+        sargs = {}
+        sargs["transform"] = ccrs.PlateCarree()
+        sargs["density"] = 3
+        sargs["linewidth"] = .75
+        sargs["color"] = 'black'
+
+        s1 = ax1.streamplot(lons, lats, u, v, **sargs)
+
+        #    # Plot transect line on each map
+        # point1 = (-87, 22.65)
+        # point2 = (-83, 24.25)
+        # # point1 = -89, 26.75
+        # # point2 = -82, 23
+
+        # # ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+        # # ax2.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+        # point1 = -89.01, 23
+        # point2 = -83.99, 26
+
+        # # point1 = -89.01, 25.25
+        # # point2 = -82.99, 25.25
+        
+
+        # # ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+
+        
+        # point1 = -88.01, 23 # ESPC
+        # point2 = -83.99, 24.75 #ESPC
+
+        if point1 is not None and point2 is not None:
+            if int(depth) == 0:
+                ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+
+        if int(depth) == 0: 
+            try:
+                # Add loop current contour from WHO Group
+                ftime = time.strftime('%Y-%m-%d')
+                fname = f'/Users/mikesmith/Downloads/{ftime}_fronts.mat'
+                data = loadmat(fname)
+            
+                fronts = []
+                for item in data['BZ_all'][0]:
+                    loop_y = item['y'].T
+                    loop_x = item['x'].T
+
+                    hf = ax1.plot(loop_x, loop_y,
+                                linestyle=item['LineStyle'][0],
+                                color='cyan',
+                                linewidth=3, 
+                                transform=ccrs.PlateCarree(), 
+                                zorder=120
+                                )
+                    fronts.append(hf)
+
+                    # Add arrows
+                    start_lon = item['bx'].T
+                    start_lat = item['by'].T
+                    end_lon = item['tx'].T
+                    end_lat = item['ty'].T
+
+                    for count, _ in enumerate(start_lon):
+                        ax1.arrow(
+                            start_lon[count][0],
+                            start_lat[count][0],
+                            end_lon[count][0]-start_lon[count][0],
+                            end_lat[count][0]-start_lat[count][0],
+                            linewidth=0, 
+                            head_width=0.1,
+                            shape='full', 
+                            fc='cyan', 
+                            ec='cyan',
+                            transform=ccrs.PlateCarree(),
+                            zorder=130,
+                            )
+                fronts.reverse()
+            except FileNotFoundError:
+                    print(f"File not found: {fname}. Skipping loop current plot.")
+                    fronts = []
+                    
+
+        if legend:
+            h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+
+            # h.append(hf[0])  # Add the loop current handles to the legend
+            # l.append('WHG')
+
+            # Add legend to below the plot axes
+            ax3 = fig.add_axes([0.1, 0.02, 0.8, 0.1])  # Adjust these values as needed
+
+            leg = ax3.legend(h, l, ncol=8, loc='center', fontsize=8)
+            
+            # Add title to legend
+            # leg.set_title('Argo Search Window', loc="center", fontsize=9, fontweight="bold", style='italic')
+            # ax3.set_axis_off()
+
+            # # # Deal with the third axes
+            # if (len(h) > 0) & (len(l) > 0):
+        
+            #     # Add handles to legend
+            #     leg = ax1.legend(h, l, ncol=cols, loc='center', fontsize=8)
+
+            #     # Add title to legend
+            #     t0 = []
+            #     if isinstance(argo, pd.DataFrame):
+            #         if not argo.empty:
+            #             t0.append(argo.index.min()[1])
+
+            #     if isinstance(gliders, pd.DataFrame):
+            #         if not gliders.empty:
+            #             t0.append(gliders.index.min()[1])
+
+            #     if len(t0) > 0:
+            #         t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+            #     else:
+            #         t0 = None
+
+            t0 = time - pd.Timedelta(hours=366)
+            t0_str = t0.strftime('%Y-%m-%dT%HZ')
+            t1_str = time.strftime('%Y-%m-%dT%HZ')
+            legstr = f'Argo Search Window: {t0_str} to {t1_str}'
+            leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
+            #     # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+            ax3.set_axis_off()
+
+            # leg.set_zorder(10001)  
+            
+        # plot_hurricane_track(ax1, time, basin, storm_id="AL092024", linecolor='white', markersize=60)
+        # plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='white', markersize=60)
+    
+        # Add colorbar to first axes
+        cb = fig.colorbar(m1, ax=ax1, orientation="vertical", shrink=.8, aspect=20)#, shrink=0.7, aspect=20*0.7)
+        cb.ax.tick_params(labelsize=12)
+        cb.set_label(f'Magnitude (m/s)', fontsize=12, fontweight="bold")
+
+        # Set tick labels to 2 decimal places
+        cb.formatter = FormatStrFormatter('%.2f')
+        cb.update_ticks()
+
+
+        # Create a string for the title of the plot
+        title_time = time.strftime("%Y-%m-%d %HZ")
+        title_str = f"Currents {int(-u.z_rho_u.values)}m - {ds1.model} - {title_time}\n"
+        ax1.set_title(title_str, fontsize=18, fontweight='bold')
+        # plt.suptitle(title_str, fontsize=20, fontweight="bold")
+        
+        # fig.tight_layout()
+        # fig.subplots_adjust(top=0.95, bottom=0.2)
+ 
+
+        # Save figure
+        fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        if colorbar:
+            cb.remove()
+            
+        # Delete contour handles and remove colorbar axes to use figure
+        s1.lines.remove()
+        remove_quiver_handles(ax1)
+        [x.remove() for x in m1.collections]
+
 
 import datetime 
 def plot_sst(ds1, ds2, region,

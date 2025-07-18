@@ -6,7 +6,7 @@ from pprint import pprint
 # urllib.error.HTTPError
 from urllib.error import HTTPError as uHTTPError
 from urllib.error import URLError
-
+import numpy as np
 import pandas as pd
 from erddapy import ERDDAP
 from joblib import Parallel, delayed
@@ -151,13 +151,16 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None,
         print(f"{inspect.currentframe().f_code.co_name} - Error: {error}")
         # return empty dataframe if there are no results
         return pd.DataFrame()
-    except URLError as e:
+    except URLError as error:
         print(f"{inspect.currentframe().f_code.co_name} - Error: {error}")
         # return empty dataframe if there are no results
         return pd.DataFrame()
 
     # Extract the IDs
     gliders = search['Dataset ID'].values
+
+    # Remove any glider datasets that have 'delayed' in the title
+    gliders = gliders[~np.array(["delayed" in g for g in gliders])]
 
     msg = f"Found {len(gliders)} Glider Datasets: "
     pprint(msg + ', '.join(gliders.tolist()))
@@ -189,6 +192,8 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None,
                 parse_dates=True,
                 skiprows=(1,)
                 ).dropna().tz_localize(None)
+            # # Save df to csv
+            # df.to_csv(f'/Users/mikesmith/Documents/gliders_{dataset_id}.csv')
         except rHTTPError:
             df = pd.DataFrame()
         return (dataset_id, df)
@@ -438,7 +443,7 @@ def get_ohc(bbox=None, time=None):
         protocol="griddap"
     )
 
-    e.dataset_id = "noaacwOHCna"
+    e.dataset_id = "noaacwOHC14na" #2024 to present
 
     e.griddap_initialize()
 
