@@ -9,7 +9,7 @@ import logging
 
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import lon180to360, lon360to180
-from ioos_model_comparisons.models import rtofs, amseas, CMEMS, ESPC, cnaps
+from ioos_model_comparisons.models import rtofs, amseas, CMEMS, espc_ts, espc_uv, cnaps
 from ioos_model_comparisons.platforms import (
     get_active_gliders,
     get_argo_floats_by_time, get_goes
@@ -56,7 +56,7 @@ kwargs = {
 
 # Configuration for regions and days to process
 conf.days = 1
-conf.regions = ['west_florida_shelf']
+conf.regions = ['windward', 'mab', 'sab', 'west_florida_shelf', 'tropical_western_atlantic']
 
 # Date range for processing
 today = dt.date.today()
@@ -85,6 +85,10 @@ if conf.gliders:
     try:
         glider_data = get_active_gliders(global_extent, search_start, date_end, parallel=False, timeout=60) if conf.gliders else pd.DataFrame()
         logger.info(f"Glider data {'loaded' if not glider_data.empty else 'not available'}.")
+        glider_data.index = glider_data.index.set_levels(
+            glider_data.index.levels[0].str.rsplit("-", n=1).str[0],
+            level="glider"
+        )
     except Exception as e:
         logger.error(f"Failed to load Glider data: {e}")
         glider_data = pd.DataFrame()
@@ -120,8 +124,9 @@ def load_model(model_func, model_name, source=None, rename=True):
 # Load selected models with error handling
 rds = load_model(rtofs, 'RTOFS')
 rtofs_para = load_model(rtofs, 'RTOFS Parallel', source='parallel') if plot_para else None
-# gds = load_model(espc, 'ESPC') if plot_espc else None
-gds_instance = ESPC() if plot_espc else None
+gds_ts = load_model(espc_ts, 'ESPC') if plot_espc else None
+gds_uv = load_model(espc_uv, 'ESPC') if plot_espc else None
+# gds_instance = ESPC() if plot_espc else None
 cmems_instance = CMEMS() if plot_cmems else None
 am = load_model(amseas, 'AMSEAS') if plot_amseas else None
 cn = load_model(cnaps, 'CNAPS') if plot_cnaps else None
@@ -141,15 +146,17 @@ def main():
         rdtp_flag, rdtp = attempt_data_load(rtofs_para, ctime, "RTOFS Parallel") if plot_para else (False, None)
         amt_flag, amt = attempt_data_load(am, ctime, "AMSEAS") if plot_amseas else (False, None)
         cnt_flag, cnt = attempt_data_load(cn, ctime, "CNAPS") if plot_cnaps else (False, None)
+        gdt_flag, gdt_ts = attempt_data_load(gds_ts, ctime, "ESPC") if plot_espc else (False, None)
+        gdt_flag, gdt_uv = attempt_data_load(gds_uv, ctime, "ESPC") if plot_espc else (False, None)
 
         # Process each region
         for item in conf.regions:
             region = region_config(item)
 
-            gdt_flag, gdt = attempt_cmems_data_load(gds_instance, ctime, region['extent']) if plot_espc else (False, None)
+            # gdt_flag, gdt = attempt_cmems_data_load(gds_instance, ctime, region['extent']) if plot_espc else (False, None)
             cdt_flag, cdt = attempt_cmems_data_load(cmems_instance, ctime, region['extent']) if plot_cmems else (False, None)
             logger.info(f"Processing region: {region['name']} at time: {ctime}")
-            process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt, cdt_flag, cdt,
+            process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
                            amt_flag, amt, cnt_flag, cnt, region)
 
     logger.info(f'All processing complete. Total execution time: {time.time() - start_time} seconds.')
@@ -190,7 +197,7 @@ def attempt_cmems_data_load(cmems_instance, ctime, extent):
         logger.warning(f"CMEMS: Data not available for time {ctime} - {e}")
         return False, None
 
-def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt, cdt_flag, cdt,
+def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
                    amt_flag, amt, cnt_flag, cnt, region):
     """Process a specific region for the given time."""
     extent = region['extent']
@@ -219,8 +226,8 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt, cdt_fla
         # Subset data based on the region extent
         rds_sub = subset_data(rdt, extended, grid_lons, grid_lats, grid_x, grid_y) if rdt_flag else None
         rdtp_sub = subset_data(rdtp, extended, grid_lons, grid_lats, grid_x, grid_y) if rdtp_flag else None
-        # gds_sub = subset_data_lonlat(gdt, lon360, extended) if gdt_flag else None
-        gds_sub = gdt
+        gds_ts = subset_data_lonlat(gdt_ts, lon360, extended) if gdt_flag else None
+        gds_uv = subset_data_lonlat(gdt_uv, lon360, extended) if gdt_flag else None
         # cds_sub = cmems_instance.get_combined_subset(extended[:2], extended[2:], ctime) if cdt_flag else None
         cds_sub = cdt
         am_sub = subset_data_lonlat(amt, lon360, extended) if amt_flag else None
@@ -266,8 +273,8 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt, cdt_fla
         # Plot data
         try:
             if rdt_flag and gdt_flag:
-                plot_model_region_comparison(rds_sub, gds_sub, region, **kwargs)
-                plot_model_region_comparison_streamplot(rds_sub, gds_sub, region, **kwargs)
+                plot_model_region_comparison(rds_sub, gds_ts, region, **kwargs)
+                plot_model_region_comparison_streamplot(rds_sub, gds_uv, region, **kwargs)
                 logger.info(f"Successfully plotted RTOFS vs ESPC for region {region['name']} at time {ctime}")
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs ESPC at {ctime} for region {region['name']}: {e}")
@@ -322,7 +329,7 @@ def subset_data_lonlat(data, lon_extent, lat_extent):
     try:
         logger.debug(f"Subsetting {data.attrs['model']} data for lon extent: {lon_extent} and lat extent: {lat_extent}")
         return data.sel(lon=slice(lon_extent[0], lon_extent[1]),
-                        lat=slice(lat_extent[2], lat_extent[3])).set_coords(['u', 'v'])
+                        lat=slice(lat_extent[2], lat_extent[3]))#.set_coords(['u', 'v'])
     except Exception as e:
         logger.error(f"Error during lon/lat data subsetting: {e}")
         return None
