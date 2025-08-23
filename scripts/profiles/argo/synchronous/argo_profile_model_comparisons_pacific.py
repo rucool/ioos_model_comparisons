@@ -50,7 +50,7 @@ depths = slice(0, depth)
 # Load models
 if plot_rtofs:
     from ioos_model_comparisons.models import rtofs
-    rds = rtofs().sel(depth=depths)
+    rds = rtofs(source='west').sel(depth=depths)
 
 if plot_para:
     from ioos_model_comparisons.models import rtofs
@@ -79,7 +79,7 @@ then = pd.Timestamp(then.strftime('%Y-%m-%d')) # convert back to timestamp
 
 # Get extent for all configured regions to download argo/glider data one time
 extent_list = []
-conf.regions = ['caribbean', 'gom', 'sab', 'mab', 'tropical_western_atlantic']
+conf.regions = ['hawaii', 'mexico_pacific']
 for region in conf.regions:
     extent_list.append(region_config(region)["extent"])
 
@@ -120,6 +120,7 @@ floats = floats[depth_mask]
 levels = [-8000, -1000, -100, 0]
 colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
 
+# %% Define functions
 def line_limits(fax, delta=1):
     """Function to get the minimum and maximum of a series of lines from a
     Matplotlib axis.
@@ -134,8 +135,7 @@ def line_limits(fax, delta=1):
     mins = [np.nanmin(line.get_xdata()) for line in fax.lines]
     maxs = [np.nanmax(line.get_xdata()) for line in fax.lines]
     return min(mins)-delta, max(maxs)+delta
-
-
+    
 def process_argo(region):    
     # Loop through regions
     region = region_config(region)
@@ -169,6 +169,7 @@ def process_argo(region):
         bathy_flag = True
     except:
         bathy_flag = False
+        pass
 
     # bathy_flag = False
 
@@ -499,8 +500,8 @@ def process_argo(region):
             if rtofsp_flag:
                 ax1.plot(pdsi['temperature'], pdsi['depth'], linestyle='-',  marker='o', color='orange', label=plabel)
                 ax2.plot(pdsi['salinity'], pdsi['depth'], linestyle='-', marker='o', color='orange', label=plabel)
-                ax3.plot(pdsi['density'], pdsi['depth'], linestyle='-',  marker='o',color='orange', label=plabel)    
-                
+                ax3.plot(pdsi['density'], pdsi['depth'], linestyle='-',  marker='o',color='orange', label=plabel)
+
             try:
                 # Get min and max of each plot. Add a delta to each for x limits
                 tmin, tmax = line_limits(ax1, delta=.5)
@@ -509,7 +510,8 @@ def process_argo(region):
             except ValueError:
                 print('Some kind of error')
                 pass
-
+  
+                
             ax1.set_ylim([depth, 0])
             ax1.set_xlim([tmin, tmax])
             ax1.grid(True, linestyle='--', linewidth=.5)
