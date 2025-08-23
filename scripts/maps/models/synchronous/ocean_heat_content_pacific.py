@@ -36,7 +36,8 @@ path_save = (conf.path_plots / "maps")
 
 # For debug
 # conf.days = 1
-conf.regions = ['mab', 'sab', 'gom', 'caribbean', 'tropical_western_atlantic']
+conf.regions = ['hawaii', 'mexico_pacific']
+conf.days = 2
 # initialize keyword arguments. Grab anything from configs.py
 kwargs = dict()
 kwargs['transform'] = conf.projection
@@ -94,6 +95,7 @@ if not glider_data.empty:
         glider_data.index.levels[1]
     ])
 
+conf.bathy = False
 if conf.bathy:
     bathy_data = get_bathymetry(global_extent)
 
@@ -101,7 +103,7 @@ if plot_rtofs:
     from ioos_model_comparisons.models import rtofs as r
 
     # Load RTOFS and subset to global_extent of regions we are looking at.
-    rds = r()
+    rds = r(source='west')
     rds = rds[['temperature', 'salinity']]
     lons_ind = np.interp(global_extent[:2], rds.lon.values[0,:], rds.x.values)
     lats_ind = np.interp(global_extent[2:], rds.lat.values[:,0], rds.y.values)
@@ -476,7 +478,7 @@ def main():
     if parallel:
         import concurrent.futures
 
-        with concurrent.futures.ProcessPoolExecutor(max_workers=6) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
             executor.map(plot_ctime, date_list)
     else:
         for ctime in date_list:
