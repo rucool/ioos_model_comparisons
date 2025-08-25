@@ -35,13 +35,15 @@ plot_para = False
 path_save = (conf.path_plots / "maps")
 
 # For debug
-# conf.days = 1
-conf.regions = ['mab', 'sab', 'gom', 'caribbean', 'tropical_western_atlantic']
+conf.days = 2
+conf.regions = ['mab', 'sab', 'gom', 'caribbean', 'tropical_western_atlantic', 'windward']
+conf.argo = False
+conf.gliders = True
 # initialize keyword arguments. Grab anything from configs.py
 kwargs = dict()
 kwargs['transform'] = conf.projection
 kwargs['dpi'] = conf.dpi
-kwargs['overwrite'] = False
+kwargs['overwrite'] = True
     
 # Get today and yesterday dates
 today = dt.date.today()
@@ -74,18 +76,70 @@ global_extent = [
 
 lon_transform = lon180to360(global_extent[:2])
 
-conf.argo = True
 if conf.argo:
     argo_data = get_argo_floats_by_time(global_extent, search_start, date_end)
 else:
     argo_data = pd.DataFrame()
 
-conf.gliders = True
 if conf.gliders:
     glider_data = get_active_gliders(global_extent, search_start, date_end, 
                                      parallel=False)
 else:
     glider_data = pd.DataFrame()
+
+
+def drop_first_deployment_per_base(glider_data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Keep the full (glider-with-deployment) index, but for bases that have multiple
+    deployments (as identified by a trailing -YYYYMMDDTHHMM), drop the earliest one.
+
+    Works even if base names contain hyphens (e.g., 'usf-jaialai').
+    """
+    # Expect MultiIndex with [glider, time]
+    lvl0, lvl1 = glider_data.index.names[:2]
+
+    df = glider_data.reset_index()
+
+    # Extract optional trailing deployment stamp. Example match:
+    #   SG678-20250624T1621 -> base='SG678', stamp='20250624T1621'
+    #   usf-jaialai         -> base=NaN,   stamp=NaN  (no trailing stamp)
+    ext = df[lvl0].str.extract(r'^(?P<base>.+)-(?P<stamp>\d{8}T\d{4})$')
+    # base_glider = extracted base when a stamp exists; otherwise the original name
+    df["glider_base"] = ext["base"].where(ext["base"].notna(), df[lvl0])
+
+    # Parse deployment datetime if present; otherwise NaT
+    df["deploy_dt"] = pd.to_datetime(ext["stamp"], format="%Y%m%dT%H%M", errors="coerce")
+
+    # Build per-(base, full_deployment_label) keys
+    dep_keys = (
+        df.groupby(["glider_base", lvl0])
+          .agg(
+              deploy_dt=("deploy_dt", "min"),
+              first_obs_time=(lvl1, "min"),
+          )
+          .reset_index()
+    )
+    # Use parsed stamp if available; fallback to earliest observation time
+    dep_keys["order_key"] = dep_keys["deploy_dt"].fillna(dep_keys["first_obs_time"])
+
+    # Sort to get stable ranking (tie-breaker on full deployment label)
+    dep_keys = dep_keys.sort_values(["glider_base", "order_key", lvl0])
+    dep_keys["rank_in_base"] = dep_keys.groupby("glider_base").cumcount()
+
+    # Identify bases with >1 deployments (only those with stamps actually create >1 rows)
+    dep_counts = dep_keys.groupby("glider_base")[lvl0].transform("nunique")
+
+    # Earliest deployment per base to drop (only when count > 1)
+    to_drop_deployments = set(
+        dep_keys.loc[(dep_counts > 1) & (dep_keys["rank_in_base"] == 0), lvl0]
+    )
+
+    # Drop all rows belonging to those earliest deployments
+    out = df[~df[lvl0].isin(to_drop_deployments)].set_index([lvl0, lvl1]).sort_index()
+
+    return out
+
+glider_data = drop_first_deployment_per_base(glider_data)
 
 if not glider_data.empty:
     # Split the 'glider' index by the last '-'
@@ -94,8 +148,14 @@ if not glider_data.empty:
         glider_data.index.levels[1]
     ])
 
+# print first index values
+# conf.bathy = False
+
 if conf.bathy:
-    bathy_data = get_bathymetry(global_extent)
+    # bathy_data = get_bathymetry(global_extent)
+    bathy_dict = {}
+    for region in conf.regions:
+        bathy_dict[region] = get_bathymetry(region_config(region)["extent"])
 
 if plot_rtofs:
     from ioos_model_comparisons.models import rtofs as r
@@ -279,13 +339,15 @@ def plot_ctime(ctime):
         if 'figsize' in configs['figure']:
             kwargs['figsize'] = configs['figure']['figsize']
 
-        try:
-            kwargs['bathy'] = bathy_data.sel(
-                longitude=slice(extent_data[0] - 1, extent_data[1] + 1),
-                latitude=slice(extent_data[2] - 1, extent_data[3] + 1)
-            )
-        except NameError:
-            pass
+        # try:
+        #     kwargs['bathy'] = bathy_data.sel(
+        #         longitude=slice(extent_data[0] - 1, extent_data[1] + 1),
+        #         latitude=slice(extent_data[2] - 1, extent_data[3] + 1)
+        #     )
+        # except NameError:
+        #     pass
+
+        kwargs['bathy'] = bathy_dict[region]
 
         if rdt_flag:
             # Find x, y indexes of the area we want to subset
