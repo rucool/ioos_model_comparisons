@@ -42,7 +42,7 @@ def rtofs(rename=None, source='east', chunks={"time": 1}):
         model = 'RTOFS'
     elif source == 'west':
         url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_west_scraped'
-        model = 'RTOFS (West Coast)'
+        model = 'RTOFS'
     elif source == 'parallel':
         url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_parallel_scraped'
         model = 'RTOFS-P'
