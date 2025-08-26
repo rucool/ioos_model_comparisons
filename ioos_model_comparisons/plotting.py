@@ -46,7 +46,7 @@ import numpy as np
 from matplotlib.ticker import FormatStrFormatter
 
 
-# basin = tracks.TrackDataset(basin='north_atlantic', include_btk=True)
+basin = tracks.TrackDataset(basin='north_atlantic', include_btk=True)
 
 # Suppresing warnings for a "pretty output."
 warnings.simplefilter("ignore")
@@ -142,7 +142,7 @@ def map_add_argo_single_color(ax, df, transform=proj['data']):
     most_recent = most_recent.sort_values(by='argo')
 
     custom_cmap = categorical_cmap(10, 5, cmap="tab10")
-    marker = cycle(['o', 'h', 'p'])
+    marker = cycle(['o'])
 
     n = 0
     for float in most_recent.itertuples():
@@ -1518,7 +1518,7 @@ def remove_quiver_handles(ax):
     for art in ax.get_children():
         if isinstance(art, matplotlib.patches.FancyArrowPatch):
             art.remove()      
-
+            
 
 def plot_model_region_comparison(ds1, ds2, region,
                                        bathy=None,
@@ -1591,8 +1591,8 @@ def plot_model_region_comparison(ds1, ds2, region,
     # Plot transect line on each map
     point1 = (-87, 23)
     point2 = (-83, 25)
-    ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
-    ax2.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+    # ax1.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
+    # ax2.plot([point1[0], point2[0]], [point1[1], point2[1]], color='red', linewidth=2, transform=ccrs.PlateCarree(), zorder=100)
 
     # Set map extent
     ax1.set_extent(extent)
@@ -1624,6 +1624,11 @@ def plot_model_region_comparison(ds1, ds2, region,
     add_ticks(ax1, extent, label_left=True)
     add_ticks(ax2, extent, label_left=False, label_right=True)
 
+    # If 'mexico_pacific' or 'hawaii' in region['name']
+    if 'Eastern Pacific - Mexico' in region['name'] or 'Hawaii' in region['name']:
+        for ax in [ax1, ax2]:
+            for label in ax.get_xticklabels():
+                label.set_rotation(45)   # or whatever angle you want
 
     #             with open(sfig, 'wb') as file:
     #                 pickle.dump(fig, file)
@@ -1699,6 +1704,7 @@ def plot_model_region_comparison(ds1, ds2, region,
             print(f"Plotting {k} @ {item['depth']}")
             depth = item['depth']
             rsub = ds1[k].sel(depth=depth)
+            rsub200 = ds1[k].sel(depth=200, method='nearest')
             gsub = ds2[k].sel(depth=depth, method='nearest')
             
             # Create subdirectory for depth under variable subdirectory
@@ -1750,8 +1756,12 @@ def plot_model_region_comparison(ds1, ds2, region,
 
             # Add contour lines for 15°C isotherm in MAB. This identifies the north wall of the Gulf Stream
             if region['name'] == 'Mid Atlantic Bight' and k == 'temperature' and depth == 200:
-                ax1.contour(rlons, rlats, rsub.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
-                ax2.contour(rlons, rlats, rsub.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+                ax1.contour(rlons, rlats, rsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+                ax2.contour(rlons, rlats, rsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+
+            if region['name'] == 'Mid Atlantic Bight' and k == 'temperature' and depth == 0:
+                 line = north_wall_meridional_gradient(rsub, smooth_sigma=1.2, lat_bounds=(35, 43))
+                 ax1.add_geometries([line], crs=ccrs.PlateCarree(), facecolor="none", edgecolor="black", linewidth=2, zorder=101)
 
             if colorbar:
                 cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
@@ -2093,6 +2103,21 @@ def plot_hurricane_track(ax, center_time, basin, hurricane_name=None, storm_id=N
     times = storm.dict['time']  # List of datetime objects
     storm_types = storm.dict['type']
 
+    if storm_id == "AL142024":
+        # Find the index of times where datetime.datetime = 2024, 10, 10, 0, 30
+        target_time = datetime.datetime(2024, 10, 10, 0, 30)
+        target_index = times.index(target_time) if target_time in times else None
+
+
+        # Remove from lons, lats, vmax, times, storm_types from the target_index
+        if target_index is not None:
+            lons.pop(target_index)
+            lats.pop(target_index)
+            vmax.pop(target_index)
+            times.pop(target_index)
+            storm_types.pop(target_index)
+
+
     # Find the closest time point to the given center_time
     time_diffs = [abs((time - center_time).total_seconds()) for time in times]
     closest_idx = np.argmin(time_diffs)
@@ -2171,7 +2196,7 @@ def plot_hurricane_track(ax, center_time, basin, hurricane_name=None, storm_id=N
             ax.scatter(
                 lons[i], lats[i],
                 color=color,
-                s=size * 6,  # Make the highlighted point larger
+                s=size * 5,  # Make the highlighted point larger
                 edgecolor='lime',
                 linewidth=2,
                 # label=f"{storm_type} (Closest to Center Time)",
@@ -2184,7 +2209,7 @@ def plot_hurricane_track(ax, center_time, basin, hurricane_name=None, storm_id=N
             ax.scatter(
                 lons[i], lats[i],
                 color=color,
-                s=size*4,
+                s=size*2,
                 edgecolor='black',
                 # label=storm_type if i == 0 else "",  # Label each type only once for legend
                 transform=ccrs.PlateCarree(), 
@@ -2242,8 +2267,8 @@ def plot_hurricane_track(ax, center_time, basin, hurricane_name=None, storm_id=N
             markersize=10, 
             linestyle='none',
         ))
-    handles = [plt.Line2D([0], [0], marker='o', color='w', label=stype, markerfacecolor=color, linestyle='none', markeredgecolor='black', markersize=10) for stype, color in type_colors.items()]
-    leg = ax.legend(handles=handles, title="Storm Category", loc='lower left', fontsize=12,
+    handles = [plt.Line2D([0], [0], marker='o', color='w', label=stype, markerfacecolor=color, linestyle='none', markeredgecolor='black', markersize=6) for stype, color in type_colors.items()]
+    leg = ax.legend(handles=handles, title="Storm Category", loc='lower right', fontsize=8,
                                 handleheight=2,  # Increase vertical spacing between legend items
                                 handletextpad=1,  # Add space between the marker and the text
     )
@@ -2530,6 +2555,7 @@ def plot_regional_assets(ax, argo=None, gliders=None,
 
     if not argo.empty:
         map_add_argo(ax, argo, transform)
+        # map_add_argo_single_color(ax, argo, transform)
 
     if not gliders.empty:
         map_add_gliders(ax, gliders, transform)
@@ -2770,6 +2796,12 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
                 print("Bathymetry deeper than specified levels.")
         add_ticks(ax1, extent)
         add_ticks(ax2, extent, label_left=False, label_right=True)
+
+        # If 'mexico_pacific' or 'hawaii' in region['name']
+        if 'Eastern Pacific - Mexico' in region['name'] or 'Hawaii' in region['name']:
+            for ax in [ax1, ax2]:
+                for label in ax.get_xticklabels():
+                    label.set_rotation(45)   # or whatever angle you want
 
         # Plot gliders and argo floats
         rargs = {}
@@ -3992,6 +4024,8 @@ def plot_ohc_single(ds1, extent, region_name,
     # Create an additional axes for the legend at the bottom
     # ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
 
+    extent = [-90.1, -79.9, 18.99, 31.01]
+
     create(extent, ax=ax1, ticks=False)
         
     if bathy:       
@@ -4004,17 +4038,17 @@ def plot_ohc_single(ds1, extent, region_name,
                         )
     # Add eez lines
     # if eez:
-    map_add_eez(ax1, color='black', zorder=10, linestyle='-', linewidth=2)
+    # map_add_eez(ax1, color='black', zorder=10, linestyle='-', linewidth=2)
 
-    levels = [-8000, -1000, -100, 0]
-    colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
-    cs = ax1.contourf(bathy['longitude'], bathy['latitude'], bathy['z'], levels, colors=colors, transform=ccrs.PlateCarree(), ticks=False)
+    # levels = [-8000, -1000, -100, 0]
+    # colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
+    # cs = ax1.contourf(bathy['longitude'], bathy['latitude'], bathy['z'], levels, colors=colors, transform=ccrs.PlateCarree(), ticks=False)
 
-    proxy = [plt.Rectangle((0, 0), 1, 1, fc=pc.get_facecolor()[0]) for pc in cs.collections]
-    proxy.reverse()
-    first_legend = ax1.legend(proxy, ["0-100m", "100-1000m", "1000+m"], loc='upper right', title='Depth')
-    first_legend.set_zorder(10000)
-    ax1.add_artist(first_legend)
+    # proxy = [plt.Rectangle((0, 0), 1, 1, fc=pc.get_facecolor()[0]) for pc in cs.collections]
+    # proxy.reverse()
+    # first_legend = ax1.legend(proxy, ["0-100m", "100-1000m", "1000+m"], loc='upper right', title='Depth')
+    # first_legend.set_zorder(10000)
+    # ax1.add_artist(first_legend)
 
     # Setup keyword arguments dictionary for plot_regional_assets
     rargs = {}
@@ -4042,13 +4076,16 @@ def plot_ohc_single(ds1, extent, region_name,
     # Manually add labeled ticks at every 5 degrees on both axes
     # Longitude (x-axis)
     # ax1.set_xticks(range(int(extent[0]), int(extent[1]) + 1, 5), crs=ccrs.PlateCarree())
-    ax1.set_xticks(np.arange(-85, -59, 5), crs=ccrs.PlateCarree())
+    # ax1.set_xticks(np.arange(-85, -59, 5), crs=ccrs.PlateCarree())
+    ax1.set_xticks([-90, -85, -80], crs=ccrs.PlateCarree())
+
     ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
     ax1.xaxis.set_minor_formatter(cticker.LongitudeFormatter())
     
     # Latitude (y-axis)
     # ax1.set_yticks(range(int(extent[2]), int(extent[3]) + 1, 5), crs=ccrs.PlateCarree())
-    ax1.set_yticks(np.arange(10, 25, 5), crs=ccrs.PlateCarree())
+    # ax1.set_yticks(np.arange(10, 25, 5), crs=ccrs.PlateCarree())
+    ax1.set_yticks([20, 25, 30], crs=ccrs.PlateCarree())
     ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
     ax1.yaxis.set_minor_formatter(cticker.LatitudeFormatter())
 
@@ -4138,12 +4175,12 @@ def plot_ohc_single(ds1, extent, region_name,
 
     # leg1.set_zorder(10001)
 
-    # plot_hurricane_track(ax1, time, basin, storm_id="AL092024", linecolor='white', markersize=60)
-    # plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='white', markersize=60)
+    plot_hurricane_track(ax1, time, basin, storm_id="AL092024", linecolor='cyan', markersize=60)
+    plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='blue', markersize=60)
     # plot_hurricane_track(ax1, time, basin, storm_id="AL022024", linecolor='white', markersize=150)
     
     # Add colorbar to first axes
-    cb = fig.colorbar(h1, ax=ax1, orientation="vertical", shrink=.95, aspect=15)#, shrink=0.7, aspect=20*0.7)
+    cb = fig.colorbar(h1, ax=ax1, orientation="vertical", shrink=.95, aspect=20)#, shrink=0.7, aspect=20*0.7)
     # cb = fig.colorbar(h1, ax=ax1, orientation="vertical", shrink=.8, aspect=20)#, shrink=0.7, aspect=20*0.7)
     
     cb.ax.tick_params(labelsize=12)
@@ -4199,7 +4236,10 @@ def plot_salt_single(ds1, extent, region_name,
                             ), 
              figsize=(14,8),
              dpi=150,
-             overwrite=False
+             overwrite=False,
+             min=35.0,
+             max=37.5,
+             stride=0.1
              ):
 
     # Convert ds.time value to a normal datetime
@@ -4212,10 +4252,10 @@ def plot_salt_single(ds1, extent, region_name,
     month = time.strftime("%m")
 
     # Generate filename
-    fname = f"{path_save.name}_{tstr_folder}_heat_content_{ds1.model.lower()}.png"
+    fname = f"{path_save.name}_{tstr_folder}_salinity_{str(int(ds1.depth.values))}m_{ds1.model.lower()}.png"
 
     # Append salinity_max, year, and month to path_save
-    path_save = path_save / 'salinity' / year / month
+    path_save = path_save / 'salinity' / str(int(ds1.depth.values)) / year / month
 
     save_file = path_save / fname
     
@@ -4282,14 +4322,14 @@ def plot_salt_single(ds1, extent, region_name,
 
     # Manually add labeled ticks at every 5 degrees on both axes
     # Longitude (x-axis)
-    # ax1.set_xticks(range(int(extent[0]), int(extent[1]) + 1, 5), crs=ccrs.PlateCarree())
-    ax1.set_xticks(np.arange(-85, -59, 5), crs=ccrs.PlateCarree())
+    ax1.set_xticks(range(int(extent[0]), int(extent[1]) + 1, 5), crs=ccrs.PlateCarree())
+    # ax1.set_xticks(np.arange(-85, -59, 5), crs=ccrs.PlateCarree())
     ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
     ax1.xaxis.set_minor_formatter(cticker.LongitudeFormatter())
     
     # Latitude (y-axis)
-    # ax1.set_yticks(range(int(extent[2]), int(extent[3]) + 1, 5), crs=ccrs.PlateCarree())
-    ax1.set_yticks(np.arange(10, 25, 5), crs=ccrs.PlateCarree())
+    ax1.set_yticks(range(int(extent[2]), int(extent[3]) + 1, 5), crs=ccrs.PlateCarree())
+    # ax1.set_yticks(np.arange(10, 25, 5), crs=ccrs.PlateCarree())
     ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
     ax1.yaxis.set_minor_formatter(cticker.LatitudeFormatter())
 
@@ -4319,9 +4359,9 @@ def plot_salt_single(ds1, extent, region_name,
 
     # Calculate salinity contours
     levels = np.arange(
-        ohc_min,
-        ohc_max+ohc_stride,
-        ohc_stride
+        min,
+        max+stride,
+        stride
         )
 
     cmap = cmocean.cm.haline
@@ -4389,7 +4429,7 @@ def plot_salt_single(ds1, extent, region_name,
     # Set title for each axes
     # ax1.set_title(f"{ds1.model.upper()}", fontsize=16, fontweight='bold')
     # fig.suptitle(f"Salinity (0m) - {ds1.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
-    ax1.set_title(f"Salinity (0m) - {ds1.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
+    ax1.set_title(f"Salinity ({str(int(ds1.depth.values))}m) - {ds1.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
     # import tropycal.tracks as tracks
     # from ioos_model_comparisons.plotting_hurricanes import plot_storms
 
@@ -4411,6 +4451,485 @@ def plot_salt_single(ds1, extent, region_name,
     export_fig(path_save, fname, dpi=dpi)
     plt.close()
 
+def plot_temp_single(ds1, extent, region_name,
+             limits=None,
+             bathy=None,
+             argo=None,
+             gliders=None,
+             eez=False,
+             currents=None,
+             cols=6,
+             path_save=os.getcwd(), 
+             transform=dict(map=ccrs.Mercator(), 
+                            data=ccrs.PlateCarree()
+                            ), 
+             figsize=(14,8),
+             dpi=150,
+             overwrite=False,
+             min=27,
+             max=31.5,
+             stride=.5,
+             ):
+
+    # Convert ds.time value to a normal datetime
+    time = pd.to_datetime(ds1.time.values)
+    
+    # Formatter for time
+    tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
+    tstr_folder = time.strftime('%Y-%m-%dT%H%M%SZ')
+    year = time.strftime("%Y")
+    month = time.strftime("%m")
+
+    # Generate filename
+    fname = f"{path_save.name}_{tstr_folder}_temperature_{str(int(ds1.depth.values))}_{ds1.model.lower()}.png"
+
+    # Append salinity_max, year, and month to path_save
+    path_save = path_save / 'temperature' / str(int(ds1.depth.values)) / year / month
+
+    save_file = path_save / fname
+    
+    if save_file.is_file():
+        if not overwrite:
+            print(f"{save_file} exists. Overwrite: False. Skipping.")
+            return
+        else:
+            print(f"{save_file} exists. Overwrite: True. Replotting.")    
+    
+    # Make sure path_save exists
+    os.makedirs(path_save, exist_ok=True)
+    
+    print(f"Plotting Temperature of {region_name} at {tstr_title}")
+ 
+
+    # Adjust the figure size to create more space at the bottom
+    fig = plt.figure(figsize=figsize)  # Adjusted figure size
+
+    # Create main plot axes
+    ax1 = fig.add_subplot(1, 1, 1, projection=proj['map'])
+
+
+    # Create an additional axes for the legend at the bottom
+    # ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
+    extent = [-90.01, -79.9, 18.99, 31.01]
+
+    create(extent, ax=ax1, ticks=False)
+        
+    if bathy:       
+        add_bathymetry(ax1,
+                        bathy.longitude.values, 
+                        bathy.latitude.values, 
+                        bathy.z.values,
+                        levels=(-1000, -100),
+                        zorder=1.5
+                        )
+    # Add eez lines
+    if eez:
+        map_add_eez(ax1, color='white', zorder=10, linestyle='-', linewidth=2)
+
+    # Setup keyword arguments dictionary for plot_regional_assets
+    rargs = {}
+    rargs['argo'] = argo
+    rargs['gliders'] = gliders
+    rargs['transform'] = transform['data']  
+    
+    # Plot gliders and argo floats
+    plot_regional_assets(ax1, **rargs)
+
+    import cartopy.mpl.ticker as cticker
+
+
+    # Add gridlines at every 1 degree without labels
+    gl = ax1.gridlines(
+        crs=ccrs.PlateCarree(),
+        draw_labels=False,           # Disable automatic labels
+        linestyle="--",
+        color="black",
+        alpha=0.5,
+    )
+    gl.xlocator = plt.MultipleLocator(1)  # Set 1-degree interval for gridlines
+    gl.ylocator = plt.MultipleLocator(1)
+    gl.set_zorder(9.99)
+
+    # Manually add labeled ticks at every 5 degrees on both axes
+    # Longitude (x-axis)
+    # ax1.set_xticks(range(int(extent[0]), int(extent[1]) + 1, 5), crs=ccrs.PlateCarree())
+    # ax1.set_xticks(np.arange(-85, -59, 5), crs=ccrs.PlateCarree())
+    ax1.set_xticks([-90, -85, -80], crs=ccrs.PlateCarree())
+
+    ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
+    ax1.xaxis.set_minor_formatter(cticker.LongitudeFormatter())
+    
+    # Latitude (y-axis)
+    # ax1.set_yticks(range(int(extent[2]), int(extent[3]) + 1, 5), crs=ccrs.PlateCarree())
+    # ax1.set_yticks(np.arange(10, 25, 5), crs=ccrs.PlateCarree())
+    ax1.set_yticks([20, 25, 30], crs=ccrs.PlateCarree())
+    ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
+    ax1.yaxis.set_minor_formatter(cticker.LatitudeFormatter())
+
+    ax1.tick_params(axis='both', which='major', labelsize=12, direction='out', length=6, width=1)
+    for tick in ax1.xaxis.get_majorticklabels():
+        tick.set_fontweight('bold')
+    for tick in ax1.yaxis.get_majorticklabels():
+        tick.set_fontweight('bold')
+    # plot_hurricane_track(ax1, time, basin, storm_id="AL022024", linecolor='white', markersize=60)
+
+    plot_hurricane_track(ax1, time, basin, storm_id="AL092024", linecolor='cyan', markersize=60)
+    plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='blue', markersize=60)
+
+
+    # Add ticks
+    # add_ticks(ax1, extent)
+
+    # Calculate contours
+    # if limits:
+    # else:
+    #     # Calculate the colorbar limits automatically
+    #     percentiles = [.25, .75]
+    #     quantile = ds1['ohc'].quantile(percentiles)
+    #     ohc_min = np.floor(quantile[0])
+    #     ohc_max = np.ceil(quantile[1])
+    #     ohc_stride = 10
+
+    # Calculate salinity contours
+    levels = np.arange(
+        min,
+        max+stride,
+        stride
+        )
+
+    cmap = cmocean.cm.thermal
+
+    # Ocean Heat Content Plot
+    h1 = ax1.contourf(ds1['lon'], ds1['lat'], ds1['temperature'],
+                      levels=levels, 
+                      extend="both",
+                      cmap=cmap,
+                      transform=transform['data'])
+    # h3 = ax1.contour(ds1['lon'], 
+    #                 ds1['lat'], 
+    #                 ds1['salinity'], 
+    #                 [60],
+    #                 linestyles='-',
+    #                 colors=['silver'],
+    #                 linewidths=1,
+    #                 alpha=1,
+    #                 transform=ccrs.PlateCarree(),
+    #                 zorder=101)
+
+    h0 = []
+    l0 = []
+    
+    # h0.append(mlines.Line2D([], [], linestyle='-', color='silver', alpha=1, linewidth=1))
+    # l0.append('60 kJ cm-2')
+    # h0.append(mlines.Line2D([], [], linestyle='-', color='white', alpha=1, linewidth=1))
+    # l0.append('Past 5 days')
+    leg1 = ax1.legend(h0, l0, loc='upper left', fontsize=9)
+
+    # # # Deal with the third axes
+    # h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+    # if (len(h) > 0) & (len(l) > 0):
+ 
+    #     # Add handles to legend
+    #     leg = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
+
+    #     # Add title to legend
+    #     t0 = []
+    #     if isinstance(argo, pd.DataFrame):
+    #         if not argo.empty:
+    #             t0.append(argo.index.min()[1])
+
+    #     if isinstance(gliders, pd.DataFrame):
+    #         if not gliders.empty:
+    #             t0.append(gliders.index.min()[1])
+
+    #     if len(t0) > 0:
+    #         t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+    #     else:
+    #         t0 = None
+    #     legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
+    #     leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
+    #     # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+    # ax3.set_axis_off()
+
+
+    leg1.set_zorder(10001)
+    
+    # Add colorbar to first axes
+    cb = fig.colorbar(h1, ax=ax1, orientation="vertical", shrink=.95, aspect=20)#, shrink=0.7, aspect=20*0.7)
+    cb.ax.tick_params(labelsize=14)
+    cb.set_label('°C', fontsize=12, fontweight="bold")
+
+    # Set title for each axes
+    # ax1.set_title(f"{ds1.model.upper()}", fontsize=16, fontweight='bold')
+    # fig.suptitle(f"Salinity (0m) - {ds1.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
+    ax1.set_title(f"Temperature ({str(int(ds1.depth.values))}m) - {ds1.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
+    # import tropycal.tracks as tracks
+    # from ioos_model_comparisons.plotting_hurricanes import plot_storms
+
+    # hurricane_data = tracks.TrackDataset(basin='north_atlantic', include_btk=True)
+    # idalia = hurricane_data.get_storm(("idalia", 2023))
+    # fcast = idalia.get_nhc_forecast_dict(time=pd.Timestamp(2023, 8, 28))  # This will return the NHC forecast dictionary
+    # forecasts = [fcast]
+    # storms = [idalia]
+    # plot_storms(ax1, storms, forecasts, zorder=80)
+
+
+    # Hide x labels and tick labels for top plots and y ticks for right plots.
+    # for axs in ax.flat:
+        # axs.label_inner()
+
+    fig.tight_layout()
+    fig.subplots_adjust(top=0.95, bottom=0.15)
+    
+    export_fig(path_save, fname, dpi=dpi)
+    plt.close()
+
+def plot_speed_single(ds1, extent, region_name,
+             limits=None,
+             bathy=None,
+             argo=None,
+             gliders=None,
+             eez=False,
+             currents=None,
+             cols=6,
+             path_save=os.getcwd(), 
+             transform=dict(map=ccrs.Mercator(), 
+                            data=ccrs.PlateCarree()
+                            ), 
+             figsize=(14,8),
+             dpi=150,
+             overwrite=False,
+             min=0,
+             max=1.5,
+             stride=.1,
+             ):
+
+    # Convert ds.time value to a normal datetime
+    time = pd.to_datetime(ds1.time.values)
+    
+    # Formatter for time
+    tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
+    tstr_folder = time.strftime('%Y-%m-%dT%H%M%SZ')
+    year = time.strftime("%Y")
+    month = time.strftime("%m")
+
+    # Generate filename
+    fname = f"{path_save.name}_{tstr_folder}_speed_{str(int(ds1.depth.values))}_{ds1.model.lower()}.png"
+
+    # Append salinity_max, year, and month to path_save
+    path_save = path_save / 'speed' / str(int(ds1.depth.values)) / year / month
+
+    save_file = path_save / fname
+    
+    if save_file.is_file():
+        if not overwrite:
+            print(f"{save_file} exists. Overwrite: False. Skipping.")
+            return
+        else:
+            print(f"{save_file} exists. Overwrite: True. Replotting.")    
+    
+    # Make sure path_save exists
+    os.makedirs(path_save, exist_ok=True)
+    
+    print(f"Plotting Speed of {region_name} at {tstr_title}")
+ 
+
+    # Adjust the figure size to create more space at the bottom
+    fig = plt.figure(figsize=figsize)  # Adjusted figure size
+
+    # Create main plot axes
+    ax1 = fig.add_subplot(1, 1, 1, projection=proj['map'])
+
+
+    # Create an additional axes for the legend at the bottom
+    # ax3 = fig.add_axes([0.1, 0.05, 0.8, 0.05])  # Adjust these values as needed
+    extent = [-90.01, -79.9, 18.99, 31.01]
+
+    create(extent, ax=ax1, ticks=False)
+        
+    if bathy:       
+        add_bathymetry(ax1,
+                        bathy.longitude.values, 
+                        bathy.latitude.values, 
+                        bathy.z.values,
+                        levels=(-1000, -100),
+                        zorder=1.5
+                        )
+    # Add eez lines
+    if eez:
+        map_add_eez(ax1, color='white', zorder=10, linestyle='-', linewidth=2)
+
+    # Setup keyword arguments dictionary for plot_regional_assets
+    rargs = {}
+    rargs['argo'] = argo
+    rargs['gliders'] = gliders
+    rargs['transform'] = transform['data']  
+    
+    # Plot gliders and argo floats
+    plot_regional_assets(ax1, **rargs)
+
+    import cartopy.mpl.ticker as cticker
+
+
+    # Add gridlines at every 1 degree without labels
+    gl = ax1.gridlines(
+        crs=ccrs.PlateCarree(),
+        draw_labels=False,           # Disable automatic labels
+        linestyle="--",
+        color="black",
+        alpha=0.5,
+    )
+    gl.xlocator = plt.MultipleLocator(1)  # Set 1-degree interval for gridlines
+    gl.ylocator = plt.MultipleLocator(1)
+    gl.set_zorder(9.99)
+
+    # Manually add labeled ticks at every 5 degrees on both axes
+    # Longitude (x-axis)
+    # ax1.set_xticks(range(int(extent[0]), int(extent[1]) + 1, 5), crs=ccrs.PlateCarree())
+    # ax1.set_xticks(np.arange(-85, -59, 5), crs=ccrs.PlateCarree())
+    ax1.set_xticks([-90, -85, -80], crs=ccrs.PlateCarree())
+
+    ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
+    ax1.xaxis.set_minor_formatter(cticker.LongitudeFormatter())
+    
+    # Latitude (y-axis)
+    # ax1.set_yticks(range(int(extent[2]), int(extent[3]) + 1, 5), crs=ccrs.PlateCarree())
+    # ax1.set_yticks(np.arange(10, 25, 5), crs=ccrs.PlateCarree())
+    ax1.set_yticks([20, 25, 30], crs=ccrs.PlateCarree())
+    ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
+    ax1.yaxis.set_minor_formatter(cticker.LatitudeFormatter())
+
+    ax1.tick_params(axis='both', which='major', labelsize=12, direction='out', length=6, width=1)
+    for tick in ax1.xaxis.get_majorticklabels():
+        tick.set_fontweight('bold')
+    for tick in ax1.yaxis.get_majorticklabels():
+        tick.set_fontweight('bold')
+    # plot_hurricane_track(ax1, time, basin, storm_id="AL022024", linecolor='white', markersize=60)
+
+    plot_hurricane_track(ax1, time, basin, storm_id="AL092024", linecolor='cyan', markersize=60)
+    plot_hurricane_track(ax1, time, basin, storm_id="AL142024", linecolor='blue', markersize=60)
+
+
+    # Add ticks
+    # add_ticks(ax1, extent)
+
+    # Calculate contours
+    # if limits:
+    # else:
+    #     # Calculate the colorbar limits automatically
+    #     percentiles = [.25, .75]
+    #     quantile = ds1['ohc'].quantile(percentiles)
+    #     ohc_min = np.floor(quantile[0])
+    #     ohc_max = np.ceil(quantile[1])
+    #     ohc_stride = 10
+
+    # Calculate salinity contours
+    levels = np.arange(
+        min,
+        max+stride,
+        stride
+        )
+    
+    # Calculate speed
+    ds1['speed'] = np.sqrt(ds1['u']**2 + ds1['v']**2)
+
+    cmap = cmocean.cm.speed
+
+    # Ocean Heat Content Plot
+    h1 = ax1.contourf(ds1['lon'], ds1['lat'], ds1['speed'],
+                      levels=levels, 
+                      extend="both",
+                      cmap=cmap,
+                      transform=transform['data'])
+    
+    
+    # Add streamplot 
+    s1 = ax1.streamplot(ds1['lon'], ds1['lat'], ds1['u'], ds1['v'],
+                        color='k',
+                        linewidth=1,
+                        density=2,
+                        transform=ccrs.PlateCarree(),
+                        zorder=100
+                        )
+
+    # h3 = ax1.contour(ds1['lon'], 
+    #                 ds1['lat'], 
+    #                 ds1['salinity'], 
+    #                 [60],
+    #                 linestyles='-',
+    #                 colors=['silver'],
+    #                 linewidths=1,
+    #                 alpha=1,
+    #                 transform=ccrs.PlateCarree(),
+    #                 zorder=101)
+
+    h0 = []
+    l0 = []
+    
+    # h0.append(mlines.Line2D([], [], linestyle='-', color='silver', alpha=1, linewidth=1))
+    # l0.append('60 kJ cm-2')
+    # h0.append(mlines.Line2D([], [], linestyle='-', color='white', alpha=1, linewidth=1))
+    # l0.append('Past 5 days')
+    leg1 = ax1.legend(h0, l0, loc='upper left', fontsize=9)
+
+    # # # Deal with the third axes
+    # h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
+    # if (len(h) > 0) & (len(l) > 0):
+ 
+    #     # Add handles to legend
+    #     leg = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
+
+    #     # Add title to legend
+    #     t0 = []
+    #     if isinstance(argo, pd.DataFrame):
+    #         if not argo.empty:
+    #             t0.append(argo.index.min()[1])
+
+    #     if isinstance(gliders, pd.DataFrame):
+    #         if not gliders.empty:
+    #             t0.append(gliders.index.min()[1])
+
+    #     if len(t0) > 0:
+    #         t0 = min(t0).strftime('%Y-%m-%d %H:00:00')
+    #     else:
+    #         t0 = None
+    #     legstr = f'Glider/Argo Search Window: {t0} to {str(time)}'
+    #     leg.set_title(legstr, prop={'size': 9, 'weight': 'bold', 'style': 'italic'})
+    #     # ax3.set_title(legstr, loc="center", fontsize=9, fontweight="bold", style='italic')
+    # ax3.set_axis_off()
+
+
+    leg1.set_zorder(10001)
+    
+    # Add colorbar to first axes
+    cb = fig.colorbar(h1, ax=ax1, orientation="vertical", shrink=.95, aspect=20)#, shrink=0.7, aspect=20*0.7)
+    cb.ax.tick_params(labelsize=14)
+    cb.set_label('m/s', fontsize=12, fontweight="bold")
+
+    # Set title for each axes
+    # ax1.set_title(f"{ds1.model.upper()}", fontsize=16, fontweight='bold')
+    # fig.suptitle(f"Salinity (0m) - {ds1.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
+    ax1.set_title(f"Speed ({str(int(ds1.depth.values))}m) - {ds1.model.upper()} - {time.strftime(tstr_title)}", fontweight="bold", fontsize=20)
+    # import tropycal.tracks as tracks
+    # from ioos_model_comparisons.plotting_hurricanes import plot_storms
+
+    # hurricane_data = tracks.TrackDataset(basin='north_atlantic', include_btk=True)
+    # idalia = hurricane_data.get_storm(("idalia", 2023))
+    # fcast = idalia.get_nhc_forecast_dict(time=pd.Timestamp(2023, 8, 28))  # This will return the NHC forecast dictionary
+    # forecasts = [fcast]
+    # storms = [idalia]
+    # plot_storms(ax1, storms, forecasts, zorder=80)
+
+
+    # Hide x labels and tick labels for top plots and y ticks for right plots.
+    # for axs in ax.flat:
+        # axs.label_inner()
+
+    fig.tight_layout()
+    fig.subplots_adjust(top=0.95, bottom=0.15)
+    
+    export_fig(path_save, fname, dpi=dpi)
+    plt.close()
 
 def plot_model_region_ts_vs_speed(ds,
                                   region,
@@ -4970,8 +5489,11 @@ def plot_model_region_single_streamplot_grase(ds1, region,
         rargs['transform'] = transform['data']  
 
         # Plot gliders and argo floats
-        plot_regional_assets(ax1, **rargs)
-        # plot_regional_assets_single_color(ax1, **rargs)
+
+
+        # plot_regional_assets(ax1, **rargs)
+        plot_regional_assets_single_color(ax1, **rargs)
+
         import cartopy.mpl.ticker as cticker
 
         # Add gridlines at every 1 degree without labels
@@ -4993,6 +5515,13 @@ def plot_model_region_single_streamplot_grase(ds1, region,
         # Set minor ticks every 1 degree (these won't have labels)
         ax1.set_xticks(np.arange(-91, -80, 1), minor=True, crs=ccrs.PlateCarree())
         ax1.set_yticks(np.arange(18, 30, 1), minor=True, crs=ccrs.PlateCarree())
+    #    # Set major ticks every 2 degrees (these will have labels)
+    #     ax1.set_xticks(np.arange(-87.5, -80, 2), crs=ccrs.PlateCarree())
+    #     ax1.set_yticks(np.arange(22.5, 29.5, 2), crs=ccrs.PlateCarree())
+
+    #     # Set minor ticks every 1 degree (these won't have labels)
+    #     ax1.set_xticks(np.arange(-87.5, -80, 1), minor=True, crs=ccrs.PlateCarree())
+    #     ax1.set_yticks(np.arange(22.5, 29.5, 1), minor=True, crs=ccrs.PlateCarree())
 
         # Apply formatters only to major ticks
         ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
@@ -5050,7 +5579,7 @@ def plot_model_region_single_streamplot_grase(ds1, region,
             try:
                 # Add loop current contour from WHO Group
                 ftime = time.strftime('%Y-%m-%d')
-                fname = f'/Users/mikesmith/Downloads/{ftime}_fronts.mat'
+                fname = f'/Users/mikesmith/Downloads/fronts/{ftime}_fronts.mat'
                 data = loadmat(fname)
             
                 fronts = []
@@ -5200,6 +5729,8 @@ def plot_model_region_single_streamplot_grase_cnaps(ds1, region,
     # Define the region you want (lon/lat box)
     lon_min, lon_max, lat_min, lat_max = extent
 
+    lon_min, lon_max, lat_min, lat_max = ds1.lon_rho.min(), ds1.lon_rho.max(), ds1.lat_rho.min(), ds1.lat_rho.max()
+
     # build masks for each staggered grid ------------------------------------------
     mask_u = (
         (ds1.lon_u >= lon_min) & (ds1.lon_u <= lon_max) &
@@ -5219,6 +5750,8 @@ def plot_model_region_single_streamplot_grase_cnaps(ds1, region,
         print(f"Plotting currents @ {depth}m")
         u = ds1.u.where(mask_u, drop=True).sel(z_rho_u=depth, method='nearest')   # surface layer
         v = ds1.v.where(mask_v, drop=True).sel(z_rho_v=depth, method='nearest')
+        # u = ds1.sel(z_rho_u=depth, method='nearest')   # surface layer
+        # v = ds1.sel(z_rho_v=depth, method='nearest')
         # ds1_depth = ds1.sel(depth=depth, method='nearest')
 
         # ── 2.  average to ρ‑points (quick visual method) ─────────────────────────────
@@ -5530,6 +6063,7 @@ def plot_model_region_single_streamplot_grase_cnaps(ds1, region,
 
 import datetime 
 def plot_sst(ds1, ds2, region,
+             rtofs_200=None,
              bathy=None,
              argo=None,
              gliders=None,
@@ -5746,6 +6280,11 @@ def plot_sst(ds1, ds2, region,
         cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
         cb.ax.tick_params(labelsize=12)
         cb.set_label(f'{k.title()} ({rsub.units})', fontsize=12, fontweight="bold")
+
+    # Plot the RTOFS 200m temperature if it exists
+    rtofs_tmp = ds1.sel(depth=200)['temperature']
+    ax1.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+    ax2.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
 
     # Add EEZ
     # eez1 = map_add_eez(ax1, zorder=1)
