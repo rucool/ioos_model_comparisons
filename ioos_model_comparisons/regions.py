@@ -203,6 +203,7 @@ def region_config(regions=None, model=None):
         extent = [-99, -78, 18, 33]
         # extent = [-100, -40, 5, 35]
         # extent = [-91, -81, 20, 28]
+        # extent = [-91, -79, 18, 32]
 
         sea_water_temperature = [
             dict(depth=0, limits=[25, 31.5, .5]),
@@ -250,7 +251,7 @@ def region_config(regions=None, model=None):
         folder = "grase"
         # extent = [-99, -78, 18, 33]
         # extent = [-100, -40, 5, 35]
-        extent = [-91, -81, 18, 29]
+        extent = [-91, -80, 17.75, 29]
 
         sea_water_temperature = [
             dict(depth=0, limits=[25, 31.5, .5]),
@@ -275,6 +276,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             depths = [0, 80, 1500],
+            # depths = [0],
             limits = [0, 1.5, .1],
             # depths = [0,],
             # limits = [0, 1.5, .1],
@@ -288,7 +290,8 @@ def region_config(regions=None, model=None):
         eez=False
         figure = dict(
             legend = dict(columns=10),
-            figsize = (12.125, 7.5)
+            # figsize = (12.125, 7.5)
+            figsize = (8,8)
             )
         
         
@@ -341,7 +344,7 @@ def region_config(regions=None, model=None):
         folder = "mid_atlantic_bight"
         extent = [-77, -63, 35, 44]
         sea_water_temperature = [
-            dict(depth=0, limits=[15, 31, 1]),
+            dict(depth=0, limits=[15, 29, 1]),
             dict(depth=30, limits=[7, 25, 1]),
             dict(depth=100, limits=[12, 23, 1]),
             dict(depth=150, limits=[11, 22, 1]),
@@ -428,13 +431,11 @@ def region_config(regions=None, model=None):
         extent = [-89, -58, 7, 23.5]
         sea_water_temperature = [
             dict(depth=0, limits=[28, 31.75, .25]),
-            # dict(depth=100, limits=[18, 27.5, .5]),
             dict(depth=150, limits=[17, 25, .5]),
             dict(depth=200, limits=[14, 22.5, .5])
             ]
         salinity = [
             dict(depth=0, limits=[34.6, 36.8, .1]),
-            # dict(depth=100, limits=[35.5, 37.1, .1]),
             dict(depth=150, limits=[35.7, 37.4, .1]),
             dict(depth=200, limits=[35.6, 37.1, .1])
             ]
@@ -460,7 +461,7 @@ def region_config(regions=None, model=None):
             )
         eez = False
         figure = dict(
-            legend = dict(columns=7),
+            legend = dict(columns=8),
             figsize = (12.5,6.5)
             )
 
@@ -471,12 +472,12 @@ def region_config(regions=None, model=None):
         folder = "caribbean-windward"
         extent = [-68.2, -56.4, 9.25, 19.75]
         sea_water_temperature = [
-            dict(depth=0, limits=[28, 29.3, .1]),
+            dict(depth=0, limits=[27, 29.3, .1]),
             dict(depth=150, limits=[16.5, 24.5, .5]),
             # dict(depth=200, limits=[14, 22, .5])
             ]
         salinity = [
-            dict(depth=0, limits=[33.8, 36.1, .1]),
+            dict(depth=0, limits=[33, 36.1, .1]),
             dict(depth=150, limits=[35.5, 37.4, .1]),
             #dict(depth=200, limits=[35.3, 37.1, .1])
             ]
@@ -493,7 +494,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             # coarsen=dict(rtofs=None, gofs=None),
-            depths = [0, 150, 200],
+            depths = [0, 150],
             limits = [0, 1.3, .1],
             coarsen=dict(rtofs=5, espc=6),
             kwargs=dict(
@@ -503,7 +504,7 @@ def region_config(regions=None, model=None):
             )
         eez = True
         figure = dict(
-            legend = dict(columns=5),
+            legend = dict(columns=10),
             figsize = (11.5, 8)
             )
         
@@ -679,15 +680,14 @@ def region_config(regions=None, model=None):
         folder = "mexico_pacific"
         extent = [-126, -97, 8, 33]
         sea_water_temperature = [
-            dict(depth=0, limits=[25, 30.5, .5]),
-            dict(depth=100, limits=[12, 18, .5]),
-            dict(depth=200, limits=[8, 16, .5])
+            dict(depth=0, limits=[20, 32, 1]),
+            dict(depth=100, limits=[12, 20, 1]),
+            dict(depth=200, limits=[8, 13, .5])
             ]
         salinity = [
-            dict(depth=0, limits=[33, 35, .1]),
-            dict(depth=100, limits=[34, 35.5, .1]),
-            dict(depth=200, limits=[34, 35.5, .1])
-            # dict(depth=150, limits=[35.8, 36.3, .05]),
+            dict(depth=0, limits=[33, 34.7, .1]),
+            dict(depth=100, limits=[33.5, 34.9, .1]),
+            dict(depth=200, limits=[33.8, 35.0, .1])
             ]
         sea_surface_height = [
             dict(depth=0, limits=[-.6, .7, .1])
@@ -700,8 +700,8 @@ def region_config(regions=None, model=None):
             )
         currents = dict(
             bool=True,
-            depths = [0, 100, 150, 200],
-            limits = [0, 1.6, .1],
+            depths = [0, 100, 200],
+            limits = [0, 1, .1],
             coarsen=dict(
                 rtofs=14,
                 espc=15,
@@ -727,14 +727,14 @@ def region_config(regions=None, model=None):
         folder = "hawaii"
         extent = [-167, -138, 10, 27]
         sea_water_temperature = [
-            dict(depth=0, limits=[25, 30.5, .5]),
-            dict(depth=100, limits=[12, 18, .5]),
-            dict(depth=200, limits=[8, 16, .5])
+            dict(depth=0, limits=[23.5, 29, .5]),
+            dict(depth=100, limits=[14, 26, 1]),
+            dict(depth=200, limits=[10, 21, 1])
             ]
         salinity = [
-            dict(depth=0, limits=[33, 35, .1]),
-            dict(depth=100, limits=[34, 35.5, .1]),
-            dict(depth=200, limits=[34, 35.5, .1])
+            dict(depth=0, limits=[34.0, 35.3, .1]),
+            dict(depth=100, limits=[34.5, 35.3, .1]),
+            dict(depth=200, limits=[34.1, 35, .1])
             # dict(depth=150, limits=[35.8, 36.3, .05]),
             ]
         sea_surface_height = [
@@ -748,8 +748,8 @@ def region_config(regions=None, model=None):
             )
         currents = dict(
             bool=True,
-            depths = [0, 100, 150, 200],
-            limits = [0, 1.6, .1],
+            depths = [0, 100, 200],
+            limits = [0, 1.0, .1],
             coarsen=dict(
                 rtofs=14,
                 espc=15,
