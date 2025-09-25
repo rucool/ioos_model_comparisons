@@ -678,7 +678,7 @@ def region_config(regions=None, model=None):
         # Caribbean Limits
         name = "Eastern Pacific - Mexico"
         folder = "mexico_pacific"
-        extent = [-126, -97, 8, 33]
+        extent = [-126, -92, 8, 33]
         sea_water_temperature = [
             dict(depth=0, limits=[20, 32, 1]),
             dict(depth=100, limits=[12, 20, 1]),
@@ -767,6 +767,96 @@ def region_config(regions=None, model=None):
             figsize = (12, 7),
             legend = dict(columns=9),
             )
+    
+    key = "wmo_v_south"
+    if key in regions:
+        # Caribbean Limits
+        name = "WMO V - South Pacific"
+        folder = "wmo_v_south"
+        extent = [145, -120, -50, -5]
+        sea_water_temperature = [
+            dict(depth=0, limits=[10, 29, 1]),
+            dict(depth=175, limits=[10, 23, 1]),
+            # dict(depth=200, limits=[10, 21, 1])
+            ]
+        salinity = [
+            dict(depth=0, limits=[34.0, 36.5, .1]),
+            dict(depth=175, limits=[34.5, 36.5, .1]),
+            # dict(depth=200, limits=[34.1, 35, .1])
+            ]
+        sea_surface_height = [
+            dict(depth=0, limits=[-.6, .7, .1])
+            ]
+        salinity_max = dict(
+            limits= [36, 37.5, .1]
+            )
+        ocean_heat_content = dict(
+            limits= [0, 160, 10]
+            )
+        currents = dict(
+            bool=True,
+            depths = [0, 175],
+            limits = [0, 1.0, .1],
+            coarsen=dict(
+                rtofs=14,
+                espc=15,
+                cmems=14,
+                amseas=13
+                ),
+            kwargs=dict(
+                ptype="streamplot",
+                color="black", 
+                density=2.25,
+                linewidth=.5
+                )
+            )
+        figure = dict(
+            figsize = (12, 7),
+            legend = dict(columns=9),
+            )
+        
+    key='bahamas'
+    if key in regions:
+        name = "Bahamas"
+        folder = "bahamas"
+        extent = [-82.5, -63, 16, 31]
+        sea_water_temperature = [
+            dict(depth=0, limits=[27, 32, .25]),
+            dict(depth=150, limits=[18, 25, .5]),
+            # dict(depth=200, limits=[14, 22.5, .5])
+            ]
+        salinity = [
+            dict(depth=0, limits=[34.5, 36.8, .1]),
+            dict(depth=150, limits=[35.5, 37.1, .1]),
+            # dict(depth=200, limits=[35.5, 37.1, .1])
+            ]
+        sea_surface_height = [
+            dict(depth=0, limits=[-.6, .7, .1])
+            ]
+        salinity_max = dict(
+            figsize=(14, 6.5),
+            limits=[36, 37.5, .1]
+            )
+        ocean_heat_content = dict(
+            limits= [0, 160, 10]
+            )
+        currents = dict(
+            bool=True,
+            depths = [0],
+            limits = [0, 1.5, .1],
+            coarsen=dict(rtofs=7, espc=8),
+            kwargs=dict(
+                ptype="streamplot",
+                color="black"
+                )
+            )
+        eez = True
+        figure = dict(
+            legend = dict(columns=8),
+            figsize=(12,8)
+            )
+        
+
 
     # Create subdirectory for data variables
     vars = {}
