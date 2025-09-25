@@ -39,7 +39,7 @@ path_save = conf.path_plots / "maps"
 
 # Model selection flags
 plot_rtofs = True
-plot_para = True
+plot_para = False
 plot_espc = True
 plot_cmems = True
 plot_amseas = False
@@ -270,6 +270,13 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             sst = None
             logger.warning(f"SST data unavailable for region {region['name']} at time {ctime}")
 
+        # if region['name'] == 'Mid Atlantic Bight':
+        #     # Extract 200m for goes
+        #     rtofs_tmp = rds_sub.sel(depth=200)
+        #     ax1.contour(rlons, rlats, rsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+        #     ax2.contour(rlons, rlats, rsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+
+
         # Plot data
         try:
             if rdt_flag and gdt_flag:
@@ -304,7 +311,7 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             logger.error(f"Failed to process RTOFS vs AMSEAS at {ctime} for region {region['name']}: {e}")
 
         if sst is not None:
-            plot_sst(rds_sub, sst, region, **remove_kwargs(['eez', 'currents']))
+            plot_sst(rds_sub, sst, region, **remove_kwargs(['eez', 'currents', 'legend']))
             logger.info(f"Successfully plotted SST for region {region['name']} at time {ctime}")
 
     except Exception as e:

@@ -39,7 +39,7 @@ path_save = conf.path_plots / "maps"
 
 # Model selection flags
 plot_rtofs = True
-plot_para = True
+plot_para = False
 plot_espc = True
 plot_cmems = True
 plot_amseas = False
@@ -56,7 +56,7 @@ kwargs = {
 
 # Configuration for regions and days to process
 conf.days = 1
-conf.regions = ['gom']
+conf.regions = ['gom', 'grase']
 
 # Date range for processing
 today = dt.date.today()
@@ -304,7 +304,7 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             logger.error(f"Failed to process RTOFS vs AMSEAS at {ctime} for region {region['name']}: {e}")
 
         if sst is not None:
-            plot_sst(rds_sub, sst, region, **remove_kwargs(['eez', 'currents']))
+            plot_sst(rds_sub, sst, region, **remove_kwargs(['eez', 'currents', 'legend']))
             logger.info(f"Successfully plotted SST for region {region['name']} at time {ctime}")
 
     except Exception as e:

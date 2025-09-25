@@ -291,10 +291,8 @@ def region_config(regions=None, model=None):
         figure = dict(
             legend = dict(columns=10),
             # figsize = (12.125, 7.5)
-            figsize = (8,8)
+            figsize = (11.5,10)
             )
-        
-        
 
     key = "sab"
     if key in regions:
@@ -850,7 +848,7 @@ def region_config(regions=None, model=None):
                 color="black"
                 )
             )
-        eez = True
+        eez = False
         figure = dict(
             legend = dict(columns=8),
             figsize=(12,8)
