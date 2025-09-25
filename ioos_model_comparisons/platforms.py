@@ -15,6 +15,10 @@ from requests.exceptions import HTTPError as rHTTPError
 import requests
 import re
 import xarray as xr
+from functools import wraps
+import random
+import time
+
 
 import logging
 
@@ -37,6 +41,24 @@ rename_argo["time (UTC)"] = "time"
 rename_argo["longitude (degrees_east)"] = "lon"
 rename_argo["latitude (degrees_north)"] = "lat"
 
+def retry_on_exception(max_retries=3, delay=2, backoff=2, exceptions=(Exception,)):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            wait = delay
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except exceptions as e:
+                    retries += 1
+                    print(f"Retry {retries}/{max_retries} for {func.__name__} due to error: {e}")
+                    time.sleep(wait)
+                    wait *= backoff
+            print(f"Giving up after {max_retries} retries for {func.__name__}")
+            return (args[0], pd.DataFrame())  # Return empty DataFrame if all retries fail
+        return wrapper
+    return decorator
 
 def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
                             time_start=None, time_end=dt.date.today(),
@@ -162,6 +184,9 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None,
     # Remove any glider datasets that have 'delayed' in the title
     gliders = gliders[~np.array(["delayed" in g for g in gliders])]
 
+    # Remove any gliders with 'unit' in the title
+    # gliders = gliders[~np.array(["unit" in g for g in gliders])]
+
     msg = f"Found {len(gliders)} Glider Datasets: "
     pprint(msg + ', '.join(gliders.tolist()))
 
@@ -175,7 +200,7 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None,
             # 'latitude<=': bbox[3],
             }
     
-
+    @retry_on_exception(max_retries=3, delay=1, backoff=2, exceptions=(Exception,))
     def request_multi(dataset_id, protocol="tabledap"): # variables=None):
         # variables = variables or ['depth', 'latitude', 'longitude']
         e.constraints = constraints
