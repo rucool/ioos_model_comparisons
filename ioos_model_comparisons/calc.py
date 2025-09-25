@@ -76,7 +76,7 @@ def ocean_heat_content(depth, temp, density):
     # If the number of depths do not equal 0
     if len(depth_m) != 0:
         # If the minimum depth is shallower than 10m
-        if np.nanmin(depth_m) > 10:
+        if np.nanmin(depth_m) > 2:
             OHC = np.nan
         # If the minimum depth is deeper than 10m
         else:
