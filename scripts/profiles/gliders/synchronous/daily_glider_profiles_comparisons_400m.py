@@ -21,7 +21,7 @@ from ioos_model_comparisons.calc import (density,
                                          difference,
                                          lon180to360
                                          )
-from ioos_model_comparisons.platforms import get_active_gliders, get_ohc
+from ioos_model_comparisons.platforms import get_active_gliders, get_ohc, get_glider_by_id
 from ioos_model_comparisons.regions import region_config
 import pandas
 import matplotlib.pyplot as plt
@@ -47,12 +47,13 @@ workers = 4
 
 # Region selection
 conf.regions = ['caribbean', 'gom', 'mab', 'sab']
+# conf.regions = ['mab']
 
 # Model selection
 plot_rtofs = True
 plot_espc = True
 plot_cmems = True
-plot_para = True
+plot_para = False
 
 # Subplot selection
 plot_temperature = True
@@ -60,7 +61,7 @@ plot_salinity = True
 plot_density = True
 
 # Depth
-depth = 1000
+depth = 400
 
 # Time threshold (in hours). If a profile time is greater than this, we won't 
 # grab the corresponding profile from the model
@@ -83,17 +84,29 @@ vars = ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity',
         'density', 'profile_id']
 
 region_gliders = []
-for region in conf.regions:
-    print('Region:', region)
-    extent = region_config(region)["extent"]
-    gliders = get_active_gliders(extent, t0, t1, 
-                            variables=vars,
-                            timeout=timeout, 
-                            parallel=False).reset_index()
-    gliders['region'] = region
-    region_gliders.append(gliders)
+# for region in conf.regions:
+#     print('Region:', region)
+#     extent = region_config(region)["extent"]
+#     gliders = get_active_gliders(extent, t0, t1, 
+#                             variables=vars,
+#                             timeout=timeout, 
+#                             parallel=False).reset_index()
+#     gliders['region'] = region
+#     region_gliders.append(gliders)
+try:
+    redwing = get_glider_by_id('redwing-20251011T1511', start=t0, end=t1)
+    redwing.reset_index(inplace=True)
+    redwing['glider'] = 'redwing-20251011T1511'
+    redwing['region'] = 'sentinel'
+    redwing.rename(columns={'longitude': 'lon', 'latitude': 'lat'}, inplace=True)
+    region_gliders.append(redwing)
+except Exception as e:
+    logging.error(f"Failed to load redwing glider data: {e}")
 
 gliders = pd.concat(region_gliders)
+
+# Remove redwing-20251011T1511 and region ='mab' if exists
+gliders = gliders[~((gliders['glider'] == 'redwing-20251011T1511') & (gliders['region'] == 'mab'))]
 
 def pick_region_map(regions, point):
     distances = []
@@ -195,10 +208,13 @@ def plot_glider_profiles(id, gliders):
     # Remove any duplicate glider entries
     df = list(df.groupby('region'))[0][1]
 
-    # Get extent for inset map
-    # Find which region it's in most recently
-    found = pick_region_map(conf.regions, (df.lon.iloc[-1], df.lat.iloc[-1]))
-    extent = region_config(found[1])["extent"]
+    if 'redwing' in id:
+        extent =  [-77.25, -49.75, 34.75, 45.25]
+    else:
+        # Get extent for inset map
+        # Find which region it's in most recently
+        found = pick_region_map(conf.regions, (df.lon.iloc[-1], df.lat.iloc[-1]))
+        extent = region_config(found[1])["extent"]
 
     try:
         bathy = get_bathymetry(extent)
@@ -263,7 +279,7 @@ def plot_glider_profiles(id, gliders):
         # Concatenating the arrays for bins to interpolate to
         bins = np.concatenate((array1, array2, array3)) 
 
-        binned = []
+        binned = []        
         if not tdf.empty:
             for name, pdf in tdf.groupby(['profile_id', 'time', 'lon', 'lat']):
                 if not pdf.empty:
@@ -296,9 +312,9 @@ def plot_glider_profiles(id, gliders):
                     density_glider = pdf['density']
 
                     # Plot glider profiles
-                    tax.plot(temp_glider, depth_glider, '.', color='cyan', label='_nolegend_')
-                    sax.plot(salinity_glider, depth_glider, '.', color='cyan', label='_nolegend_')
-                    dax.plot(density_glider, depth_glider, '.', color='cyan', label='_nolegend_')
+                    tax.plot(temp_glider, depth_glider, '.', color='cyan', linestyle='None', label='_nolegend_')
+                    sax.plot(salinity_glider, depth_glider, '.', color='cyan', linestyle='None', label='_nolegend_')
+                    dax.plot(density_glider, depth_glider, '.', color='cyan', linestyle='None', label='_nolegend_')
 
                     try:
                         maxd.append(np.nanmax(depth_glider))
@@ -442,9 +458,9 @@ def plot_glider_profiles(id, gliders):
             dax.plot(cds['density'], cds["depth"], '.-', color="magenta", label='_nolegend_')
 
         # Plot glider profile
-        tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=alabel)
-        sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=alabel)
-        dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=alabel)
+        tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Daily Average)")
+        sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Daily Average)")
+        dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Daily Average)")
 
         # Plot model profiles
         rlabel = 'RTOFS'
@@ -597,6 +613,15 @@ def plot_glider_profiles(id, gliders):
         #         )
 
         h, l = sax.get_legend_handles_labels()  # get labels and handles from ax1
+
+        # Create custom legend item of cyan dot for glider profiles
+        from matplotlib.lines import Line2D
+        glider_profile_legend = Line2D([0], [0], marker='.', color='w', label='Glider Profiles',
+                              markerfacecolor='cyan', markersize=10)
+        h = [glider_profile_legend] + h
+        l = [f'{glid} (Daily Profiles)'] + l
+        # h.append(glider_profile_legend)
+        # l.append(f'{id} (Daily Profiles)')
 
         lax.legend(h, l, ncol=1, loc='center', fontsize=13)
         lax.set_axis_off()
