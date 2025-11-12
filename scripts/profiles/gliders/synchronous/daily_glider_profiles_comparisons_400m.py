@@ -217,12 +217,12 @@ def plot_glider_profiles(id, gliders):
         found = pick_region_map(conf.regions, (df.lon.iloc[-1], df.lat.iloc[-1]))
         extent = region_config(found[1])["extent"]
 
-    try:
-        bathy = get_bathymetry(extent)
-        bathy_flag = True
-    except:
-        bathy_flag = False
-        pass
+    # try:
+    #     bathy = get_bathymetry(extent)
+    #     bathy_flag = True
+    # except:
+    #     bathy_flag = False
+    #     pass
 
     # Extract glider id and deployment timestamp from dac id
     match = re.search(r'(.*)-(\d{8}T\d{4})', id)
@@ -459,9 +459,9 @@ def plot_glider_profiles(id, gliders):
             dax.plot(cds['density'], cds["depth"], '.-', color="magenta", label='_nolegend_')
 
         # Plot glider profile
-        tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Daily Average)")
-        sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Daily Average)")
-        dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Daily Average)")
+        tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Average Profile)")
+        sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Average Profile)")
+        dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Average Profile)")
 
         # Plot model profiles
         rlabel = 'RTOFS'
@@ -620,7 +620,7 @@ def plot_glider_profiles(id, gliders):
         glider_profile_legend = Line2D([0], [0], marker='.', color='w', label='Glider Profiles',
                               markerfacecolor='cyan', markersize=10)
         h = [glider_profile_legend] + h
-        l = [f'{glid} (Daily Profiles)'] + l
+        l = [f'{glid} (Raw Data Points)'] + l
         # h.append(glider_profile_legend)
         # l.append(f'{id} (Daily Profiles)')
 
@@ -832,7 +832,9 @@ from functools import partial
 from joblib import Parallel, delayed
 
 def driver(gliders, id):
-    plot_glider_profiles(id, gliders)
+
+    if 'redwing' in id:
+        plot_glider_profiles(id, gliders)
     
 def main():    
     active_gliders = gliders.glider.unique().tolist()

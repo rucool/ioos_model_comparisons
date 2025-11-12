@@ -47,7 +47,7 @@ workers = 4
 
 # Region selection
 conf.regions = ['caribbean', 'gom', 'mab', 'sab']
-
+# conf.regions = ['mab']
 # Model selection
 plot_rtofs = True
 plot_espc = True
@@ -468,9 +468,9 @@ def plot_glider_profiles(id, gliders):
             dax.plot(cds['density'], cds["depth"], '.-', color="magenta", label='_nolegend_')
 
         # Plot glider profile
-        tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=alabel)
-        sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=alabel)
-        dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=alabel)
+        tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Average Profile)")
+        sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Average Profile)")
+        dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Average Profile)")
 
         # Plot model profiles
         rlabel = 'RTOFS'
@@ -629,7 +629,7 @@ def plot_glider_profiles(id, gliders):
         glider_profile_legend = Line2D([0], [0], marker='.', color='w', label='Glider Profiles',
                               markerfacecolor='cyan', markersize=10)
         h = [glider_profile_legend] + h
-        l = [f'{glid} (Daily Profiles)'] + l
+        l = [f'{glid} (Raw Data Points)'] + l
         # h.append(glider_profile_legend)
         # l.append(f'{id} (Daily Profiles)')
 
