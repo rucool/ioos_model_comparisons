@@ -84,15 +84,16 @@ vars = ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity',
         'density', 'profile_id']
 
 region_gliders = []
-# for region in conf.regions:
-#     print('Region:', region)
-#     extent = region_config(region)["extent"]
-#     gliders = get_active_gliders(extent, t0, t1, 
-#                             variables=vars,
-#                             timeout=timeout, 
-#                             parallel=False).reset_index()
-#     gliders['region'] = region
-#     region_gliders.append(gliders)
+for region in conf.regions:
+    print('Region:', region)
+    extent = region_config(region)["extent"]
+    gliders = get_active_gliders(extent, t0, t1, 
+                            variables=vars,
+                            timeout=timeout, 
+                            parallel=False).reset_index()
+    gliders['region'] = region
+    region_gliders.append(gliders)
+    
 try:
     redwing = get_glider_by_id('redwing-20251011T1511', start=t0, end=t1)
     redwing.reset_index(inplace=True)
