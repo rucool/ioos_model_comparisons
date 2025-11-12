@@ -187,6 +187,9 @@ def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None,
     # Remove any gliders with 'unit' in the title
     # gliders = gliders[~np.array(["unit" in g for g in gliders])]
 
+    # Only keep this glider ru29-20250715T1838
+    # gliders = gliders[isin(gliders, ['ru29-20250715T1838'])]
+
     msg = f"Found {len(gliders)} Glider Datasets: "
     pprint(msg + ', '.join(gliders.tolist()))
 
@@ -317,6 +320,9 @@ def get_glider_by_id(dataset_id=None, bbox=None, start=None, end=None, vars=None
         constraints['latitude<='] = bbox[3]
 
     if start:
+        # Convert dates to strings
+        start = start.strftime('%Y-%m-%dT%H:%M:%SZ')
+        end = end.strftime('%Y-%m-%dT%H:%M:%SZ')
         constraints["time>="] =  start
         constraints["time<="] =  end
         
