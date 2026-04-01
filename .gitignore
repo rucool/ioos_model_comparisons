@@ -35,3 +35,8 @@ caribbean_argo_2024.csv
 gliders.csv
 gom_argo_2024.csv
 ioos_model_comparisons.egg-info/
+/outputs
+/cache
+/cache_grase
+/data/gliders
+/transect_1

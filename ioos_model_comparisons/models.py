@@ -14,11 +14,44 @@ import cftime
 import xarray as xr
 import pandas as pd
 from scipy.spatial import cKDTree
+import datetime as dt
+import re
+from typing import Optional, List, Tuple
+from functools import lru_cache
+import requests
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
+
+logger = logging.getLogger(__name__)
 
 edict = {'water_temp': 'temperature',
         'water_u': 'u',
         'water_v': 'v',
         }
+
+# =============================================================================
+# LUSITANIA CONFIGURATION
+# =============================================================================
+# File naming: YYYYMMDDHH.nc (e.g., 2026010300.nc)
+# Each file contains one complete day: from 00:00 GMT of the date to 00:00 GMT 
+# of the next day. For example, 2026010300.nc covers 2026-01-03 00:00 GMT to 
+# 2026-01-04 00:00 GMT.
+#
+# The model runs daily with a hindcast period (day -2), current day, and 
+# 6 days ahead forecast, providing approximately 3-day forecast capability.
+# =============================================================================
+
+LUSITANIA_CONFIG = {
+    'base_url': 'https://thredds.atlanticsense.com/thredds',
+    'catalog_path': '/catalog/atlDatasets/Lusitania/catalog.html',
+    'opendap_base': '/dodsC/atlDatasets/Lusitania/',
+    'file_pattern': r'(\d{10})\.nc',  # YYYYMMDDHH.nc
+    'timeout': 30,
+}
+
 
 def amseas(rename=False):
     url = "https://www.ncei.noaa.gov/thredds-coastal/dodsC/ncom_amseas_agg/AmSeas_Dec_17_2020_to_Current_best.ncd"
@@ -36,7 +69,7 @@ def amseas(rename=False):
     return ds
 
 
-def rtofs(rename=None, source='east', chunks={"time": 1}):
+def rtofs(rename=None, source='east', chunks=None):
     if source == 'east':
         url = "https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_scraped"
         model = 'RTOFS'
@@ -47,7 +80,10 @@ def rtofs(rename=None, source='east', chunks={"time": 1}):
         url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_parallel_scraped'
         model = 'RTOFS-P'
 
-    ds = xr.open_dataset(url, chunks={"MT":1})  # <--- key change
+    if chunks:
+        ds = xr.open_dataset(url, chunks={"MT":1})  # <--- key change
+    else:
+        ds = xr.open_dataset(url)
 
     ds = ds.rename({
         'Longitude': 'lon', 
@@ -141,6 +177,32 @@ def gofs(rename=False):
             )
     return ds
 
+def espc_uv_archive(rename=False):
+    url_u = "https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/u3z/2025"
+    url_v = "https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/2025"
+
+    # Open only selected variables
+    ds_u = xr.open_dataset(url_u, drop_variables="tau")
+    ds_v = xr.open_dataset(url_v, drop_variables="tau")
+
+    # Manually combine variables into one dataset (no merge)
+    ds = xr.Dataset()
+    ds["water_u"] = ds_u["water_u"]
+    ds["water_v"] = ds_v["water_v"]
+
+    ds.attrs['model'] = 'ESPC'
+
+    if rename:
+        ds = ds.rename(
+            {
+                # "water_temp": "temperature",
+                "water_u": "u",
+                "water_v": "v"
+            }
+        )
+
+    return ds
+
 def espc_uv(rename=False):
     url_uv = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_uv3z/FMRC_ESPC-D-V02_uv3z_best.ncd"
     # url_ts = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_ts3z/FMRC_ESPC-D-V02_ts3z_best.ncd"
@@ -203,7 +265,33 @@ def espc_ts(rename=False, chunks=None):
 
     return ds
 
+def espc_ts_archive(rename=False, year=None):
+    if year is None:
+        year = pd.Timestamp.now().year
+    url_s = f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/s3z/{year}'
+    url_t = f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/{year}'
 
+    # Open only selected variables
+    ds_t = xr.open_dataset(url_t, drop_variables="tau")
+    ds_s = xr.open_dataset(url_s, drop_variables="tau")
+
+    # Manually combine variables into one dataset (no merge)
+    ds = xr.Dataset()
+    ds["water_temp"] = ds_t["water_temp"]
+    ds["salinity"] = ds_s["salinity"]
+
+    ds.attrs['model'] = 'ESPC'
+
+    if rename:
+        ds = ds.rename(
+            {
+                "water_temp": "temperature",
+                # "water_u": "u",
+                # "water_v": "v"
+            }
+        )
+
+    return ds
 
 class ESPC:
     '''
@@ -222,7 +310,7 @@ class ESPC:
     def _load_data(self):
         """Load individual datasets lazily and store them."""
         datasets = {
-            'water_temp': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/{self.year_loaded}',
+            # 'water_temp': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/{self.year_loaded}',
             'salinity': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/s3z/{self.year_loaded}',
             'water_u': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/u3z/{self.year_loaded}',
             'water_v': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/{self.year_loaded}'
@@ -283,24 +371,15 @@ class ESPC:
         - xarray.Dataset: Dataset with temperature, salinity, u, and v.
         """
         # temperature = self.get_subset('temperature', lon_extent, lat_extent, time)
-        # salinity = self.get_subset('salinity', lon_extent, lat_extent, time)
+        salinity = self.get_subset('salinity', lon_extent, lat_extent, time)
 
-        # # Lazily merge the variables into a single dataset when ready
-        # ds = xr.Dataset(
-        #     {'temperature': temperature,
-        #      'salinity': salinity, 
-        #      }
-        #     )
-        
-        # if uv:
         u = self.get_subset('water_u', lon_extent, lat_extent, time)
         v = self.get_subset('water_v', lon_extent, lat_extent, time)
 
-        # Lazily merge the variables into a single dataset when ready
-        # ds = xr.merge([ds, u, v])
         ds = xr.Dataset(
-            {'u': u,
-             'v': v, 
+            {'salinity': salinity,
+             'u': u,
+             'v': v,
              }
             )
 
@@ -459,10 +538,22 @@ class CMEMS:
         - xarray.DataArray: Subset of the requested variable.
         """
         data = self.get_variable(var_name)
-        subset = data.sel(longitude=slice(lon_extent[0], lon_extent[1]), 
-                          latitude=slice(lat_extent[0], lat_extent[1]))
-        if time:
-            subset = subset.sel(time=time)
+        subset = data.sel(
+            longitude=slice(lon_extent[0], lon_extent[1]),
+            latitude=slice(lat_extent[0], lat_extent[1]),
+        )
+
+        if time is not None and "time" in subset.coords:
+            target_time = pd.to_datetime(time)
+            try:
+                subset = subset.sel(time=target_time)
+            except KeyError:
+                interpolated = subset.interp(
+                    time=xr.DataArray([np.datetime64(target_time)], dims="time"),
+                    kwargs={"fill_value": "extrapolate"},
+                )
+                subset = interpolated.squeeze("time", drop=True)
+
         return subset
 
     def get_combined_subset(self, lon_extent, lat_extent, time=None):
@@ -482,21 +573,25 @@ class CMEMS:
         u = self.get_subset('uo', lon_extent, lat_extent, time)
         v = self.get_subset('vo', lon_extent, lat_extent, time)
 
-        # Lazily merge the variables into a single dataset when ready
-        ds = xr.Dataset(
-            {'temperature': temperature,
-             'salinity': salinity, 
-             'u': u,
-             'v': v}
-            )
+        ds = xr.merge(
+            [
+                temperature.to_dataset(name='temperature'),
+                salinity.to_dataset(name='salinity'),
+                u.rename('u').to_dataset(name='u'),
+                v.rename('v').to_dataset(name='v'),
+            ],
+            join='inner'
+        )
         ds.attrs['model'] = 'CMEMS'
 
-        ds = ds.rename(
-            {
-                'longitude': 'lon',
-                'latitude': 'lat'
-                }
-            )
+        rename_map = {}
+        if 'longitude' in ds.coords:
+            rename_map['longitude'] = 'lon'
+        if 'latitude' in ds.coords:
+            rename_map['latitude'] = 'lat'
+        if rename_map:
+            ds = ds.rename(rename_map)
+
         return ds
 
     def get_point(self, lon, lat, time, interp=False, vars=None):
@@ -545,9 +640,9 @@ class CMEMS:
                 u = u.interp(time=time, longitude=lon, latitude=lat)
                 v = v.interp(time=time, longitude=lon, latitude=lat)
             else:
-                u = u.sel(longitude=lon, latitude=lat, method='nearest')
-                v = v.sel(longitude=lon, latitude=lat, method='nearest')
-            
+                u = u.sel(longitude=lon, time=time, latitude=lat, method='nearest')
+                v = v.sel(longitude=lon, time=time, latitude=lat, method='nearest')
+
             xr_dict['u'] = u
             xr_dict['v'] = v
         # Iteratively merge the variables into a single dataset when ready
@@ -561,8 +656,461 @@ class CMEMS:
                 'latitude': 'lat'
                 }
             )
-        ds.load()
+        # ds.load()
 
+        return ds
+
+
+# =============================================================================
+# LUSITANIA MODEL FUNCTIONS
+# =============================================================================
+
+def _parse_lusitania_catalog(timeout: int = 30) -> List[Tuple[dt.datetime, str]]:
+    """
+    Parse the Lusitania_Vertical THREDDS catalog to get available files.
+    
+    Parameters
+    ----------
+    timeout : int, optional
+        Request timeout in seconds
+        
+    Returns
+    -------
+    list of tuple
+        List of (datetime, filename) tuples sorted by date ascending
+    """
+    catalog_url = (
+        f"{LUSITANIA_CONFIG['base_url']}{LUSITANIA_CONFIG['catalog_path']}"
+    )
+    
+    try:
+        response = requests.get(catalog_url, timeout=timeout)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        logger.error(f"Failed to fetch Lusitania catalog: {exc}")
+        return []
+    
+    # Parse HTML to find netCDF file links
+    pattern = re.compile(LUSITANIA_CONFIG['file_pattern'])
+    available_files = []
+    
+    if BeautifulSoup is not None:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        for link in soup.find_all('a'):
+            text = link.get_text(strip=True)
+            match = pattern.search(text)
+            if match:
+                date_str = match.group(1)
+                try:
+                    file_date = dt.datetime.strptime(date_str, '%Y%m%d%H')
+                    available_files.append((file_date, text))
+                except ValueError as exc:
+                    logger.warning(f"Could not parse date from {text}: {exc}")
+                    continue
+    else:
+        # Fallback: use regex on raw HTML
+        for match in pattern.finditer(response.text):
+            date_str = match.group(1)
+            filename = f"{date_str}.nc"
+            try:
+                file_date = dt.datetime.strptime(date_str, '%Y%m%d%H')
+                if (file_date, filename) not in available_files:
+                    available_files.append((file_date, filename))
+            except ValueError as exc:
+                logger.warning(f"Could not parse date from {filename}: {exc}")
+                continue
+    
+    available_files.sort(key=lambda x: x[0])
+    
+    logger.info(f"Found {len(available_files)} Lusitania files in catalog")
+    if available_files:
+        logger.info(f"Date range: {available_files[0][0]} to {available_files[-1][0]}")
+    
+    return available_files
+
+
+@lru_cache(maxsize=1)
+def _get_lusitania_catalog() -> List[Tuple[dt.datetime, str]]:
+    """Get cached catalog listing (refreshes once per session)."""
+    return _parse_lusitania_catalog(timeout=LUSITANIA_CONFIG['timeout'])
+
+
+def _find_lusitania_file(
+    target_time: dt.datetime,
+    available_files: Optional[List[Tuple[dt.datetime, str]]] = None,
+    method: str = 'nearest'
+) -> Optional[Tuple[dt.datetime, str]]:
+    """
+    Find the Lusitania file nearest to the target time.
+    
+    Since each file contains one full day (00:00 GMT to 00:00 GMT next day),
+    for a target time in the middle of a day, use method='before' to ensure
+    you get the file that contains that timestamp.
+    
+    Parameters
+    ----------
+    target_time : datetime
+        Target time to match
+    available_files : list, optional
+        List of (datetime, filename) tuples. If None, fetches from catalog.
+    method : str, optional
+        Selection method: 
+        - 'nearest': Find file with minimum time difference (default)
+        - 'before': Find latest file with start time <= target (recommended 
+          for getting the file containing a specific timestamp)
+        - 'after': Find earliest file with start time >= target
+        
+    Returns
+    -------
+    tuple or None
+        (datetime, filename) of the best matching file, or None if no match
+    """
+    if available_files is None:
+        available_files = _get_lusitania_catalog()
+    
+    if not available_files:
+        logger.warning("No Lusitania files available in catalog")
+        return None
+    
+    # Make target_time naive if it has timezone info
+    if target_time.tzinfo is not None:
+        target_time = target_time.replace(tzinfo=None)
+    
+    if method == 'before':
+        candidates = [f for f in available_files if f[0] <= target_time]
+        if not candidates:
+            logger.warning(f"No Lusitania files available before {target_time}")
+            return None
+        return candidates[-1]
+    
+    elif method == 'after':
+        candidates = [f for f in available_files if f[0] >= target_time]
+        if not candidates:
+            logger.warning(f"No Lusitania files available after {target_time}")
+            return None
+        return candidates[0]
+    
+    else:  # 'nearest'
+        best_match = None
+        min_diff = None
+        
+        for file_date, filename in available_files:
+            diff = abs((file_date - target_time).total_seconds())
+            if min_diff is None or diff < min_diff:
+                min_diff = diff
+                best_match = (file_date, filename)
+        
+        if best_match:
+            logger.info(
+                f"Nearest Lusitania file to {target_time}: "
+                f"{best_match[1]} (offset: {min_diff/3600:.1f} hours)"
+            )
+        
+        return best_match
+
+
+def lusitania_uv(target_time: Optional[dt.datetime] = None, rename: bool = True, method: str = 'nearest'):
+    """
+    Load Lusitania model data from the AtlanticSense THREDDS server.
+    
+    This function crawls the THREDDS catalog to find the file closest to the
+    requested time, then loads the data via OPeNDAP.
+    
+    File Structure
+    --------------
+    Each file (e.g., 2026010300.nc) contains one complete day of data:
+    from 00:00 GMT of the file date to 00:00 GMT of the next day.
+    
+    The model runs daily with hindcast (day -2), current day, and 6-day 
+    forecast, providing approximately 3-day forecast capability.
+    
+    Parameters
+    ----------
+    target_time : datetime, optional
+        Target time to load. If None, loads the most recent available file.
+        The function will find the file whose date contains this time.
+    rename : bool, optional
+        If True, rename velocity variables to 'u' and 'v' for consistency.
+        Default True.
+    method : str, optional
+        Time matching method: 'nearest', 'before', or 'after'. Default 'nearest'.
+        
+    Returns
+    -------
+    xr.Dataset or None
+        Dataset containing velocity variables, or None if loading fails.
+        
+    Examples
+    --------
+    >>> # Load most recent data
+    >>> ds = lusitania_uv()
+    
+    >>> # Load data for a specific date (will get file containing that time)
+    >>> ds = lusitania_uv(target_time=dt.datetime(2026, 1, 7, 12, 0))
+    """
+    # If no target time, use most recent file
+    if target_time is None:
+        available = _get_lusitania_catalog()
+        if not available:
+            logger.error("No Lusitania files available")
+            return None
+        file_date, filename = available[-1]
+        logger.info(f"Loading most recent Lusitania file: {filename}")
+    else:
+        result = _find_lusitania_file(target_time, method=method)
+        if result is None:
+            return None
+        file_date, filename = result
+    
+    # Construct OPeNDAP URL
+    opendap_url = (
+        f"{LUSITANIA_CONFIG['base_url']}"
+        f"{LUSITANIA_CONFIG['opendap_base']}{filename}"
+    )
+    
+    logger.info(f"Loading Lusitania data from: {opendap_url}")
+    
+    try:
+        ds = xr.open_dataset(opendap_url)
+        
+        logger.info(f"Lusitania variables: {list(ds.data_vars)}")
+        logger.info(f"Lusitania coordinates: {list(ds.coords)}")
+        logger.info(f"Lusitania dimensions: {dict(ds.dims)}")
+        
+        ds.attrs['model'] = 'Lusitania'
+        ds.attrs['source_file'] = filename
+        ds.attrs['source_url'] = opendap_url
+        
+        if rename:
+            rename_map = {}
+            u_candidates = ['uo', 'water_u', 'u_velocity', 'U', 'ucur']
+            v_candidates = ['vo', 'water_v', 'v_velocity', 'V', 'vcur']
+            
+            for u_name in u_candidates:
+                if u_name in ds.data_vars:
+                    rename_map[u_name] = 'u'
+                    break
+            
+            for v_name in v_candidates:
+                if v_name in ds.data_vars:
+                    rename_map[v_name] = 'v'
+                    break
+            
+            if rename_map:
+                logger.info(f"Renaming variables: {rename_map}")
+                ds = ds.rename(rename_map)
+        
+        return ds
+        
+    except Exception as exc:
+        logger.error(f"Failed to load Lusitania data: {exc}")
+        return None
+
+
+def clear_lusitania_cache():
+    """Clear the cached Lusitania catalog listing."""
+    _get_lusitania_catalog.cache_clear()
+    logger.info("Lusitania catalog cache cleared")
+
+
+class Lusitania:
+    """
+    Class for handling Lusitania model data with lazy loading and subsetting.
+    
+    Similar interface to ESPC and CMEMS classes.
+    
+    File Structure
+    --------------
+    Each file (e.g., 2026010300.nc) contains one complete day of data:
+    from 00:00 GMT of the file date to 00:00 GMT of the next day.
+    
+    The model runs daily with hindcast (day -2), current day, and 6-day 
+    forecast, providing approximately 3-day forecast capability.
+    
+    Examples
+    --------
+    >>> lus = Lusitania()
+    >>> ds = lus.get_combined_subset([-20, -10], [30, 40])
+    
+    >>> # Load for a specific date
+    >>> lus = Lusitania(target_time=dt.datetime(2026, 1, 7))
+    >>> ds = lus.get_combined_subset([-20, -10], [30, 40])
+    """
+    
+    def __init__(self, target_time: Optional[dt.datetime] = None) -> None:
+        """
+        Initialize the Lusitania instance by loading the dataset.
+        
+        Parameters
+        ----------
+        target_time : datetime, optional
+            Target time to load. If None, loads most recent available file.
+        """
+        self.target_time = target_time
+        self.dataset = None
+        self._load_data()
+    
+    def _load_data(self):
+        """Load the Lusitania dataset."""
+        logger.info("Loading Lusitania dataset...")
+        self.dataset = lusitania_uv(target_time=self.target_time, rename=True)
+        
+        if self.dataset is not None:
+            # Identify coordinate names
+            self.lon_coord = None
+            self.lat_coord = None
+            
+            for coord in ['lon', 'longitude', 'nav_lon']:
+                if coord in self.dataset.coords or coord in self.dataset.dims:
+                    self.lon_coord = coord
+                    break
+            
+            for coord in ['lat', 'latitude', 'nav_lat']:
+                if coord in self.dataset.coords or coord in self.dataset.dims:
+                    self.lat_coord = coord
+                    break
+            
+            logger.info(f"Lusitania loaded: lon_coord={self.lon_coord}, lat_coord={self.lat_coord}")
+    
+    def get_variable(self, var_name: str):
+        """
+        Retrieve a variable from the dataset.
+        
+        Parameters
+        ----------
+        var_name : str
+            Variable name to retrieve ('u', 'v', 'temperature', etc.)
+            
+        Returns
+        -------
+        xarray.DataArray
+            The requested variable.
+        """
+        if self.dataset is None:
+            raise ValueError("Dataset not loaded")
+        
+        if var_name in self.dataset.data_vars:
+            return self.dataset[var_name]
+        raise ValueError(f"Variable {var_name} not found in Lusitania dataset")
+    
+    def get_subset(self, var_name: str, lon_extent, lat_extent, time=None):
+        """
+        Subset the data by variable, longitude/latitude extents, and time.
+        
+        Parameters
+        ----------
+        var_name : str
+            The variable to subset (e.g., 'u', 'v').
+        lon_extent : tuple
+            Longitude range for subsetting (lon_min, lon_max).
+        lat_extent : tuple
+            Latitude range for subsetting (lat_min, lat_max).
+        time : datetime, optional
+            Time for subsetting.
+            
+        Returns
+        -------
+        xarray.DataArray
+            Subset of the requested variable.
+        """
+        data = self.get_variable(var_name)
+        
+        # Build selection dict based on coordinate names
+        sel_dict = {}
+        
+        if self.lon_coord:
+            sel_dict[self.lon_coord] = slice(lon_extent[0], lon_extent[1])
+        if self.lat_coord:
+            sel_dict[self.lat_coord] = slice(lat_extent[0], lat_extent[1])
+        
+        subset = data.sel(**sel_dict)
+        
+        if time is not None and 'time' in subset.coords:
+            subset = subset.sel(time=time, method='nearest')
+        
+        return subset
+    
+    def get_combined_subset(self, lon_extent, lat_extent, time=None):
+        """
+        Get a combined subset of u and v for the given extents and time.
+        
+        Parameters
+        ----------
+        lon_extent : tuple
+            Longitude range for subsetting (lon_min, lon_max).
+        lat_extent : tuple
+            Latitude range for subsetting (lat_min, lat_max).
+        time : datetime, optional
+            Time for subsetting.
+            
+        Returns
+        -------
+        xarray.Dataset
+            Dataset with u and v velocity components.
+        """
+        if self.dataset is None:
+            logger.error("Lusitania dataset not loaded")
+            return None
+        
+        u = self.get_subset('u', lon_extent, lat_extent, time)
+        v = self.get_subset('v', lon_extent, lat_extent, time)
+        
+        ds = xr.Dataset({'u': u, 'v': v})
+        ds.attrs['model'] = 'Lusitania'
+        
+        # Standardize coordinate names if needed
+        rename_coords = {}
+        if self.lon_coord and self.lon_coord != 'lon':
+            rename_coords[self.lon_coord] = 'lon'
+        if self.lat_coord and self.lat_coord != 'lat':
+            rename_coords[self.lat_coord] = 'lat'
+        
+        if rename_coords:
+            ds = ds.rename(rename_coords)
+        
+        return ds
+    
+    def get_point(self, lon: float, lat: float, time=None, interp: bool = False):
+        """
+        Retrieve data for a specific lon/lat point.
+        
+        Parameters
+        ----------
+        lon : float
+            Longitude of the point.
+        lat : float
+            Latitude of the point.
+        time : datetime, optional
+            Time for selection.
+        interp : bool, optional
+            If True, interpolate to exact location. If False, use nearest.
+            
+        Returns
+        -------
+        xarray.Dataset
+            Dataset containing u and v at the specific point.
+        """
+        if self.dataset is None:
+            raise ValueError("Dataset not loaded")
+        
+        sel_dict = {}
+        if self.lon_coord:
+            sel_dict[self.lon_coord] = lon
+        if self.lat_coord:
+            sel_dict[self.lat_coord] = lat
+        
+        if interp:
+            ds = self.dataset.interp(**sel_dict)
+        else:
+            ds = self.dataset.sel(**sel_dict, method='nearest')
+        
+        if time is not None and 'time' in ds.coords:
+            if interp:
+                ds = ds.interp(time=time)
+            else:
+                ds = ds.sel(time=time, method='nearest')
+        
+        ds.attrs['model'] = 'Lusitania'
         return ds
 
 
