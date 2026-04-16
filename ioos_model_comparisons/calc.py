@@ -28,7 +28,7 @@ def compute_ohc_vectorized(ds):
     """Fully vectorized OHC (kJ cm⁻²) using numpy + gsw array operations.
 
     ~100× faster than apply_ufunc(vectorize=True) because gsw functions and
-    np.trapz operate on the entire 3-D array in one pass (no Python loop).
+    np.trapezoid operate on the entire 3-D array in one pass (no Python loop).
 
     Parameters
     ----------
@@ -73,7 +73,7 @@ def compute_ohc_vectorized(ds):
     dens_warm = np.where(warm, dens, np.nan)
 
     rho0    = np.nanmean(dens_warm, axis=0)        # mean density of warm layer
-    ohc_raw = np.trapz(temp_diff, depth, axis=0)   # ∫(T-26)dz
+    ohc_raw = np.trapezoid(temp_diff, depth, axis=0)   # ∫(T-26)dz
     ohc     = np.abs(cp * rho0 * ohc_raw) * 1e-7  # kJ cm⁻²
 
     # Where no warm water exists, return NaN
@@ -238,7 +238,7 @@ def ocean_heat_content(depth, temp, density):
         # If the minimum depth is deeper than 10m
         # else:
         rho0 = np.nanmean(density_m)  # don't include nans
-        OHC = np.abs(cp * rho0 * np.trapz(temp_m - 26, depth_m))
+        OHC = np.abs(cp * rho0 * np.trapezoid(temp_m - 26, depth_m))
         OHC = OHC * 10 ** (-7)  # in kJ/cm^2
     # If the number of depths do equal 0
     else:
