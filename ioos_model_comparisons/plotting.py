@@ -4813,7 +4813,7 @@ def plot_ohc_all_models(ohc_rtofs, ohc_espc, ohc_cmems, extent, region_name, cti
     month = ctime.strftime("%m")
 
     fname = f"{region_name}_{tstr_folder}_ohc_rtofs-espc-cmems.png"
-    save_path = Path(path_save) / "ocean_heat_content" / "three_model_panel" / year / month
+    save_path = Path(path_save) / "ocean_heat_content" / year / month
     save_file = save_path / fname
 
     if save_file.is_file() and not overwrite:
