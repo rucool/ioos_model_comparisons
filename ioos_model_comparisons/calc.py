@@ -1,11 +1,168 @@
 import sys
+import hashlib
 from pyproj import Geod
 import numpy as np
 import pandas as pd
-from gsw import SA_from_SP, CT_from_t, rho, p_from_z
+import xarray as xr
+import xesmf as xe
+from gsw import SA_from_SP, CT_from_t, rho, p_from_z, sound_speed as gsw_sound_speed
 import datetime as dt
 from pyproj import Geod
 g = Geod(ellps="WGS84")
+
+_ohc_regridder_cache = {}
+
+
+def _grid_cache_signature(*arrays):
+    """Return a short, stable digest for a set of coordinate arrays."""
+    digest = hashlib.sha1()
+    for array in arrays:
+        values = np.ascontiguousarray(np.asarray(array))
+        digest.update(str(values.shape).encode("utf-8"))
+        digest.update(str(values.dtype).encode("utf-8"))
+        digest.update(values.tobytes())
+    return digest.hexdigest()[:16]
+
+
+def compute_ohc_vectorized(ds):
+    """Fully vectorized OHC (kJ cm⁻²) using numpy + gsw array operations.
+
+    ~100× faster than apply_ufunc(vectorize=True) because gsw functions and
+    np.trapz operate on the entire 3-D array in one pass (no Python loop).
+
+    Parameters
+    ----------
+    ds : xr.Dataset  with variables temperature, salinity, and coords depth,
+         lat, lon.  Temperature dims must be (depth, ...).
+    """
+    cp = 3985  # J kg⁻¹ K⁻¹
+
+    depth = np.abs(ds['depth'].values)          # (n_depth,)
+    temp  = ds['temperature'].values            # (n_depth, ny, nx) or (n_depth, nlat, nlon)
+    sal   = ds['salinity'].values
+    lat   = ds['lat'].values                    # 1-D or 2-D
+    lon   = ds['lon'].values
+
+    ndepth = len(depth)
+    spatial_shape = temp.shape[1:]              # e.g. (ny, nx)
+
+    # Broadcast depth to 3-D
+    depth_3d = depth.reshape((ndepth,) + (1,) * len(spatial_shape))
+    depth_3d = np.broadcast_to(depth_3d, temp.shape).copy()
+
+    # Broadcast lat/lon to 3-D
+    if lat.ndim == 1:                           # regular grid (ESPC, CMEMS)
+        lat_2d = lat[:, np.newaxis] * np.ones((1, len(lon)))
+        lon_2d = lon[np.newaxis, :] * np.ones((len(lat), 1))
+    else:                                       # curvilinear (RTOFS)
+        lat_2d = lat
+        lon_2d = lon
+
+    lat_3d = lat_2d[np.newaxis, ...]
+    lon_3d = lon_2d[np.newaxis, ...]
+
+    # gsw: all operate on full 3-D arrays (vectorised C code)
+    pressure  = p_from_z(-depth_3d, lat_3d)
+    abs_sal   = SA_from_SP(sal, pressure, lon_3d, lat_3d)
+    cons_temp = CT_from_t(abs_sal, temp, pressure)
+    dens      = rho(abs_sal, cons_temp, pressure)
+
+    # Mask to depths where T >= 26 °C
+    warm      = temp >= 26
+    temp_diff = np.where(warm, temp - 26, 0.0)   # zero out cold layers
+    dens_warm = np.where(warm, dens, np.nan)
+
+    rho0    = np.nanmean(dens_warm, axis=0)        # mean density of warm layer
+    ohc_raw = np.trapz(temp_diff, depth, axis=0)   # ∫(T-26)dz
+    ohc     = np.abs(cp * rho0 * ohc_raw) * 1e-7  # kJ cm⁻²
+
+    # Where no warm water exists, return NaN
+    ohc = np.where(warm.any(axis=0), ohc, np.nan)
+
+    # Wrap as DataArray preserving horizontal dims/coords
+    hdims   = list(ds['temperature'].dims[1:])
+    hcoords = {d: ds[d] for d in hdims if d in ds.coords}
+    if 'lon' not in hcoords and 'lon' in ds.coords:
+        hcoords['lon'] = ds['lon']
+    if 'lat' not in hcoords and 'lat' in ds.coords:
+        hcoords['lat'] = ds['lat']
+
+    return xr.DataArray(ohc, dims=hdims, coords=hcoords)
+
+
+def regrid_to_rtofs(source_ohc, rtofs_lon2d, rtofs_lat2d, cache_key=None, weights_dir=None):
+    """Bilinearly regrid a 2-D OHC DataArray to the RTOFS curvilinear grid.
+
+    Regridder weights are cached in-memory per cache_key and, when weights_dir
+    is provided, also persisted to disk as a NetCDF file so they can be reused
+    across runs without recomputation.
+
+    Parameters
+    ----------
+    source_ohc : xr.DataArray  with 1-D 'lat' and 'lon' coords (regular grid).
+    rtofs_lon2d, rtofs_lat2d : 2-D numpy arrays  of the RTOFS curvilinear grid.
+    cache_key : hashable, optional  Key used to cache the regridder in-memory.
+    weights_dir : path-like, optional  Directory for on-disk weight files.
+    """
+    from pathlib import Path as _Path
+
+    target = xr.Dataset({
+        'lat': (['y', 'x'], rtofs_lat2d),
+        'lon': (['y', 'x'], rtofs_lon2d),
+    })
+    source = xr.Dataset({
+        'lat': (['lat'], source_ohc['lat'].values),
+        'lon': (['lon'], source_ohc['lon'].values),
+    })
+
+    grid_signature = _grid_cache_signature(
+        source['lat'].values,
+        source['lon'].values,
+        target['lat'].values,
+        target['lon'].values,
+    )
+
+    cache_key_tuple = None
+    if cache_key is not None:
+        cache_key_tuple = cache_key if isinstance(cache_key, tuple) else (cache_key,)
+        cache_key_tuple = (*cache_key_tuple, grid_signature)
+
+    if cache_key_tuple is not None and cache_key_tuple in _ohc_regridder_cache:
+        return _ohc_regridder_cache[cache_key_tuple](source_ohc)
+
+    weights_path = None
+    if cache_key_tuple is not None and weights_dir is not None:
+        fname = '_'.join(str(k) for k in cache_key_tuple) + '.nc'
+        weights_path = _Path(weights_dir) / 'regrid_weights' / fname
+        weights_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if weights_path is not None and weights_path.exists():
+        try:
+            print(f"  Loading regrid weights from {weights_path}")
+            regridder = xe.Regridder(
+                source, target, 'bilinear',
+                weights=str(weights_path), unmapped_to_nan=True,
+            )
+        except Exception as err:
+            print(f"  Regrid weights at {weights_path} are invalid ({err}); rebuilding")
+            try:
+                weights_path.unlink()
+            except OSError as unlink_err:
+                print(f"  Could not remove stale regrid weights {weights_path}: {unlink_err}")
+                raise
+            regridder = xe.Regridder(source, target, 'bilinear', unmapped_to_nan=True)
+            regridder.to_netcdf(weights_path)
+            print(f"  Rebuilt regrid weights → {weights_path}")
+    else:
+        regridder = xe.Regridder(source, target, 'bilinear', unmapped_to_nan=True)
+        if weights_path is not None:
+            regridder.to_netcdf(weights_path)
+            print(f"  Saved regrid weights → {weights_path}")
+
+    if cache_key_tuple is not None:
+        _ohc_regridder_cache[cache_key_tuple] = regridder
+
+    return regridder(source_ohc)
 
 def create_datetime_list(
     ctime=dt.datetime.utcnow(), days_before=2, days_after=1, freq="6H", time_offset=0
@@ -76,13 +233,13 @@ def ocean_heat_content(depth, temp, density):
     # If the number of depths do not equal 0
     if len(depth_m) != 0:
         # If the minimum depth is shallower than 10m
-        if np.nanmin(depth_m) > 2:
-            OHC = np.nan
+        # if np.nanmin(depth_m) > 2:
+            # OHC = np.nan
         # If the minimum depth is deeper than 10m
-        else:
-            rho0 = np.nanmean(density_m)  # don't include nans
-            OHC = np.abs(cp * rho0 * np.trapz(temp_m - 26, depth_m))
-            OHC = OHC * 10 ** (-7)  # in kJ/cm^2
+        # else:
+        rho0 = np.nanmean(density_m)  # don't include nans
+        OHC = np.abs(cp * rho0 * np.trapz(temp_m - 26, depth_m))
+        OHC = OHC * 10 ** (-7)  # in kJ/cm^2
     # If the number of depths do equal 0
     else:
         OHC = np.nan
@@ -594,3 +751,25 @@ def categorical_cmap(nc, nsc, cmap="tab10", continuous=False):
         cols[i*nsc:(i+1)*nsc,:] = rgb
     cmap = matplotlib.colors.ListedColormap(cols)
     return cmap
+
+
+def sound_speed(temperature, depth, salinity, latitude, longitude):
+    """
+    Calculates sound speed given practical salinity, temperature, depth, 
+    latitude, and longitude using TEOS-10 (GSW).
+
+    Args:
+        temperature: in-situ temperature (°C)
+        depth: depth, positive down (m)
+        salinity: practical salinity (PSU)
+        latitude: latitude (decimal degrees)
+        longitude: longitude (decimal degrees)
+
+    Returns:
+        sound_speed: Sound speed (m/s)
+    """
+    pressure = p_from_z(-depth, latitude)
+    absolute_salinity = SA_from_SP(salinity, pressure, longitude, latitude)
+    conservative_temperature = CT_from_t(absolute_salinity, temperature, pressure)
+    
+    return gsw_sound_speed(absolute_salinity, conservative_temperature, pressure)

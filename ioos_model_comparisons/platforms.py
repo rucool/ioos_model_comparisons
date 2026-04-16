@@ -41,6 +41,67 @@ rename_argo["time (UTC)"] = "time"
 rename_argo["longitude (degrees_east)"] = "lon"
 rename_argo["latitude (degrees_north)"] = "lat"
 
+ARGO_GOOD_QC_FLAGS = frozenset({"1", "2", "5", "8"})
+ARGO_LOCATION_QC_VARIABLES = ("time_qc", "position_qc")
+ARGO_PROFILE_QC_VARIABLES = ("profile_pres_qc", "profile_temp_qc", "profile_psal_qc")
+ARGO_DATA_QC_VARIABLES = ("pres_qc", "temp_qc", "psal_qc")
+ARGO_DEFAULT_QC_VARIABLES = (
+    ARGO_LOCATION_QC_VARIABLES
+    + ARGO_PROFILE_QC_VARIABLES
+    + ARGO_DATA_QC_VARIABLES
+)
+
+
+def _coerce_argo_qc_variables(include_qc):
+    if include_qc is True:
+        return list(ARGO_DEFAULT_QC_VARIABLES)
+    if not include_qc:
+        return []
+    if isinstance(include_qc, str):
+        return [include_qc]
+    return list(include_qc)
+
+
+def _normalize_argo_qc_flag(value):
+    if pd.isna(value):
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def filter_argo_by_qc(df, qc_columns=None, allowed_flags=ARGO_GOOD_QC_FLAGS, keep_missing=False):
+    """Filter an Argo dataframe to rows whose QC flags are acceptable.
+
+    Args:
+        df: Argo dataframe returned by ``get_argo_floats_by_time``.
+        qc_columns: Iterable of QC columns to evaluate. Defaults to the
+            standard location, profile, and measurement QC fields when ``None``.
+        allowed_flags: QC flags that should be retained.
+        keep_missing: When ``True``, retain rows whose QC field is empty/NaN.
+
+    Returns:
+        Filtered dataframe with the original index preserved.
+    """
+    if df.empty:
+        return df
+
+    qc_columns = list(ARGO_DEFAULT_QC_VARIABLES if qc_columns is None else qc_columns)
+    qc_columns = [col for col in qc_columns if col in df.columns]
+    if not qc_columns:
+        return df
+
+    allowed_flags = {str(flag).strip() for flag in allowed_flags}
+    mask = pd.Series(True, index=df.index)
+
+    for column in qc_columns:
+        qc_values = df[column].map(_normalize_argo_qc_flag)
+        column_mask = qc_values.isin(allowed_flags)
+        if keep_missing:
+            column_mask |= qc_values.isna()
+        mask &= column_mask.fillna(False)
+
+    return df.loc[mask]
+
 def retry_on_exception(max_retries=3, delay=2, backoff=2, exceptions=(Exception,)):
     def decorator(func):
         @wraps(func)
@@ -62,7 +123,7 @@ def retry_on_exception(max_retries=3, delay=2, backoff=2, exceptions=(Exception,
 
 def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
                             time_start=None, time_end=dt.date.today(),
-                            wmo_id=None, variables=None):
+                            wmo_id=None, variables=None, include_qc=False):
     """_summary_
 
     Args:
@@ -81,7 +142,7 @@ def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
         
     time_start = time_start or (time_end - dt.timedelta(days=1))
     
-    default_variables = ['platform_number', 'time', 'longitude', 'latitude']
+    requested_variables = ['platform_number', 'time', 'longitude', 'latitude']
 
     # Convert dates to strings
     # time_start = time_start.strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -105,8 +166,10 @@ def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
         constraints['platform_number='] = wmo_id
 
     if variables:
-        default_variables = default_variables + variables
-        default_variables = list(set(default_variables)) # remove duplicates
+        requested_variables.extend(variables)
+
+    requested_variables.extend(_coerce_argo_qc_variables(include_qc))
+    requested_variables = list(dict.fromkeys(requested_variables))
         
     e = ERDDAP(
         server='IFREMER',
@@ -116,7 +179,7 @@ def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
 
     e.dataset_id = 'ArgoFloats'
     e.constraints = constraints
-    e.variables = default_variables
+    e.variables = requested_variables
 
     try:
         df = e.to_pandas(
