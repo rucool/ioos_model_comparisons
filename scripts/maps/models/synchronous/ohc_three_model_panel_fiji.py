@@ -411,6 +411,7 @@ def process_time(ctime):
                 ohc_max=150,
                 ohc_stride=10,
                 location_marker=dict(lon=178.44, lat=-18.14, label='Fiji'),
+                bathy_contour_labels=False,
             )
             plots_generated.append(f"{region_key} | OHC | ESPC vs CMEMS")
         except Exception as e:

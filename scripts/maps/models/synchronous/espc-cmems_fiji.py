@@ -34,7 +34,7 @@ import xarray as xr
 from oceans.ocfis import uv2spdir
 
 import ioos_model_comparisons.configs as conf
-from cool_maps.plot import add_bathymetry, create, get_bathymetry
+from cool_maps.plot import create, get_bathymetry
 from ioos_model_comparisons.calc import lon180to360, lon360to180
 from ioos_model_comparisons.models import CMEMS, espc_ts, espc_uv
 from ioos_model_comparisons.platforms import (
@@ -118,14 +118,10 @@ def _init_fiji_axis(ax, extent, bathy=None, label_left=True, label_right=False):
 
     if bathy is not None:
         try:
-            add_bathymetry(
-                ax,
-                bathy.longitude.values,
-                bathy.latitude.values,
-                bathy.z.values,
-                levels=(-1000, -100),
-                zorder=1.5,
-            )
+            lons_b, lats_b = np.meshgrid(bathy.longitude.values, bathy.latitude.values)
+            ax.contour(lons_b, lats_b, bathy.z.values, (-1000, -100),
+                       linewidths=0.75, alpha=0.5, colors='k',
+                       transform=DATA_PROJECTION, zorder=1.5)
             ax.contourf(
                 bathy['longitude'],
                 bathy['latitude'],

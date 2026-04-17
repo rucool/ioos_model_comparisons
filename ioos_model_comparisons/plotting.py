@@ -4791,6 +4791,7 @@ def plot_ohc_all_models(ohc_rtofs, ohc_espc, ohc_cmems, extent, region_name, cti
                         xticks=None,
                         yticks=None,
                         location_marker=None,
+                        bathy_contour_labels=True,
                         ):
     """
     Three-panel OHC figure showing all models side by side: RTOFS | ESPC | CMEMS.
@@ -4852,14 +4853,22 @@ def plot_ohc_all_models(ohc_rtofs, ohc_espc, ohc_cmems, extent, region_name, cti
 
         if bathy is not None:
             try:
-                add_bathymetry(
-                    ax,
-                    bathy.longitude.values,
-                    bathy.latitude.values,
-                    bathy.z.values if hasattr(bathy, "z") else bathy.elevation.values,
-                    levels=(-1000, -100),
-                    zorder=1.5,
-                )
+                bathy_elev = bathy.z.values if hasattr(bathy, "z") else bathy.elevation.values
+                bathy_levels = (-1000, -100)
+                if bathy_contour_labels:
+                    add_bathymetry(
+                        ax,
+                        bathy.longitude.values,
+                        bathy.latitude.values,
+                        bathy_elev,
+                        levels=bathy_levels,
+                        zorder=1.5,
+                    )
+                else:
+                    lons_b, lats_b = np.meshgrid(bathy.longitude.values, bathy.latitude.values)
+                    ax.contour(lons_b, lats_b, bathy_elev, bathy_levels,
+                               linewidths=0.75, alpha=0.5, colors='k',
+                               transform=transform['data'], zorder=1.5)
             except (TypeError, Exception) as e:
                 logger.warning(f"Bathymetry render failed for panel {label}: {e}")
 
@@ -4871,7 +4880,7 @@ def plot_ohc_all_models(ohc_rtofs, ohc_espc, ohc_cmems, extent, region_name, cti
 
         def _auto_ticks(lo, hi):
             span = hi - lo
-            stride = 5 if span > 15 else 2 if span > 8 else 1
+            stride = 10 if span > 30 else 5 if span > 15 else 2 if span > 8 else 1
             start = np.ceil(lo / stride) * stride
             end = np.floor(hi / stride) * stride
             minor_stride = stride / 2
