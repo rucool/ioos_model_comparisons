@@ -48,7 +48,7 @@ dpi = conf.dpi
 plot_espc = True
 plot_cmems = True
 
-float_id = [2903887, 5906192]  # Set to None to plot all floats
+float_id = None  # Set to None to plot all floats
 sal_xlim =None   # Set to None to auto-scale salinity axis
 temp_xlim = None      # Set to None to auto-scale temperature axis
 density_xlim = None  # Set to None to auto-scale density axis
@@ -65,7 +65,7 @@ REGION_MAP_PROJECTION = {
 
 DATA_PROJECTION = ccrs.PlateCarree()
 
-conf.regions = ['guam' ]
+conf.regions = ['guam', 'fiji']
 
 # ── Date range ──────────────────────────────────────────────────────────────
 
