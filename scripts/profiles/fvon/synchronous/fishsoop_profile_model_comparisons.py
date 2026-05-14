@@ -72,6 +72,15 @@ FVON_REGIONS = [
 ]
 
 
+def _ensure_symlink(full_file, symlink_dir, save_str, ctime, then):
+    """Create a symlink in last_14_days/ if the profile is recent enough."""
+    if ctime <= then:
+        return
+    symlink_path = symlink_dir / save_str
+    if not symlink_path.is_symlink():
+        os.symlink(full_file, symlink_path)
+
+
 def filter_region(df, extent):
     """Filter a DataFrame to rows within extent, handling antimeridian-crossing regions."""
     lonmin, lonmax, latmin, latmax = extent
@@ -374,6 +383,7 @@ def process_fishsoop_region(region):
 
         if full_file.is_file() and not replot:
             print(f"{full_file} already exists. Skipping.")
+            _ensure_symlink(full_file, symlink_dir, save_str, ctime, then)
             continue
 
         print(f"Processing FishSOOP {wigos_id} (#{wmo_id}) tow at {ctime}")
@@ -542,10 +552,7 @@ def process_fishsoop_region(region):
         plt.savefig(full_file, dpi=dpi, bbox_inches="tight", pad_inches=0.1)
         plt.close()
 
-        if ctime > then:
-            symlink_path = symlink_dir / save_str
-            if not symlink_path.exists():
-                os.symlink(full_file, symlink_path)
+        _ensure_symlink(full_file, symlink_dir, save_str, ctime, then)
 
 
 # ---------------------------------------------------------------------------
