@@ -73,12 +73,16 @@ FVON_REGIONS = [
 
 
 def _ensure_symlink(full_file, symlink_dir, save_str, ctime, then):
-    """Create a symlink in last_14_days/ if the profile is recent enough."""
+    """Create a symlink in last_14_days/ pointing to the dated subfolder file."""
     if ctime <= then:
         return
     symlink_path = symlink_dir / save_str
     if not symlink_path.is_symlink():
-        os.symlink(full_file, symlink_path)
+        # Compute a relative target so the symlink works regardless of where
+        # the plots directory lives.  full_file may be a relative Path, so
+        # resolve both sides before computing the relative jump.
+        rel_target = os.path.relpath(full_file.resolve(), symlink_dir.resolve())
+        os.symlink(rel_target, symlink_path)
 
 
 def filter_region(df, extent):
