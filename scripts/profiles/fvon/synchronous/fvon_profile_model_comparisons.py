@@ -168,6 +168,16 @@ def line_limits(fax, delta=1.0):
     return min(mins) - delta, max(maxs) + delta
 
 
+def _ensure_symlink(full_file, symlink_dir, save_str, ctime, then):
+    """Create a symlink in last_14_days/ pointing to the dated subfolder file."""
+    if ctime <= then:
+        return
+    symlink_path = symlink_dir / save_str
+    if not symlink_path.is_symlink():
+        rel_target = os.path.relpath(full_file.resolve(), symlink_dir.resolve())
+        os.symlink(rel_target, symlink_path)
+
+
 def process_fvon_region(region):
     region_name = region['name']
     region_folder = region['folder']
@@ -210,6 +220,7 @@ def process_fvon_region(region):
 
         if full_file.is_file() and not replot:
             print(f"{full_file} already exists. Skipping.")
+            _ensure_symlink(full_file, symlink_dir, save_str, ctime, then)
             continue
 
         print(f"Processing FVON {wmo_id} profile at {ctime}")
@@ -344,11 +355,7 @@ def process_fvon_region(region):
         plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
         plt.close()
 
-        # Symlink into the region's last_14_days folder
-        if ctime > then:
-            symlink_path = symlink_dir / save_str
-            if not symlink_path.exists():
-                os.symlink(full_file, symlink_path)
+        _ensure_symlink(full_file, symlink_dir, save_str, ctime, then)
 
 
 def main():
