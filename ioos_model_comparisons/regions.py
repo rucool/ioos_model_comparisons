@@ -206,9 +206,9 @@ def region_config(regions=None, model=None):
         # extent = [-91, -79, 18, 32]
 
         sea_water_temperature = [
-            dict(depth=0, limits=[25, 31.5, .5]),
-            dict(depth=150, limits=[14, 26, .5]),
-            dict(depth=200, limits=[12, 23, .5])
+            dict(depth=0, limits=[26.0, 32.0, 0.5]),
+            dict(depth=150, limits=[14, 26, 0.5]),
+            dict(depth=200, limits=[12, 23, 0.5])
             ]
         salinity = [
             dict(depth=0, limits=[32.0, 36.6, .1]), 
@@ -342,8 +342,8 @@ def region_config(regions=None, model=None):
         folder = "south_atlantic_bight"
         extent = [-82.25, -63.75, 24.75, 42.25]
         sea_water_temperature = [
-            dict(depth=0, limits=[23, 30.5, .5]),
-            dict(depth=150, limits=[15, 22.5, .5]),
+            dict(depth=0, limits=[20.0, 29.0, 0.5]),
+            dict(depth=150, limits=[15, 22.5, 0.5]),
             # dict(depth=200, limits=[15, 21, .5])
             ]
         salinity = [
@@ -383,11 +383,11 @@ def region_config(regions=None, model=None):
         folder = "mid_atlantic_bight"
         extent = [-77, -63, 35, 44]
         sea_water_temperature = [
-            dict(depth=0, limits=[15, 29, 1]),
-            dict(depth=30, limits=[7, 25, 1]),
-            dict(depth=100, limits=[12, 23, 1]),
-            dict(depth=150, limits=[11, 22, 1]),
-            dict(depth=200, limits=[9, 21, 1])
+            dict(depth=0, limits=[9, 29, 1]),
+            dict(depth=30, limits=[8, 27, 1]),
+            dict(depth=100, limits=[4, 23, 1]),
+            dict(depth=150, limits=[6, 22, 1]),
+            dict(depth=200, limits=[6, 21, 1])
             ]
         salinity = [
             dict(depth=0, limits=[31, 36.5, .25]),
@@ -428,9 +428,9 @@ def region_config(regions=None, model=None):
         # extent = [-83.2, -82.4, 27, 27+30/60]
         extent = [-87.5, -80, 22.5, 30.5]
         sea_water_temperature = [
-            dict(depth=0, limits=[29, 31.3, .1]),
-            dict(depth=100, limits=[18, 27.5, .5]),
-            dict(depth=200, limits=[13, 24, .5]),
+            dict(depth=0, limits=[27.0, 30.25, 0.25]),
+            dict(depth=100, limits=[18.0, 27.5, 0.5]),
+            dict(depth=200, limits=[13, 23.0, 1.0]),
             ]
         salinity = [
             dict(depth=0, limits=[34.5, 36.5 , .1]),
@@ -470,7 +470,7 @@ def region_config(regions=None, model=None):
         # extent = [-89, -58, 7, 23.5]
         extent = [-89, -58, 7, 28]
         sea_water_temperature = [
-            dict(depth=0, limits=[26, 30.25, .25]),
+            dict(depth=0, limits=[26.0, 30.25, 0.25]),
             # dict(depth=150, limits=[17, 25, .5]),
             # dict(depth=200, limits=[14, 22.5, .5])
             ]
@@ -512,8 +512,8 @@ def region_config(regions=None, model=None):
         folder = "caribbean-windward"
         extent = [-68.2, -56.4, 9.25, 19.75]
         sea_water_temperature = [
-            dict(depth=0, limits=[27, 29.3, .1]),
-            dict(depth=150, limits=[16.5, 24.5, .5]),
+            dict(depth=0, limits=[26.0, 28.25, 0.25]),
+            dict(depth=150, limits=[16.5, 24.5, 0.5]),
             # dict(depth=200, limits=[14, 22, .5])
             ]
         salinity = [
@@ -627,8 +627,8 @@ def region_config(regions=None, model=None):
         folder = "tropical_western_atlantic"
         extent = [-70.25, -40.75, 0, 25]
         sea_water_temperature = [
-            dict(depth=0, limits=[25, 29.5, .5]),
-            dict(depth=150, limits=[11, 23, 1]),
+            dict(depth=0, limits=[23.0, 30.5, 0.5]),
+            dict(depth=150, limits=[11, 24, 1]),
             dict(depth=200, limits=[10, 22, 1])
             ]
         salinity = [
@@ -861,8 +861,8 @@ def region_config(regions=None, model=None):
         folder = "bahamas"
         extent = [-82.5, -63, 16, 31]
         sea_water_temperature = [
-            dict(depth=0, limits=[27, 32, .25]),
-            dict(depth=150, limits=[18, 25, .5]),
+            dict(depth=0, limits=[24.0, 31.0, 0.5]),
+            dict(depth=150, limits=[18, 25, 0.5]),
             # dict(depth=200, limits=[14, 22.5, .5])
             ]
         salinity = [
@@ -1092,8 +1092,8 @@ def region_config(regions=None, model=None):
         extent = [134.75-5, 155.25+5, 4.75, 25.25]
 
         sea_water_temperature = [
-            dict(depth=0, limits=[20, 30.5, .5]),
-            dict(depth=150, limits=[14, 26, .5]),
+            dict(depth=0, limits=[10, 22, 1]),
+            dict(depth=150, limits=[10, 22, 1]),
             # dict(depth=200, limits=[12, 23, .5])
             ]
         salinity = [
