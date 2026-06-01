@@ -77,9 +77,9 @@ def region_config(regions=None, model=None):
         folder = "yucatan"
         extent = [-90, -78, 17, 29]
         sea_water_temperature = [
-            dict(depth=0, limits=[24.5, 27.75, .25]),
+            dict(depth=0, limits=[24.5, 28.0, 0.25]),
             # dict(depth=0, limits=[27.5, 31, .25]),
-            dict(depth=150, limits=[18, 25.5, .5]),
+            dict(depth=150, limits=[18.0, 25.5, 0.5]),
             # dict(depth=200, limits=[14, 23, .5])
             ]
         salinity = [

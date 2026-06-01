@@ -442,8 +442,7 @@ def process_time(ctime):
             bathy=bathy_data,
             argo=argo,
             gliders=gliders,
-            eez=configs.get('eez', Tru
-            e),
+            eez=configs.get('eez', True),
             transform=config['projection'],
             dpi=config['dpi'],
             overwrite=config.get('overwrite', False),
