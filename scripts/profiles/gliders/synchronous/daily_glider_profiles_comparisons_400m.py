@@ -37,6 +37,30 @@ logging.basicConfig(level=logging.INFO)  # or adjust logging level as needed
 # set path to save plots
 path_save = (configs.path_plots / "profiles" / "gliders")
 
+# Create and maintain last_14_days directory
+import json as _json
+import glob as _glob
+symlink_dir = path_save / 'last_14_days'
+os.makedirs(symlink_dir, exist_ok=True)
+
+for f in sorted(_glob.glob(os.path.join(symlink_dir, '*.png'))):
+    match = re.search(r'_(\d{4})(\d{2})(\d{2})_to_', f)
+    if match:
+        file_date = dt.datetime.strptime(f"{match.group(1)}{match.group(2)}{match.group(3)}", '%Y%m%d')
+        if (dt.datetime.now() - file_date).days > 14:
+            os.remove(f)
+
+_loc14_file = symlink_dir / 'locations.json'
+if _loc14_file.exists():
+    try:
+        with open(_loc14_file, 'r') as _f:
+            _loc14 = _json.load(_f)
+        _loc14 = {k: v for k, v in _loc14.items() if (symlink_dir / k).exists()}
+        with open(_loc14_file, 'w') as _f:
+            _json.dump(_loc14, _f)
+    except Exception as _e:
+        print(f"Error cleaning up last_14_days/locations.json: {_e}")
+
 # dac access
 parallel = True
 timeout = 60
@@ -683,6 +707,48 @@ def plot_glider_profiles(id, gliders):
 
         plt.savefig(fullfile, dpi=configs.dpi, bbox_inches='tight', pad_inches=0.1)
         plt.close()
+        
+        # Save locations.json
+        locations_file = spath / 'locations.json'
+        import json
+        locations = {}
+        if locations_file.exists():
+            try:
+                with open(locations_file, 'r') as f:
+                    locations = json.load(f)
+            except:
+                pass
+        
+        loc_entry = {
+            'lat': float(mlat),
+            'lon': float(mlon),
+            'glider_id': str(id),
+            'time': str(t0.strftime('%Y-%m-%d'))
+        }
+        locations[fullfile.name] = loc_entry
+        try:
+            with open(locations_file, 'w') as f:
+                json.dump(locations, f)
+        except Exception as e:
+            print(f"Error saving locations.json: {e}")
+
+        # Update last_14_days symlink and locations.json
+        symlink_target = symlink_dir / fullfile.name
+        if not symlink_target.exists():
+            try:
+                os.symlink(fullfile, symlink_target)
+            except Exception as e:
+                print(f"Error creating symlink: {e}")
+        try:
+            loc14 = {}
+            if _loc14_file.exists():
+                with open(_loc14_file, 'r') as f:
+                    loc14 = json.load(f)
+            loc14[fullfile.name] = loc_entry
+            with open(_loc14_file, 'w') as f:
+                json.dump(loc14, f)
+        except Exception as e:
+            print(f"Error updating last_14_days/locations.json: {e}")
 
         # # Interpolate model to glider depth
         # if plot_rtofs:

@@ -358,6 +358,21 @@ def process_fishsoop_region(region):
                 print(f"Removing expired symlink: {f}")
                 os.remove(f)
 
+    # Clean up locations.json
+    import json
+    locations_file = symlink_dir / 'locations.json'
+    if locations_file.exists():
+        try:
+            with open(locations_file, 'r') as f:
+                locations = json.load(f)
+            locations = {k: v for k, v in locations.items() if (symlink_dir / k).exists()}
+            with open(locations_file, 'w') as f:
+                json.dump(locations, f)
+        except Exception as e:
+            print(f"Error cleaning up locations.json: {e}")
+            pass
+
+
     # Each tow_id is one profile file
     for tow_id, df in region_df.groupby("tow_id"):
         if len(df) < 3:
@@ -557,6 +572,30 @@ def process_fishsoop_region(region):
         plt.close()
 
         _ensure_symlink(full_file, symlink_dir, save_str, ctime, then)
+        
+        # Update locations.json
+        if ctime > then:
+            locations_file = symlink_dir / 'locations.json'
+            import json
+            locations = {}
+            if locations_file.exists():
+                try:
+                    with open(locations_file, 'r') as f:
+                        locations = json.load(f)
+                except:
+                    pass
+            locations[save_str] = {
+                'lat': float(lat), 
+                'lon': float(lon), 
+                'wmo': str(wmo_id),
+                'wigos': str(wigos_id),
+                'time': tstr
+            }
+            try:
+                with open(locations_file, 'w') as f:
+                    json.dump(locations, f)
+            except Exception as e:
+                print(f"Error saving locations.json: {e}")
 
 
 # ---------------------------------------------------------------------------

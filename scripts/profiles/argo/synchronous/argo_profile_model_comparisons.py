@@ -164,6 +164,22 @@ def process_argo(region):
                 print(f"The file {f} is older than 14 days.")
                 # Uncomment the following line to delete the file
                 os.remove(f)
+                
+    # Load locations.json and clean up any entries that don't have a corresponding .png
+    import json
+    locations_file = symlink_dir / 'locations.json'
+    if locations_file.exists():
+        try:
+            with open(locations_file, 'r') as f:
+                locations = json.load(f)
+            # Remove keys if the png doesn't exist
+            locations = {k: v for k, v in locations.items() if (symlink_dir / k).exists()}
+            with open(locations_file, 'w') as f:
+                json.dump(locations, f)
+        except Exception as e:
+            print(f"Error cleaning up locations.json: {e}")
+            pass
+
     try:
         bathy = get_bathymetry(extent)
         bathy_flag = True
@@ -621,6 +637,30 @@ def process_argo(region):
             # Create a symlink directory
             if ctime > then:
                 os.symlink(full_file, symlink_dir / save_str)
+                
+                # Update locations.json
+                locations_file = symlink_dir / 'locations.json'
+                import json
+                locations = {}
+                if locations_file.exists():
+                    try:
+                        with open(locations_file, 'r') as f:
+                            locations = json.load(f)
+                    except:
+                        pass
+                
+                locations[save_str] = {
+                    'lat': float(lat), 
+                    'lon': float(lon), 
+                    'wmo': str(wmo),
+                    'time': tstr
+                }
+                try:
+                    with open(locations_file, 'w') as f:
+                        json.dump(locations, f)
+                except Exception as e:
+                    print(f"Error saving locations.json: {e}")
+
 
         # # Plot the profile differences 
         # if not profile_diff_exist:
