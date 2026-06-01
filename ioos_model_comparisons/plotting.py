@@ -1643,8 +1643,7 @@ def plot_model_region_comparison(ds1, ds2, region,
     # Label the subplots
     ax1.set_title(f"{ds1.model} - {time1}", fontsize=16, fontweight="bold")
     ax2.set_title(f"{ds2.model} - {time2}", fontsize=16, fontweight="bold")
-    axes_top = max(ax.get_position().y1 for ax in [ax1, ax2])
-    txt = fig.suptitle("", fontsize=22, fontweight="bold", y=axes_top + 0.08)
+    txt = fig.suptitle("", fontsize=22, fontweight="bold")
 
     # Deal with the third axes
     h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
@@ -1956,8 +1955,7 @@ def plot_model_region_comparison_wmo(ds1, ds2, region,
     # Label the subplots
     ax1.set_title(f"{ds1.model} - {time1}", fontsize=16, fontweight="bold")
     ax2.set_title(f"{ds2.model} - {time2}", fontsize=16, fontweight="bold")
-    axes_top = max(ax.get_position().y1 for ax in [ax1, ax2])
-    txt = fig.suptitle("", fontsize=22, fontweight="bold", y=axes_top + 0.08)
+    txt = fig.suptitle("", fontsize=22, fontweight="bold")
 
     # Deal with the third axes
     h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
@@ -2216,8 +2214,7 @@ def plot_model_region_comparison_idalia(ds1, ds2, region,
     # Label the subplots
     ax1.set_title(ds1.model, fontsize=16, fontweight="bold")
     ax2.set_title(ds2.model, fontsize=16, fontweight="bold")
-    axes_top = max(ax.get_position().y1 for ax in [ax1, ax2])
-    txt = fig.suptitle("", fontsize=22, fontweight="bold", y=axes_top + 0.08)
+    txt = fig.suptitle("", fontsize=22, fontweight="bold")
 
     # Deal with the third axes
     h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
@@ -2602,8 +2599,7 @@ def plot_model_region_difference(ds1, ds2, region,
 
     # Label the subplots
     ax1.set_title(ds1.model, fontsize=16, fontweight="bold")
-    axes_top = ax1.get_position().y1
-    txt = fig.suptitle("", fontsize=22, fontweight="bold", y=axes_top + 0.08)
+    txt = fig.suptitle("", fontsize=22, fontweight="bold")
 
     # Deal with the third axes
     h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
@@ -3224,8 +3220,7 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         # Create a string for the title of the plot
         # title_time = time.strftime("%Y-%m-%d %H:%M:%S")
         title = f"Currents ({depth} m)\n"
-        axes_top = max(ax.get_position().y1 for ax in [ax1, ax2])
-        fig.suptitle(title, fontsize=22, fontweight="bold", y=axes_top + 0.08)
+        fig.suptitle(title, fontsize=22, fontweight="bold")
 
         # points = [(-75.22321918204588, 35.06592247775561), (-74.45437209443314, 35.612148199326924), (-74.35516601861214, 35.81056035096893), (-74.13195234801489, 35.95936946470042), (-73.83433412055189, 36.083377059476675), (-73.56151741204414, 36.157781616342426), (-72.7926703244314, 36.75301807126843), (-72.71826576756564, 37.025834779776176), (-72.84227336234188, 37.29865148828392), (-72.5942581727894, 37.472262120970676), (-72.32144146428163, 37.64587275365743), (-72.17263235055013, 37.819483386344174), (-71.8998156420424, 38.04269705694143), (-71.47818981980313, 38.16670465171768), (-71.18057159234013, 38.19150617067293), (-70.9077548838324, 38.19150617067293), (-70.53573209950363, 38.09230009485193), (-70.16370931517488, 37.96829250007568), (-69.84128956875665, 37.844284905299425), (-69.41966374651739, 37.79468186738893), (-69.02283944323338, 37.79468186738893), (-68.72522121577039, 37.869086424254675), (-68.27879387457588, 37.918689462165176), (-67.78276349547087, 37.893887943209926), (-67.26193159741064, 37.918689462165176), (-66.81550425621612, 37.96829250007568), (-66.29467235815588, 38.09230009485193), (-65.94745109278239, 38.19150617067293), (-65.69943590322987, 38.38991832231493), (-65.57542830845362, 38.53872743604643), (-65.27781008099063, 38.61313199291218), (-65.10419944830386, 38.73713958768843), (-64.98019185352763, 38.811544144554176), (-64.73217666397514, 38.93555173933043), (-63.83932198158612, 40.27483376291393), (-63.41769615934688, 40.250032243958685), (-62.97126881815237, 40.00201705440618), (-62.50003995800262, 39.62999427007743), (-62.10321565471863, 39.233169966793426), (-61.68158983247937, 38.93555173933043), (-61.35917008606111, 38.761941106643675), (-61.03675033964288, 38.712338068733175), (-60.78873515009036, 38.73713958768843), (-60.639926036358865, 38.78674262559893), (-60.59032299844838, 39.00995629619618), (-60.639926036358865, 39.08436085306193), (-61.061551858598115, 39.33237604261443), (-61.45837616188213, 39.48118515634593), (-61.904803503076614, 39.50598667530118), (-62.351230844271115, 39.70439882694318), (-62.54964299591313, 39.87800945962993), (-62.67365059068936, 40.02681857336143), (-62.822459704420865, 40.250032243958685), (-62.82245970442088, 40.32443680082443), (-62.92166578024187, 40.49804743351118), (-62.822459704420865, 40.74606262306368), (-62.62404755277888, 41.01887933157143), (-62.326429325315864, 41.24209300216869), (-62.028811097852866, 41.31649755903443), (-61.63198679456888, 41.465306672765934), (-61.33436856710586, 41.465306672765934), (-61.086353377553365, 41.26689452112393), (-60.813536669045625, 41.01887933157143), (-60.44151388471686, 40.57245199037693), (-60.06949110038811, 40.10122313022718), (-59.72226983501463, 39.75400186485368), (-59.15183489904386, 39.62999427007743), (-58.755010595759856, 39.53078819425643), (-58.234178697699626, 39.60519275112218), (-58.23417869769961, 39.60519275112218), (-57.71334679963936, 39.60519275112218), (-57.34132401531062, 39.60519275112218), (-57.018904268892356, 39.729200345898434), (-56.994102749937106, 40.10122313022718), (-57.06850730680287, 40.34923831977968), (-57.49013312904211, 40.52284895246643), (-57.93656047023661, 40.721261104108436), (-58.085369583968124, 40.89487173679518), (-58.283781735610106, 41.21729148321343), (-58.35818629247586, 41.490108191721184), (-58.35818629247587, 41.63891730545268), (-58.333384773520606, 41.86213097604993), (-58.13497262187861, 41.961337051870935), (-57.83735439441562, 41.961337051870935), (-57.46533161008686, 42.010940089781435), (-57.06850730680286, 41.83732945709468), (-56.795690598295124, 41.614115786497436), (-56.448469332921604, 41.39090211590018), (-56.101248067548106, 41.192489964258186), (-55.828431359040366, 40.99407781261618)]
         # lons = [point[0] for point in points]
@@ -4669,9 +4664,6 @@ def plot_ohc_three_panel(ohc_rtofs, ohc_comp, extent, region_name, comp_model_na
                 zorder=1.5,
             )
 
-        if eez:
-            map_add_eez(ax, color="white", zorder=10, linestyle="-", linewidth=1.5)
-
         rargs = {'argo': argo, 'gliders': gliders, 'transform': transform['data']}
         plot_regional_assets_single_color(ax, time=ctime, **rargs)
 
@@ -4746,6 +4738,9 @@ def plot_ohc_three_panel(ohc_rtofs, ohc_comp, extent, region_name, comp_model_na
             ax.contour(lon_grid, lat_grid, data, [60],
                        linestyles='-', colors=['silver'],
                        linewidths=1.5, transform=transform["data"], zorder=101)
+
+        if eez:
+            map_add_eez(ax, color="white", zorder=120, linestyle="-", linewidth=0.5)
 
         ax.set_title(label, fontsize=16, fontweight="bold", pad=6)
 
@@ -5308,7 +5303,7 @@ def plot_speed_diff_three_panel(ds_rtofs, ds_comp, extent, region_name, comp_mod
             _plot_current_vectors(ax, ds, transform)
 
         if eez:
-            map_add_eez(ax, color="white", zorder=120, linestyle="-", linewidth=1.5)
+            map_add_eez(ax, color="white", zorder=120, linestyle="-", linewidth=0.5)
 
         ax.set_title(label, fontsize=16, fontweight="bold", pad=6)
 
@@ -6874,11 +6869,12 @@ def plot_speed_three_panel(ds_rtofs, ds_espc, ds_cmems, extent, region_name,
         cb.ax.tick_params(labelsize=12)
         cb.set_label("m/s", fontsize=12, fontweight="bold")
 
+    axes_top = max(ax.get_position().y1 for ax in axes)
     fig.suptitle(
         f"Current Speed ({int(depth_val)} m) - {tstr_title}",
         fontsize=18,
         fontweight="bold",
-        y=1.02
+        y=axes_top + 0.08,
     )
 
     # fig.tight_layout(rect=[0, 0.12, 1, 0.95])
@@ -7174,11 +7170,12 @@ def plot_salt_three_panel(ds_rtofs, ds_espc, ds_cmems, extent, region_name,
         cb.ax.tick_params(labelsize=12)
         cb.set_label("PSU", fontsize=12, fontweight="bold")
 
+    axes_top = max(ax.get_position().y1 for ax in axes)
     fig.suptitle(
         f"Salinity ({int(depth_val)} m) - {tstr_title}",
         fontsize=18,
         fontweight="bold",
-        y=1.02
+        y=axes_top + 0.08,
     )
 
     export_fig(path_save, fname, dpi=dpi)
@@ -7368,9 +7365,10 @@ def plot_speed_espc_two_panel(ds_0m, ds_1500m, extent, region_name,
         cb.ax.tick_params(labelsize=11)
         cb.set_label("m/s", fontsize=11, fontweight="bold")
 
+    axes_top = max(ax.get_position().y1 for ax in axes)
     fig.suptitle(
         f"ESPC Current Speed - {tstr_title}",
-        fontsize=18, fontweight="bold", y=1.06,
+        fontsize=18, fontweight="bold", y=axes_top + 0.08,
     )
 
     export_fig(save_dir, fname, dpi=dpi)
