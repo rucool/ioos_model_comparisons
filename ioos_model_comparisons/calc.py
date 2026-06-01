@@ -2,6 +2,10 @@ import sys
 import hashlib
 from pyproj import Geod
 import numpy as np
+
+# NumPy < 2.0 uses np.trapz; 2.0+ renamed it to np.trapezoid.
+if not hasattr(np, 'trapezoid'):
+    np.trapezoid = np.trapz
 import pandas as pd
 import xarray as xr
 import xesmf as xe
