@@ -442,7 +442,8 @@ def process_time(ctime):
             bathy=bathy_data,
             argo=argo,
             gliders=gliders,
-            eez=configs.get('eez', True),
+            eez=configs.get('eez', Tru
+            e),
             transform=config['projection'],
             dpi=config['dpi'],
             overwrite=config.get('overwrite', False),
@@ -541,6 +542,7 @@ def main(parallel=True, max_workers=None):
         print(f"  {t}")
 
     conf.regions = ['gom_west', 'gom_east', 'caribbean', 'east_coast', 'tropical_western_atlantic']
+    # conf.regions = ['caribbean']
     region_configs = {region: region_config([region]) for region in conf.regions}
     extent_list = [cfg["extent"] for cfg in region_configs.values()]
 

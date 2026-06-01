@@ -348,12 +348,19 @@ class ESPC:
         Returns:
         - xarray.DataArray: Subset of the requested variable.
         """
-        lon_extent = lon180to360(lon_extent)
+        lon_extent_360 = lon180to360(lon_extent)
         data = self.get_variable(var_name)
-        subset = data.sel(lon=slice(lon_extent[0], lon_extent[1]), 
-                          lat=slice(lat_extent[0], lat_extent[1]))
+
+        # Handle extents that cross the prime meridian (lon_min_360 > lon_max_360)
+        if lon_extent_360[0] > lon_extent_360[1]:
+            mask = (data.lon >= lon_extent_360[0]) | (data.lon <= lon_extent_360[1])
+            subset = data.where(mask, drop=True).sel(lat=slice(lat_extent[0], lat_extent[1]))
+        else:
+            subset = data.sel(lon=slice(lon_extent_360[0], lon_extent_360[1]),
+                              lat=slice(lat_extent[0], lat_extent[1]))
 
         subset['lon'] = lon360to180(subset['lon'])
+        subset = subset.sortby('lon')
         if time:
             subset = subset.sel(time=time)  # Exact match only
         return subset
