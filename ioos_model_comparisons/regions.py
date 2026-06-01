@@ -467,8 +467,8 @@ def region_config(regions=None, model=None):
         # Caribbean Limits
         name = "Caribbean"
         folder = "caribbean"
-        # extent = [-89, -58, 7, 23.5]
-        extent = [-89, -58, 7, 28]
+        extent = [-89, -58, 7, 23.5]
+        # extent = [-89, -58, 7, 28]
         sea_water_temperature = [
             dict(depth=0, limits=[26.0, 30.25, 0.25]),
             # dict(depth=150, limits=[17, 25, .5]),
