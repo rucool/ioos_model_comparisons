@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 import os
 import re
 import glob
@@ -168,14 +169,36 @@ def line_limits(fax, delta=1.0):
     return min(mins) - delta, max(maxs) + delta
 
 
-def _ensure_symlink(full_file, symlink_dir, save_str, ctime, then):
-    """Create a symlink in last_14_days/ pointing to the dated subfolder file."""
+def _ensure_symlink(full_file, symlink_dir, save_str, ctime, then,
+                    lat=None, lon=None, wigos=None, tstr=None):
+    """Create a symlink in last_14_days/ and optionally update locations.json."""
     if ctime <= then:
         return
     symlink_path = symlink_dir / save_str
     if not symlink_path.is_symlink():
         rel_target = os.path.relpath(full_file.resolve(), symlink_dir.resolve())
         os.symlink(rel_target, symlink_path)
+
+    if lat is not None and lon is not None:
+        locations_file = symlink_dir / 'locations.json'
+        locations = {}
+        if locations_file.exists():
+            try:
+                with open(locations_file, 'r') as f:
+                    locations = json.load(f)
+            except Exception:
+                pass
+        locations[save_str] = {
+            'lat': float(lat),
+            'lon': float(lon),
+            'wigos': str(wigos),
+            'time': tstr,
+        }
+        try:
+            with open(locations_file, 'w') as f:
+                json.dump(locations, f)
+        except Exception as e:
+            print(f"Error saving locations.json: {e}")
 
 
 def process_fvon_region(region):
@@ -206,6 +229,17 @@ def process_fvon_region(region):
             if (datetime.now() - date_time_obj).days > 14:
                 print(f"Removing expired symlink: {f}")
                 os.remove(f)
+
+    locations_file = symlink_dir / 'locations.json'
+    if locations_file.exists():
+        try:
+            with open(locations_file, 'r') as f:
+                _locs = json.load(f)
+            _locs = {k: v for k, v in _locs.items() if (symlink_dir / k).exists()}
+            with open(locations_file, 'w') as f:
+                json.dump(_locs, f)
+        except Exception as e:
+            print(f"Error cleaning up locations.json: {e}")
 
     # Each unique (platform, time) represents one profile cast
     for (wmo_id, ctime), df in region_df.groupby(['wmo_platform_code', 'time']):
@@ -355,7 +389,8 @@ def process_fvon_region(region):
         plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
         plt.close()
 
-        _ensure_symlink(full_file, symlink_dir, save_str, ctime, then)
+        _ensure_symlink(full_file, symlink_dir, save_str, ctime, then,
+                        lat=lat, lon=lon, wigos=wmo_id, tstr=tstr)
 
 
 def main():
