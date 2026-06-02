@@ -15,6 +15,7 @@ Guam notes
 ----------
 - Region extent: [129.75, 160.25, 4.75, 25.25] — all positive lons, no special handling
 """
+import json
 import os
 import glob
 import re
@@ -24,6 +25,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 from gsw import z_from_p
@@ -33,7 +35,13 @@ import cool_maps.plot as cplt
 from cool_maps.plot import get_bathymetry
 from ioos_model_comparisons.calc import lon180to360, lon360to180, density, ocean_heat_content
 from ioos_model_comparisons.models import CMEMS, espc_ts
-from ioos_model_comparisons.platforms import get_argo_floats_by_time
+from ioos_model_comparisons.platforms import (
+    ARGO_DATA_QC_VARIABLES,
+    ARGO_GOOD_QC_FLAGS,
+    ARGO_LOCATION_QC_VARIABLES,
+    ARGO_PROFILE_QC_VARIABLES,
+    get_argo_floats_by_time,
+)
 from ioos_model_comparisons.regions import region_config
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -48,7 +56,7 @@ dpi = conf.dpi
 plot_espc = True
 plot_cmems = True
 
-float_id = None  # Set to None to plot all floats
+float_id = 5904628  # Set to None to plot all floats
 sal_xlim =None   # Set to None to auto-scale salinity axis
 temp_xlim = None      # Set to None to auto-scale temperature axis
 density_xlim = None  # Set to None to auto-scale density axis
@@ -60,7 +68,7 @@ FIJI_PLATFORM_EXTENT = [139.75, 180, -30.25, -4.75]
 # Per-region map projection for the location inset panel
 REGION_MAP_PROJECTION = {
     'fiji': ccrs.Mercator(central_longitude=180),
-    'guam': ccrs.Mercator(),
+    # 'guam': ccrs.Mercator(),
 }
 
 DATA_PROJECTION = ccrs.PlateCarree()
@@ -78,6 +86,20 @@ then = pd.Timestamp(then.strftime('%Y-%m-%d'))
 date_fmt = "%Y-%m-%dT%H:%MZ"
 vars = ['platform_number', 'time', 'longitude', 'latitude', 'pres', 'temp', 'psal']
 depths = slice(0, depth)
+
+ARGO_TEMP_POINT_QC_COLUMNS = ('temp_qc',)
+ARGO_SALINITY_POINT_QC_COLUMNS = ('psal_qc',)
+ARGO_DENSITY_POINT_QC_COLUMNS = ('pres_qc', 'temp_qc', 'psal_qc')
+QC_FLAGGED_HANDLE = Line2D(
+    [0], [0],
+    linestyle='None',
+    marker='o',
+    markerfacecolor='none',
+    markeredgecolor='red',
+    markeredgewidth=1.5,
+    markersize=7,
+    label='Argo QC flagged',
+)
 
 # ── Global argo fetch extent (covers Fiji platform zone + Guam) ─────────────
 
@@ -101,6 +123,7 @@ floats = get_argo_floats_by_time(
     date_start,
     date_end,
     variables=vars,
+    include_qc=True,
 )
 floats['depth'] = -z_from_p(floats['pres (decibar)'], floats['lat'])
 floats = floats[floats['depth'] <= depth]
@@ -115,6 +138,47 @@ def line_limits(fax, delta=1):
     mins = [np.nanmin(line.get_xdata()) for line in fax.lines]
     maxs = [np.nanmax(line.get_xdata()) for line in fax.lines]
     return min(mins) - delta, max(maxs) + delta
+
+
+def normalize_qc_flag(value):
+    if pd.isna(value):
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def qc_flag_mask(df, columns):
+    columns = [col for col in columns if col in df.columns]
+    if not columns:
+        return pd.Series(False, index=df.index)
+    mask = pd.Series(False, index=df.index)
+    for col in columns:
+        flags = df[col].map(normalize_qc_flag)
+        mask |= flags.notna() & ~flags.isin(ARGO_GOOD_QC_FLAGS)
+    return mask.fillna(False)
+
+
+def profile_qc_value(df, column):
+    if column not in df.columns:
+        return 'NA'
+    values = [v for v in df[column].map(normalize_qc_flag).dropna().unique() if v]
+    if not values:
+        return 'NA'
+    if len(values) == 1:
+        return values[0]
+    return ','.join(values[:3]) + ('+' if len(values) > 3 else '')
+
+
+def add_flagged_points(ax, x, y, mask):
+    if bool(mask.any()):
+        ax.scatter(
+            x[mask], y[mask],
+            s=42,
+            facecolors='none',
+            edgecolors='red',
+            linewidths=1.5,
+            zorder=20,
+        )
 
 
 # ── Per-region processing ────────────────────────────────────────────────────
@@ -138,6 +202,17 @@ def process_argo(region_key):
             if (datetime.now() - date_time_obj).days > 14:
                 print(f"The file {f} is older than 14 days.")
                 os.remove(f)
+
+    locations_file = symlink_dir / 'locations.json'
+    if locations_file.exists():
+        try:
+            with open(locations_file, 'r') as f:
+                locations = json.load(f)
+            locations = {k: v for k, v in locations.items() if (symlink_dir / k).exists()}
+            with open(locations_file, 'w') as f:
+                json.dump(locations, f)
+        except Exception as e:
+            print(f"Error cleaning up locations.json: {e}")
 
     try:
         bathy = get_bathymetry(extent)
@@ -207,6 +282,11 @@ def process_argo(region_key):
             )
         )
 
+        temp_flagged = qc_flag_mask(df, ARGO_TEMP_POINT_QC_COLUMNS)
+        salinity_flagged = qc_flag_mask(df, ARGO_SALINITY_POINT_QC_COLUMNS)
+        density_flagged = qc_flag_mask(df, ARGO_DENSITY_POINT_QC_COLUMNS)
+        any_flagged = bool(temp_flagged.any() or salinity_flagged.any() or density_flagged.any())
+
         ohc_float = ocean_heat_content(df['depth'], df['temp (degree_Celsius)'], df['density'])
 
         lon, lat = df['lon'].unique()[-1], df['lat'].unique()[-1]
@@ -272,6 +352,9 @@ def process_argo(region_key):
         ax1.plot(df['temp (degree_Celsius)'], df['depth'], 'b-o', label=alabel)
         ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
         ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
+        add_flagged_points(ax1, df['temp (degree_Celsius)'], df['depth'], temp_flagged)
+        add_flagged_points(ax2, df['psal (PSU)'], df['depth'], salinity_flagged)
+        add_flagged_points(ax3, df['density'], df['depth'], density_flagged)
 
         # ESPC
         if espc_flag:
@@ -321,6 +404,9 @@ def process_argo(region_key):
         ax5.plot(lon, lat, 'bo', transform=DATA_PROJECTION, zorder=101)
 
         h, l = ax2.get_legend_handles_labels()
+        if any_flagged:
+            h.append(QC_FLAGGED_HANDLE)
+            l.append(QC_FLAGGED_HANDLE.get_label())
         ax6.legend(h, l, ncol=1, loc='center', fontsize=12)
         ax6.set_axis_off()
 
@@ -358,6 +444,26 @@ def process_argo(region_key):
                 os.symlink(full_file, symlink_dir / save_str)
             except FileExistsError:
                 pass
+
+            locations_file = symlink_dir / 'locations.json'
+            locations = {}
+            if locations_file.exists():
+                try:
+                    with open(locations_file, 'r') as f:
+                        locations = json.load(f)
+                except Exception:
+                    pass
+            locations[save_str] = {
+                'lat': float(lat),
+                'lon': float(lon),
+                'wmo': str(wmo),
+                'time': tstr
+            }
+            try:
+                with open(locations_file, 'w') as f:
+                    json.dump(locations, f)
+            except Exception as e:
+                print(f"Error saving locations.json: {e}")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────

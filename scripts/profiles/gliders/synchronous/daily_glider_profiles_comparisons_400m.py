@@ -40,6 +40,7 @@ path_save = (configs.path_plots / "profiles" / "gliders")
 # Create and maintain last_14_days directory
 import json as _json
 import glob as _glob
+import fcntl as _fcntl
 symlink_dir = path_save / 'last_14_days'
 os.makedirs(symlink_dir, exist_ok=True)
 
@@ -51,13 +52,16 @@ for f in sorted(_glob.glob(os.path.join(symlink_dir, '*.png'))):
             os.remove(f)
 
 _loc14_file = symlink_dir / 'locations.json'
+_loc14_lock = symlink_dir / 'locations.lock'
 if _loc14_file.exists():
     try:
-        with open(_loc14_file, 'r') as _f:
-            _loc14 = _json.load(_f)
-        _loc14 = {k: v for k, v in _loc14.items() if (symlink_dir / k).exists()}
-        with open(_loc14_file, 'w') as _f:
-            _json.dump(_loc14, _f)
+        with open(_loc14_lock, 'w') as _lf:
+            _fcntl.flock(_lf, _fcntl.LOCK_EX)
+            with open(_loc14_file, 'r') as _f:
+                _loc14 = _json.load(_f)
+            _loc14 = {k: v for k, v in _loc14.items() if (symlink_dir / k).exists()}
+            with open(_loc14_file, 'w') as _f:
+                _json.dump(_loc14, _f)
     except Exception as _e:
         print(f"Error cleaning up last_14_days/locations.json: {_e}")
 
@@ -740,13 +744,15 @@ def plot_glider_profiles(id, gliders):
             except Exception as e:
                 print(f"Error creating symlink: {e}")
         try:
-            loc14 = {}
-            if _loc14_file.exists():
-                with open(_loc14_file, 'r') as f:
-                    loc14 = json.load(f)
-            loc14[fullfile.name] = loc_entry
-            with open(_loc14_file, 'w') as f:
-                json.dump(loc14, f)
+            with open(_loc14_lock, 'w') as lf:
+                _fcntl.flock(lf, _fcntl.LOCK_EX)
+                loc14 = {}
+                if _loc14_file.exists():
+                    with open(_loc14_file, 'r') as f:
+                        loc14 = json.load(f)
+                loc14[fullfile.name] = loc_entry
+                with open(_loc14_file, 'w') as f:
+                    json.dump(loc14, f)
         except Exception as e:
             print(f"Error updating last_14_days/locations.json: {e}")
 

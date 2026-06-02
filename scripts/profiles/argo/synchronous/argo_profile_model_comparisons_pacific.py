@@ -1,21 +1,29 @@
 #/usr/bin/env python
+import json
 import os
 
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
 import xarray as xr
+from matplotlib.lines import Line2D
 from ioos_model_comparisons.calc import (
     # depth_interpolate,
-    lon180to360, 
-    lon360to180, 
-    difference, 
+    lon180to360,
+    lon360to180,
+    difference,
     density,
     ocean_heat_content
     )
-from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_ohc
+from ioos_model_comparisons.platforms import (
+    ARGO_DATA_QC_VARIABLES,
+    ARGO_GOOD_QC_FLAGS,
+    ARGO_LOCATION_QC_VARIABLES,
+    ARGO_PROFILE_QC_VARIABLES,
+    get_argo_floats_by_time,
+    get_ohc,
+)
 from ioos_model_comparisons.regions import region_config
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
@@ -46,6 +54,19 @@ dpi = conf.dpi
 vars = ['platform_number', 'time', 'longitude', 'latitude', 'pres', 'temp', 'psal']
 
 depths = slice(0, depth)
+ARGO_TEMP_POINT_QC_COLUMNS = ('temp_qc',)
+ARGO_SALINITY_POINT_QC_COLUMNS = ('psal_qc',)
+ARGO_DENSITY_POINT_QC_COLUMNS = ('pres_qc', 'temp_qc', 'psal_qc')
+QC_FLAGGED_HANDLE = Line2D(
+    [0], [0],
+    linestyle='None',
+    marker='o',
+    markerfacecolor='none',
+    markeredgecolor='red',
+    markeredgewidth=1.5,
+    markersize=7,
+    label='Argo QC flagged',
+)
 
 # Load models
 if plot_rtofs:
@@ -68,7 +89,7 @@ if plot_cmems:
     from ioos_model_comparisons.models import CMEMS
     cobj = CMEMS()
     # cds = cobj.data.sel(depth=depths)
-    
+
 # Create a date list ending today and starting x days in the past
 date_end = pd.Timestamp.utcnow().tz_localize(None)
 date_start = (date_end - pd.Timedelta(days=days)).floor('1d')
@@ -103,11 +124,13 @@ date_fmt = "%Y-%m-%dT%H:%MZ"
 # Download argo floats from ifremer erddap server
 floats = get_argo_floats_by_time(global_extent,
                                  date_start,
-                                 date_end, 
-                                 variables=vars)
+                                 date_end,
+                                 variables=vars,
+                                 include_qc=True)
+print(f"Loaded Argo QC flags for {len(floats)} samples")
 # print('Execution time in seconds: ' + str(time.time() - startTime))
 # search_window_t = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
-# search_window_t1 = ctime.strftime(tstr) 
+# search_window_t1 = ctime.strftime(tstr)
 
 # Convert pressure to depth
 # floats['depth'] = seawater.dpth(floats['pres (decibar)'], floats['lat'])
@@ -135,8 +158,52 @@ def line_limits(fax, delta=1):
     mins = [np.nanmin(line.get_xdata()) for line in fax.lines]
     maxs = [np.nanmax(line.get_xdata()) for line in fax.lines]
     return min(mins)-delta, max(maxs)+delta
-    
-def process_argo(region):    
+
+
+def normalize_qc_flag(value):
+    if pd.isna(value):
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def qc_flag_mask(df, columns):
+    columns = [column for column in columns if column in df.columns]
+    if not columns:
+        return pd.Series(False, index=df.index)
+
+    mask = pd.Series(False, index=df.index)
+    for column in columns:
+        flags = df[column].map(normalize_qc_flag)
+        mask |= flags.notna() & ~flags.isin(ARGO_GOOD_QC_FLAGS)
+    return mask.fillna(False)
+
+
+def profile_qc_value(df, column):
+    if column not in df.columns:
+        return 'NA'
+
+    values = [value for value in df[column].map(normalize_qc_flag).dropna().unique().tolist() if value]
+    if not values:
+        return 'NA'
+    if len(values) == 1:
+        return values[0]
+    return ','.join(values[:3]) + ('+' if len(values) > 3 else '')
+
+
+def add_flagged_points(ax, x, y, mask):
+    if bool(mask.any()):
+        ax.scatter(
+            x[mask],
+            y[mask],
+            s=42,
+            facecolors='none',
+            edgecolors='red',
+            linewidths=1.5,
+            zorder=20,
+        )
+
+def process_argo(region):
     # Loop through regions
     region = region_config(region)
     extent = region['extent']
@@ -164,6 +231,18 @@ def process_argo(region):
                 print(f"The file {f} is older than 14 days.")
                 # Uncomment the following line to delete the file
                 os.remove(f)
+
+    locations_file = symlink_dir / 'locations.json'
+    if locations_file.exists():
+        try:
+            with open(locations_file, 'r') as f:
+                locations = json.load(f)
+            locations = {k: v for k, v in locations.items() if (symlink_dir / k).exists()}
+            with open(locations_file, 'w') as f:
+                json.dump(locations, f)
+        except Exception as e:
+            print(f"Error cleaning up locations.json: {e}")
+
     try:
         bathy = get_bathymetry(extent)
         bathy_flag = True
@@ -179,7 +258,7 @@ def process_argo(region):
         return
     else:
         argo_region = floats[
-            (extent[0] <= floats['lon']) & (floats['lon'] <= extent[1]) 
+            (extent[0] <= floats['lon']) & (floats['lon'] <= extent[1])
             &
             (extent[2] <= floats['lat']) & (floats['lat'] <= extent[3])
             ]
@@ -187,10 +266,10 @@ def process_argo(region):
     if plot_rtofs:
         # Setting RTOFS lon and lat to their own variables speeds up the script
         rlons = rds.lon.data[0, :]
-        rlats = rds.lat.data[:, 0] 
+        rlats = rds.lat.data[:, 0]
         rx = rds.x.data
         ry = rds.y.data
-        
+
         # Find x, y indexes of the area we want to subset
         lons_ind = np.interp(extent[:2], rlons, rx)
         lats_ind = np.interp(extent[2:], rlats, ry)
@@ -200,23 +279,23 @@ def process_argo(region):
         wmo = gname[0] # wmo id from gname
         ctime = gname[1] # time from gname
         print(f"Checking ARGO {wmo} for new profiles")
-        
-        tstr = ctime.strftime(date_fmt) # create time string            
+
+        tstr = ctime.strftime(date_fmt) # create time string
         save_str = f'{wmo}-profile-{ctime.strftime("%Y-%m-%dT%H%MZ")}.png'
-        tdir = temp_save_dir / ctime.strftime("%Y") / ctime.strftime("%m") / ctime.strftime("%d") 
+        tdir = temp_save_dir / ctime.strftime("%Y") / ctime.strftime("%m") / ctime.strftime("%d")
         os.makedirs(tdir, exist_ok=True)
         full_file = tdir /  save_str
         diff_file = tdir / ctime.strftime("%Y") / ctime.strftime("%m") / ctime.strftime("%d") / f'{wmo}-profile-difference-{ctime.strftime("%Y-%m-%dT%H%MZ")}.png'
 
         profile_exist = False
-        profile_diff_exist = False 
+        profile_diff_exist = False
 
         # Check if profile exists already
         if full_file.is_file():
             print(f"{full_file} already exists. Checking if difference plot has been generated.")
-            
+
             profile_exist = True
-            
+
             # Check if the difference profile has been plotted.
             if diff_file.is_file():
                 # Profile difference exists. Continue to the next float
@@ -227,31 +306,34 @@ def process_argo(region):
         else:
             print(f"Processing ARGO {wmo} profile that occured at {ctime}")
             # Profile does not exist yet
-            profile_exist = False   
+            profile_exist = False
 
 
         if not (profile_exist) or not (profile_diff_exist):
             # # Calculate depth from pressure and lat
             df = df.assign(depth=-z_from_p(df['pres (decibar)'].values, df['lat'].values))
 
-            # Filter out the dataframe
-            salinity_mask = np.abs(stats.zscore(df['psal (PSU)'])) < 4
             depth_mask = df['depth'] <= depth
-            df = df[salinity_mask & depth_mask]
+            df = df[depth_mask].copy()
 
             # Check if the dataframe has any data after filtering.
             if df.empty:
                 continue
-            
+
             df = df.assign(
                 density=density(
                     df['temp (degree_Celsius)'].values,
                     -df['depth'].values,
                     df['psal (PSU)'].values,
                     df['lat'].values,
-                    df['lon'].values    
+                    df['lon'].values
                 )
             )
+
+            temp_flagged = qc_flag_mask(df, ARGO_TEMP_POINT_QC_COLUMNS)
+            salinity_flagged = qc_flag_mask(df, ARGO_SALINITY_POINT_QC_COLUMNS)
+            density_flagged = qc_flag_mask(df, ARGO_DENSITY_POINT_QC_COLUMNS)
+            any_flagged = bool(temp_flagged.any() or salinity_flagged.any() or density_flagged.any())
 
             ohc_float = ocean_heat_content(
                 df['depth'],
@@ -259,27 +341,10 @@ def process_argo(region):
                 df['density']
                 )
 
-            # Interpolate argo profile to configuration depths
-            # df = depth_interpolate(df, 
-            #                        depth_var='depth', 
-            #                        depth_min=conf.min_depth,
-            #                        depth_max=conf.max_depth,
-            #                        stride=conf.stride)
-
             # Grab lon and lat of argo profile
             lon, lat = df['lon'].unique()[-1], df['lat'].unique()[-1]
 
             mlon360 = lon180to360(lon)
-
-            # %%
-            # For each model, select nearest time to argo time
-            # Interpolate to the argo float location and depths
-            
-            # # Calculate depths to interpolate 
-            # depths_interp = np.arange(
-            #     conf.min_depth, 
-            #     conf.max_depth+conf.stride, 
-            #     conf.stride)
 
             alon = round(lon, 2) # argo lon
             alat = round(lat, 2) # argo lat
@@ -287,11 +352,6 @@ def process_argo(region):
             leg_str = f'Argo #{wmo}\n'
             leg_str += f'ARGO: { tstr }\n'
 
-            # nesdis = get_ohc(extent, pd.to_datetime(tstr).date())   
-            # nesdis = nesdis.squeeze()
-            # ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
-            # ohc_nesdis = ohc_nesdis.ohc.values
-            
             if plot_espc:
                 try:
                     # ESPC
@@ -310,7 +370,7 @@ def process_argo(region):
                         gdsi['temperature'].values,
                         gdsi['density'].values
                         )
-                    
+
                     glon = gdsi.lon.data.round(2)
                     glat = gdsi.lat.data.round(2)
                     glabel = f'ESPC [{ glon }, { glat }]'
@@ -334,11 +394,10 @@ def process_argo(region):
                         x=rlonI,
                         y=rlatI,
                         method='nearest'
-                        # depth=xr.DataArray(depths_interp, dims='depth')
                     )
 
                     rdsi.load()
-                    
+
                     # Calculate density for rtofs profile
                     rdsi['density'] = density(rdsi.temperature, -rdsi.depth, rdsi.salinity, rdsi.lat, rdsi.lon)
 
@@ -353,7 +412,7 @@ def process_argo(region):
                     rlabel = f'RTOFS [{rlon:.2f}, {rlat:.2f}]'
                     leg_str += f'RTOFS: {pd.to_datetime(rdsi.time.data).strftime(date_fmt)}\n'
 
-                    # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice 
+                    # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice
                     # in order to widen the area of the extent slightly.
                     extent_ind = [
                         np.floor(lons_ind[0]).astype(int),
@@ -361,9 +420,9 @@ def process_argo(region):
                         np.floor(lats_ind[0]).astype(int),
                         np.ceil(lats_ind[1]).astype(int)
                         ]
-                    
+
                     rdsp = rdsp.isel(depth=0,
-                                    x=slice(extent_ind[0], extent_ind[1]), 
+                                    x=slice(extent_ind[0], extent_ind[1]),
                                     y=slice(extent_ind[2], extent_ind[3]))
                     rtofs_flag = True
                 except KeyError as error:
@@ -384,10 +443,9 @@ def process_argo(region):
                         x=rlonI,
                         y=rlatI,
                         method='nearest'
-                        # depth=xr.DataArray(depths_interp, dims='depth')
                     )
                     pdsi.load()
-                    
+
                     # Calculate density for rtofs profile
                     pdsi['density'] = density(pdsi.temperature, -pdsi.depth, pdsi.salinity, pdsi.lat, pdsi.lon)
 
@@ -402,7 +460,7 @@ def process_argo(region):
                     plabel = f'RTOFS-P [{rlon:.2f}, {rlat:.2f}]'
                     leg_str += f'RTOFS-P: {pd.to_datetime(pdsi.time.data).strftime(date_fmt)}\n'
 
-                    # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice 
+                    # Use np.floor on the 1st index and np.ceil on the 2nd index of each slice
                     # in order to widen the area of the extent slightly.
                     extent_ind = [
                         np.floor(lons_ind[0]).astype(int),
@@ -426,36 +484,42 @@ def process_argo(region):
                     # Copernicus
                     cdsi = cobj.get_point(lon, lat, ctime)
                     cdsi = cdsi.sel(depth=depths)
-                    # cdsi = cds.sel(time=ctime, method='nearest')
-                    # cdsi = cdsp.sel(
-                    #     lon=lon, 
-                    #     lat=lat,
-                    #     method='nearest'
-                    #     # depth=xr.DataArray(depths_interp, dims='depth')
-                    #     )
-                    
+
                     # Calculate density for rtofs profile
                     cdsi['density'] = density(cdsi.temperature, -cdsi.depth, cdsi.salinity, cdsi.lat, cdsi.lon)
 
                     clon = cdsi.lon.data.round(2)
                     clat = cdsi.lat.data.round(2)
-                    
+
                     # Calculate ocean heat content for profile
                     ohc_cmems = ocean_heat_content(
                         cdsi['depth'].values,
                         cdsi['temperature'].values,
                         cdsi['density'].values
                         )
-                    
+
                     clabel = f"CMEMS [{clon:.2f}, {clat:.2f}]"
                     leg_str += f'CMEMS: {pd.to_datetime(cdsi.time.data).strftime(date_fmt)}\n'
                     cmems_flag = True
                 except KeyError as error:
                     print(f"CMEMS: False - {error}")
-                    cmems_flag = False 
+                    cmems_flag = False
             else:
                 cmems_flag = False
-       
+
+            leg_str += 'QC kept; red open circles = level QC flagged\n'
+            leg_str += f'QC time/pos: {profile_qc_value(df, "time_qc")}/{profile_qc_value(df, "position_qc")}\n'
+            leg_str += (
+                f'QC prof P/T/S: '
+                f'{profile_qc_value(df, "profile_pres_qc")}/'
+                f'{profile_qc_value(df, "profile_temp_qc")}/'
+                f'{profile_qc_value(df, "profile_psal_qc")}\n'
+            )
+            leg_str += (
+                f'Flagged pts T/S/D: '
+                f'{int(temp_flagged.sum())}/{int(salinity_flagged.sum())}/{int(density_flagged.sum())}\n'
+            )
+
         # Plot the argo profile
         if not profile_exist:
             fig = plt.figure(constrained_layout=True, figsize=(16, 6))
@@ -474,10 +538,13 @@ def process_argo(region):
             ax5 = fig.add_subplot(gs[1, -1], projection=conf.projection['map']) # Map
             ax6 = fig.add_subplot(gs[2, -1]) # Legend
 
-            # ARGO 
+            # ARGO
             ax1.plot(df['temp (degree_Celsius)'], df['depth'], 'b-o', label=alabel)
             ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
             ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
+            add_flagged_points(ax1, df['temp (degree_Celsius)'], df['depth'], temp_flagged)
+            add_flagged_points(ax2, df['psal (PSU)'], df['depth'], salinity_flagged)
+            add_flagged_points(ax3, df['density'], df['depth'], density_flagged)
 
             # ESPC
             if espc_flag:
@@ -510,8 +577,8 @@ def process_argo(region):
             except ValueError:
                 print('Some kind of error')
                 pass
-  
-                
+
+
             ax1.set_ylim([depth, 0])
             ax1.set_xlim([tmin, tmax])
             ax1.grid(True, linestyle='--', linewidth=.5)
@@ -531,9 +598,9 @@ def process_argo(region):
             ax3.tick_params(axis='both', labelsize=13)
             ax3.set_xlabel('Density', fontsize=14, fontweight='bold')
 
-            text = ax4.text(0.125, 1.0, 
+            text = ax4.text(0.125, 1.0,
                             leg_str,
-                            ha='left', va='top', size=15, fontweight='bold')
+                            ha='left', va='top', size=13, fontweight='bold')
 
             text.set_path_effects([path_effects.Normal()])
             ax4.set_axis_off()
@@ -541,7 +608,6 @@ def process_argo(region):
             cplt.create(extent, ax=ax5, bathymetry=False)
             cplt.add_ticks(ax5, extent, fontsize=8)
             ax5.plot(lon, lat, 'bo', transform=conf.projection['data'], zorder=101)
-            # ax5.streamplot(tmp.lon.data, tmp.lat.data, tmp.u.data, tmp.v.data, transform=conf.projection['data'], density=1.5, linewidth=1, color='lightgray', zorder=100)
 
             import shapely
             bathy_flag=False
@@ -559,8 +625,11 @@ def process_argo(region):
                         )
                 except shapely.errors.GEOSException:
                     pass
-        
+
             h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
+            if any_flagged:
+                h.append(QC_FLAGGED_HANDLE)
+                l.append(QC_FLAGGED_HANDLE.get_label())
 
             ax6.legend(h, l, ncol=1, loc='center', fontsize=12)
             ax6.set_axis_off()
@@ -576,7 +645,7 @@ def process_argo(region):
                     ohc_string += f"Argo: {np.nanmean(ohc_float):.4f},  "
             except:
                 pass
-            
+
             try:
                 if np.isnan(ohc_rtofs):
                     ohc_string += 'RTOFS: N/A,  '
@@ -592,15 +661,15 @@ def process_argo(region):
                     ohc_string += f"RTOFS (Parallel): {ohc_rtofsp:.4f},  "
             except:
                 pass
-            
-            try:           
+
+            try:
                 if np.isnan(ohc_espc):
                     ohc_string += 'ESPC: N/A,  '
                 else:
                     ohc_string += f"ESPC: {ohc_espc:.4f},  "
             except:
                 pass
-                
+
             try:
                 if np.isnan(ohc_cmems):
                     ohc_string += 'CMEMS: N/A,  '
@@ -608,140 +677,38 @@ def process_argo(region):
                     ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
             except:
                 pass
-            
-            # try:
-            #     ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
-            # except:
-            #     pass   
-            
+
             plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
- 
 
             plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
-            
+
             # Create a symlink directory
             if ctime > then:
                 os.symlink(full_file, symlink_dir / save_str)
 
-        # # Plot the profile differences 
-        # if not profile_diff_exist:
-        #     fig = plt.figure(constrained_layout=True, figsize=(16, 6))
-        #     widths = [1, 1, 1, 1.5]
-        #     heights = [1, 2, 1]
+                locations_file = symlink_dir / 'locations.json'
+                locations = {}
+                if locations_file.exists():
+                    try:
+                        with open(locations_file, 'r') as f:
+                            locations = json.load(f)
+                    except Exception:
+                        pass
+                locations[save_str] = {
+                    'lat': float(lat),
+                    'lon': float(lon),
+                    'wmo': str(wmo),
+                    'time': tstr
+                }
+                try:
+                    with open(locations_file, 'w') as f:
+                        json.dump(locations, f)
+                except Exception as e:
+                    print(f"Error saving locations.json: {e}")
 
-        #     gs = fig.add_gridspec(3, 4, width_ratios=widths,
-        #                             height_ratios=heights)
-
-        #     ax1 = fig.add_subplot(gs[:, 0]) # Temperature
-        #     ax2 = fig.add_subplot(gs[:, 1], sharey=ax1)  # Salinity
-        #     plt.setp(ax2.get_yticklabels(), visible=False)
-        #     ax3 = fig.add_subplot(gs[:, 2], sharey=ax1) # Density
-        #     plt.setp(ax3.get_yticklabels(), visible=False)
-        #     ax4 = fig.add_subplot(gs[0, -1]) # Title
-        #     ax5 = fig.add_subplot(gs[1, -1], projection=conf.projection['map']) # Map
-        #     ax6 = fig.add_subplot(gs[2, -1]) # Legend
-
-        #     # Temperature 
-        #     diff_g = difference(gdsi['temperature'], df['temp (degree_Celsius)'])
-        #     diff_r = difference(rdsi['temperature'], df['temp (degree_Celsius)'])
-        #     diff_c = difference(cdsi['temperature'], df['temp (degree_Celsius)'])
-            
-        #     glabel = f'{diff_g[1]}, {diff_g[2]}'
-        #     rlabel = f'{diff_r[1]}, {diff_r[2]}'
-        #     clabel = f"{diff_c[1]}, {diff_c[2]}"
-            
-        #     ax1.plot(diff_g[0], gdsi['depth'], 'g-o', label=glabel)
-        #     ax1.plot(diff_r[0], rdsi['depth'], 'r-o', label=rlabel)
-        #     ax1.plot(diff_c[0], cdsi['depth'], 'm-o', label=clabel)
-        #     ax1.axvline(0)
-
-        #     ax1.set_ylim([400, 0])
-        #     ax1.grid(True, linestyle='--', linewidth=.5)
-        #     ax1.tick_params(axis='both', labelsize=13)
-        #     ax1.set_xlabel('Temperature (˚C)', fontsize=14, fontweight='bold')
-        #     ax1.set_ylabel('Depth (m)', fontsize=14, fontweight='bold')
-        #     ax1.legend(title="bias, rms", loc=3, fontsize='small',)
-
-        #     # Salinity
-        #     diff_g = difference(gdsi['salinity'], df['psal (PSU)'])
-        #     diff_r = difference(rdsi['salinity'], df['psal (PSU)'])
-        #     diff_c = difference(cdsi['salinity'], df['psal (PSU)'])
-            
-        #     glabel = f'{diff_g[1]}, {diff_g[2]}'
-        #     rlabel = f'{diff_r[1]}, {diff_r[2]}'
-        #     clabel = f"{diff_c[1]}, {diff_c[2]}"
-            
-        #     # ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
-        #     ax2.plot(diff_g[0], gdsi['depth'], 'g-o', label=glabel)
-        #     ax2.plot(diff_r[0], rdsi['depth'], 'r-o', label=rlabel)
-        #     ax2.plot(diff_c[0], cdsi['depth'], 'm-o', label=clabel)
-        #     ax2.axvline(0)
-
-        #     ax2.set_ylim([400, 0])
-        #     ax2.grid(True, linestyle='--', linewidth=.5)
-        #     ax2.tick_params(axis='both', labelsize=13)
-        #     ax2.set_xlabel('Salinity (psu)', fontsize=14, fontweight='bold')
-        #     ax2.legend(title="bias, rms", loc=3, fontsize='small',)
-        #     # ax2.set_ylabel('Depth (m)', fontsize=14)
-
-        #     # Density
-        #     diff_g = difference(gdsi['density'], df['density'])
-        #     diff_r = difference(rdsi['density'], df['density'])
-        #     diff_c = difference(cdsi['density'], df['density'])
-            
-        #     glabel = f'{diff_g[1]}, {diff_g[2]}'
-        #     rlabel = f'{diff_r[1]}, {diff_r[2]}'
-        #     clabel = f"{diff_c[1]}, {diff_c[2]}"
-            
-        #     # ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
-        #     ax3.plot(diff_g[0], gdsi['depth'],'g-o', label=glabel)
-        #     ax3.plot(diff_r[0], rdsi['depth'], 'r-o', label=rlabel)
-        #     ax3.plot(diff_c[0], cdsi['depth'], 'm-o', label=clabel)
-
-        #     ax3.set_ylim([400, 0])
-        #     ax3.grid(True, linestyle='--', linewidth=.5)
-        #     ax3.tick_params(axis='both', labelsize=13)
-        #     ax3.set_xlabel('Density', fontsize=14, fontweight='bold')
-        #     ax3.legend(title="bias, rms", loc=3, fontsize='small',)
-        #     ax3.axvline(0)
-        #     # ax3.set_ylabel('Depth (m)', fontsize=14)
-
-        #     text = ax4.text(0.125, 1.0, 
-        #                     f'Argo #{wmo}\n'
-        #                     f'ARGO:  { tstr }\n'
-        #                     f'RTOFS: {pd.to_datetime(rdsi.time.data)}\n'
-        #                     f'GOFS : {pd.to_datetime(gdsi.time.data)}\n'
-        #                     f'CMEMS: {pd.to_datetime(cdsi.time.data)}',
-        #                     ha='left', va='top', size=15, fontweight='bold')
-
-        #     text.set_path_effects([path_effects.Normal()])
-        #     ax4.set_axis_off()
-
-        #     # map_create(extent, ax=ax5, ticks=False)
-        #     # map_add_ticks(ax5, extent, fontsize=10)
-        #     cplt.create(extent, ax=ax5)
-            
-        #     ax5.plot(lon, lat, 'ro', transform=conf.projection['data'])
-
-        #     h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
-
-        #     ax6.legend(h, [f'GOFS [{ glon }, { glat }]', f'RTOFS [{ rlon }, { rlat }]', f"Copernicus [{ clon }, { clat }]"], ncol=1, loc='center', fontsize=12)
-        #     ax6.set_axis_off()
-            
-        #     plt.figtext(0.15, 0.001, f'Depths interpolated to every {conf.stride}m', ha="center", fontsize=10, fontstyle='italic')
-
-
-        #     fig.tight_layout()
-        #     fig.subplots_adjust(top=0.9)
-            
-        #     diff_file = temp_save_dir / f'{wmo}-profile-difference-{ctime.strftime("%Y-%m-%dT%H%M%SZ")}.png' 
-
-        #     plt.savefig(diff_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
-        #     plt.close()
-
-def main():    
-    if parallel: 
+def main():
+    if parallel:
         import concurrent.futures
         if isinstance(parallel, bool):
             workers = 6

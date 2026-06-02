@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # %%
 import datetime as dt
+import glob
+import json
 import os
 
 import matplotlib.patheffects as path_effects
@@ -33,6 +35,32 @@ logging.basicConfig(level=logging.INFO)  # or adjust logging level as needed
 # %%
 # set path to save plots
 path_save = (configs.path_plots / "profiles" / "gliders")
+
+# Create and maintain last_14_days directory
+import fcntl as _fcntl
+symlink_dir = path_save / 'last_14_days'
+os.makedirs(symlink_dir, exist_ok=True)
+
+for _f in sorted(glob.glob(os.path.join(symlink_dir, '*.png'))):
+    _m = re.search(r'_(\d{4})(\d{2})(\d{2})_to_', _f)
+    if _m:
+        _file_date = dt.datetime.strptime(f"{_m.group(1)}{_m.group(2)}{_m.group(3)}", '%Y%m%d')
+        if (dt.datetime.now() - _file_date).days > 14:
+            os.remove(_f)
+
+_loc14_file = symlink_dir / 'locations.json'
+_loc14_lock = symlink_dir / 'locations.lock'
+if _loc14_file.exists():
+    try:
+        with open(_loc14_lock, 'w') as _lf:
+            _fcntl.flock(_lf, _fcntl.LOCK_EX)
+            with open(_loc14_file, 'r') as _f:
+                _loc14 = json.load(_f)
+            _loc14 = {k: v for k, v in _loc14.items() if (symlink_dir / k).exists()}
+            with open(_loc14_file, 'w') as _f:
+                json.dump(_loc14, _f)
+    except Exception as _e:
+        print(f"Error cleaning up last_14_days/locations.json: {_e}")
 
 # dac access
 parallel = False
@@ -627,8 +655,50 @@ def plot_glider_profiles(id, gliders):
         plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
 
         plt.savefig(fullfile, dpi=configs.dpi, bbox_inches='tight', pad_inches=0.1)
-        plt.close() 
-    
+        plt.close()
+
+        # Save dated locations.json
+        locations_file = spath / 'locations.json'
+        locations = {}
+        if locations_file.exists():
+            try:
+                with open(locations_file, 'r') as f:
+                    locations = json.load(f)
+            except Exception:
+                pass
+        loc_entry = {
+            'lat': float(mlat),
+            'lon': float(mlon),
+            'glider_id': str(id),
+            'time': str(t0.strftime('%Y-%m-%d'))
+        }
+        locations[fullfile.name] = loc_entry
+        try:
+            with open(locations_file, 'w') as f:
+                json.dump(locations, f)
+        except Exception as e:
+            print(f"Error saving locations.json: {e}")
+
+        # Update last_14_days symlink and locations.json
+        symlink_target = symlink_dir / fullfile.name
+        if not symlink_target.exists():
+            try:
+                os.symlink(fullfile, symlink_target)
+            except Exception as e:
+                print(f"Error creating symlink: {e}")
+        try:
+            with open(_loc14_lock, 'w') as lf:
+                _fcntl.flock(lf, _fcntl.LOCK_EX)
+                loc14 = {}
+                if _loc14_file.exists():
+                    with open(_loc14_file, 'r') as f:
+                        loc14 = json.load(f)
+                loc14[fullfile.name] = loc_entry
+                with open(_loc14_file, 'w') as f:
+                    json.dump(loc14, f)
+        except Exception as e:
+            print(f"Error updating last_14_days/locations.json: {e}")
+
 from functools import partial
 from joblib import Parallel, delayed
 
