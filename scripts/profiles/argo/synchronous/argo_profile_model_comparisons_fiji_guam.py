@@ -196,9 +196,9 @@ def process_argo(region_key):
 
     # Prune stale symlinks
     for f in sorted(glob.glob(os.path.join(symlink_dir, '*.png'))):
-        match = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}\d{2}\d{2}', f)
+        match = re.search(r'\d{4}-\d{2}-\d{2}T\d{4}Z', f)
         if match:
-            date_time_obj = datetime.strptime(match.group(), '%Y-%m-%dT%H%M%S')
+            date_time_obj = datetime.strptime(match.group(), '%Y-%m-%dT%H%MZ')
             if (datetime.now() - date_time_obj).days > 14:
                 print(f"The file {f} is older than 14 days.")
                 os.remove(f)

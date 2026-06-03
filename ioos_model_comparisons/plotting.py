@@ -3969,13 +3969,15 @@ def plot_ohc(ds1, ds2, extent, region_name,
              gliders=None,
              eez=False,
              cols=6,
-             path_save=os.getcwd(), 
-             transform=dict(map=ccrs.Mercator(), 
+             path_save=os.getcwd(),
+             transform=dict(map=ccrs.Mercator(),
                             data=ccrs.PlateCarree()
-                            ), 
+                            ),
              figsize=(14,8),
              dpi=150,
-             overwrite=False
+             overwrite=False,
+             storms=None,
+             forecasts=None,
              ):
 
     # Convert ds.time value to a normal datetime
@@ -4186,30 +4188,10 @@ def plot_ohc(ds1, ds2, extent, region_name,
     ax2.set_title(f"{ds2.model.upper()} - {time2.strftime(tstr_title)}", fontsize=16, fontweight='bold')
     fig.suptitle(f"Ocean Heat Content", fontweight="bold", fontsize=20)
 
-    # from ioos_model_comparisons.plotting_hurricanes import plot_storms
-    # from tropycal import realtime
-    # import datetime as dt
-    
-    # realtime_obj = realtime.Realtime()
-
-    # realtime_obj.list_active_storms(basin='north_atlantic')
-
-    # # realtime_obj.plot_summary(domain={'w':-100,'e':-10,'s':4,'n':60})
-
-    # #Get realtime forecasts
-    # forecasts = []
-    # for key in realtime_obj.storms:
-    #     if realtime_obj[key].invest == False:
-    #         try:
-    #             forecasts.append(realtime_obj.get_storm(key).get_forecast_realtime(True))
-    #         except:
-    #             forecasts.append({})
-    #     else:
-    #         forecasts.append({})
-    # forecasts = [entry if 'init' in entry.keys() and (dt.utcnow() - entry['init']).total_seconds() / 3600.0 <= 12 else {} for entry in forecasts]
-    # storms = [realtime_obj.get_storm(key) for key in realtime_obj.storms]
-
-    # plot_storms(ax, storms, forecasts, zorder=80)
+    if storms and forecasts:
+        from ioos_model_comparisons.plotting_hurricanes import plot_storms
+        for ax in [ax1, ax2]:
+            plot_storms(ax, storms, forecasts, zorder=80)
 
 
     # # Hide x labels and tick labels for top plots and y ticks for right plots.
@@ -4596,6 +4578,8 @@ def plot_ohc_three_panel(ohc_rtofs, ohc_comp, extent, region_name, comp_model_na
                          diff_lim=30,
                          xticks=None,
                          yticks=None,
+                         storms=None,
+                         forecasts=None,
                          ):
     """
     Three-panel OHC figure: RTOFS | comparison model | difference (RTOFS - comp).
@@ -4741,6 +4725,10 @@ def plot_ohc_three_panel(ohc_rtofs, ohc_comp, extent, region_name, comp_model_na
 
         if eez:
             map_add_eez(ax, color="white", zorder=120, linestyle="-", linewidth=0.5)
+
+        if storms and forecasts:
+            from ioos_model_comparisons.plotting_hurricanes import plot_storms
+            plot_storms(ax, storms, forecasts, zorder=80)
 
         ax.set_title(label, fontsize=16, fontweight="bold", pad=6)
 

@@ -219,12 +219,12 @@ def process_argo(region):
     # Cleanup symlink directory
     for f in sorted(glob.glob(os.path.join(symlink_dir, '*.png'))):
         # Extract date and time from string
-        match = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}\d{2}\d{2}', f)
+        match = re.search(r'\d{4}-\d{2}-\d{2}T\d{4}Z', f)
         if match:
             date_time_str = match.group()
 
             # Convert string to datetime object
-            date_time_obj = datetime.strptime(date_time_str, '%Y-%m-%dT%H%M%S')
+            date_time_obj = datetime.strptime(date_time_str, '%Y-%m-%dT%H%MZ')
 
             # Check if the date in the string is older than 14 days
             if (datetime.now() - date_time_obj).days > 14:
