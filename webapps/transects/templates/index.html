@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ocean Model Plotter · RUCOOL</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design tokens (Rutgers / RUCOOL palette) ── */
+    :root {
+      --navy:          #cc0033;
+      --navy-mid:      #b3002d;
+      --navy-light:    #e60039;
+      --ocean-blue:    #5f6a72;
+      --ocean-accent:  #000000;
+      --sidebar-bg:    #fafafa;
+      --sidebar-border:#e5e7ea;
+      --panel-bg:      #ffffff;
+      --panel-border:  #d8dce1;
+      --text-main:     #1a1a1a;
+      --text-muted:    #5f6a72;
+      --tab-bar-bg:    #f2f4f7;
+      --radius-md:     .5rem;
+      --radius-sm:     .35rem;
+      --shadow-card:   0 2px 12px rgba(0,0,0,.08);
+      --transition:    .18s ease;
+    }
+
+    /* ── reset ── */
+    html, body {
+      height: 100%; margin: 0; overflow: hidden;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-size: 13px; color: var(--text-main);
+      background: var(--tab-bar-bg);
+    }
+
+    /* ── top-level layout ── */
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    #workspace { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── navbar ── */
+    .navbar {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 60%, var(--navy-light) 100%) !important;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      box-shadow: 0 2px 16px rgba(0,0,0,.25);
+      padding: 0 14px;
+      min-height: 48px;
+      flex-shrink: 0;
+    }
+    .navbar-brand {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: -.01em;
+      color: #fff !important;
+      padding: 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .navbar-brand .brand-sep { color: rgba(255,255,255,.4); margin: 0 4px; }
+    .navbar-brand .brand-sub { font-weight: 400; color: rgba(255,255,255,.55); font-size: 0.82rem; }
+
+    /* mode pills */
+    .nav-mode .nav-link {
+      color: rgba(255,255,255,.7);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 4px 14px;
+      border-radius: 20px;
+      border: 1px solid transparent;
+      transition: all .15s;
+    }
+    .nav-mode .nav-link:hover  { color: #fff; border-color: rgba(255,255,255,.35); }
+    .nav-mode .nav-link.active { background: rgba(255,255,255,.18); color: #fff; border-color: rgba(255,255,255,.35); }
+
+    .navbar-external {
+      font-size: 0.78rem; color: rgba(255,255,255,.45) !important;
+      text-decoration: none; margin-left: 16px;
+    }
+    .navbar-external:hover { color: rgba(255,255,255,.8) !important; }
+
+    /* ── sidebar ── */
+    #sidebar {
+      width: 305px; min-width: 305px; height: 100%;
+      overflow-y: auto;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--sidebar-border);
+      padding: 8px 12px 20px;
+      font-size: 0.82rem;
+    }
+
+    /* ── section labels ── */
+    .section-label {
+      font-weight: 700;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-muted);
+      margin-top: 12px;
+      margin-bottom: 4px;
+      padding-bottom: 3px;
+      border-bottom: 1px solid var(--sidebar-border);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .section-label .badge { font-size: .6rem; font-weight: 600; letter-spacing: 0; }
+
+    /* ── main panel ── */
+    #main     { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    #map-wrap { flex: 1; position: relative; }
+    #map      { position: absolute; inset: 0; }
+
+    /* map hint pill */
+    #map-hint-pill {
+      position: absolute;
+      bottom: 10px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: rgba(26,26,26,.82);
+      color: #fff; font-size: 0.75rem;
+      padding: 3px 12px; border-radius: 20px;
+      pointer-events: none; white-space: nowrap;
+      box-shadow: 0 1px 4px rgba(0,0,0,.3);
+    }
+
+    /* ── misc ── */
+    .form-label { color: var(--text-muted); font-weight: 500; }
+
+    /* CMEMS credential card */
+    .creds-card {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      margin-bottom: 6px;
+    }
+
+    /* ── generate / primary button ── */
+    .btn-generate {
+      background: linear-gradient(135deg, var(--ocean-blue) 0%, var(--ocean-accent) 100%);
+      border: none; color: #fff;
+      font-weight: 600; font-size: 0.85rem; letter-spacing: .02em;
+      border-radius: var(--radius-sm);
+      box-shadow: 0 2px 8px rgba(95,106,114,.35);
+      transition: opacity var(--transition), box-shadow var(--transition), transform var(--transition);
+    }
+    .btn-generate:hover  { opacity: .9; box-shadow: 0 4px 14px rgba(95,106,114,.45); transform: translateY(-1px); color: #fff; }
+    .btn-generate:active { transform: translateY(0); color: #fff; }
+
+    /* ── outline secondary buttons ── */
+    .btn-outline-secondary {
+      border-color: var(--sidebar-border);
+      color: var(--text-muted);
+      font-size: .78rem;
+      border-radius: var(--radius-sm);
+      transition: background var(--transition), color var(--transition);
+    }
+    .btn-outline-secondary:hover { background: var(--ocean-blue); color: #fff; border-color: var(--ocean-blue); }
+
+    /* ── outline-primary used in platforms ── */
+    .btn-outline-primary {
+      border-color: var(--navy);
+      color: var(--navy);
+      font-size: .78rem;
+      border-radius: var(--radius-sm);
+    }
+    .btn-outline-primary:hover { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+    /* ── history panel ── */
+    #panel-history { margin-top: 4px; }
+    .history-item {
+      display: flex; align-items: center; gap: 7px;
+      padding: 4px 6px; border-radius: var(--radius-sm); cursor: pointer;
+      border: 1px solid var(--panel-border);
+      background: var(--panel-bg); margin-bottom: 4px;
+      transition: background .1s, border-color .1s;
+      box-shadow: var(--shadow-card);
+    }
+    .history-item:hover { background: #fff0f3; border-color: #f0a0b0; }
+    .history-item img   { width: 56px; height: 38px; object-fit: cover; border-radius: 2px; flex-shrink: 0; }
+    .history-item .hi-label { font-size: .72rem; font-weight: 600; color: var(--text-main); line-height: 1.2;
+                               overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 185px; }
+    .history-item .hi-meta  { font-size: .67rem; color: var(--text-muted); }
+
+    /* ── overlay trigger button ── */
+    #overlay-trigger-btn {
+      position: absolute; top: 10px; right: 10px; z-index: 1000;
+      background: var(--panel-bg); border: 2px solid rgba(0,0,0,.2);
+      border-radius: var(--radius-sm); padding: 4px 10px;
+      font-size: 0.78rem; font-weight: 600; cursor: pointer;
+      box-shadow: 0 1px 5px rgba(0,0,0,.3); color: var(--text-main);
+      display: flex; align-items: center; gap: 5px;
+      transition: background .15s, color .15s, border-color .15s;
+    }
+    #overlay-trigger-btn:hover { background: #f4f4f4; }
+    #overlay-trigger-btn.overlay-active { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+    #basemap-selector {
+      position: absolute; top: 10px; right: 110px; z-index: 1000;
+      background: var(--panel-bg); border: 2px solid rgba(0,0,0,.2);
+      border-radius: var(--radius-sm); padding: 4px 8px;
+      font-size: 0.78rem; font-weight: 600;
+      box-shadow: 0 1px 5px rgba(0,0,0,.3); color: var(--text-main);
+      display: flex; align-items: center; gap: 6px;
+    }
+    #basemap-select {
+      border: none; outline: none; font-size: 0.78rem; font-weight: 600;
+      background: transparent; cursor: pointer; color: var(--text-main);
+    }
+
+    /* ── overlay modal ── */
+    #overlayModal { pointer-events: none; }
+    #overlayModal .modal-dialog {
+      pointer-events: all; position: fixed; top: 54px; right: 10px;
+      margin: 0; width: 300px; max-width: 300px; transform: none !important;
+    }
+    #overlayModal .modal-header { background: linear-gradient(90deg, var(--navy) 0%, var(--navy-light) 100%); color: #fff; }
+    #overlayModal .modal-header .btn-close { filter: invert(1); }
+
+    /* ── plot modal header ── */
+    #plotModal .modal-header { background: linear-gradient(90deg, var(--navy) 0%, var(--navy-light) 100%); color: #fff; }
+    #plotModal .modal-header .btn-close { filter: invert(1); }
+    #plotModal .modal-title { color: #fff; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ═══════════ NAVBAR ═══════════ -->
+  <nav class="navbar px-3">
+    <div class="d-flex align-items-center gap-3">
+
+    <!-- brand -->
+    <a class="navbar-brand mb-0" href="https://rucool.marine.rutgers.edu" target="_blank">
+      <img src="{{ url_for('static', filename='img/logo.png') }}" alt="RUCOOL Logo" height="40" class="me-2" />
+      Ocean Model Plotter
+    </a>
+
+    <!-- mode switcher -->
+    <ul class="nav nav-mode mb-0">
+      <li class="nav-item">
+        <a class="nav-link active" id="btn-transect" href="#" onclick="setMode('transect');return false;">
+          <i class="fa-solid fa-route me-1"></i>Transect
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" id="btn-profile" href="#" onclick="setMode('profile');return false;">
+          <i class="fa-solid fa-arrow-down me-1"></i>Profile
+        </a>
+      </li>
+    </ul>
+    </div>
+  </nav>
+
+  <div id="workspace">
+
+    <!-- ═══════════ SIDEBAR ═══════════ -->
+    <div id="sidebar">
+
+      <!-- ── SHARED: Date & Time ── -->
+      <div class="section-label"><i class="fa-regular fa-calendar"></i> Date &amp; Time</div>
+      <div class="row g-1 mb-1">
+        <div class="col-7">
+          <label class="form-label mb-0">Date</label>
+          <input type="date" id="date" class="form-control form-control-sm" value="{{ default_date }}" />
+        </div>
+        <div class="col-5">
+          <label class="form-label mb-0">Hour (UTC)</label>
+          <select id="hour" class="form-select form-select-sm">
+            <option value="0">00:00</option>
+            <option value="6">06:00</option>
+            <option value="12">12:00</option>
+            <option value="18">18:00</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- ══════════ TRANSECT PANEL ══════════ -->
+      <div id="panel-transect">
+
+        <div class="section-label"><i class="fa-solid fa-layer-group"></i> Model</div>
+        <select id="model" class="form-select form-select-sm mb-1">
+          {% for m in model_labels %}
+          <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+        </select>
+        <div id="rtofs-warn-transect" class="alert alert-warning py-1 px-2 mb-1 d-none" style="font-size:.73rem;">
+          <i class="fa-solid fa-triangle-exclamation me-1"></i>RTOFS is currently only available for the US East Coast.
+        </div>
+
+        <!-- CMEMS creds — transect -->
+        <div id="cmems-creds-transect" class="creds-card" style="display:none;">
+          <div class="d-flex align-items-center mb-1" style="gap:6px;">
+            <i class="fa-solid fa-key text-secondary" style="font-size:.8rem;"></i>
+            <span class="fw-semibold" style="font-size:.78rem;">CMEMS Credentials</span>
+            <a href="https://marine.copernicus.eu" target="_blank" class="ms-auto text-decoration-none"
+               style="font-size:.72rem;color:#0d6efd;">Free account <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.6rem;"></i></a>
+          </div>
+          <input type="text" id="t_cmems_username" autocomplete="username"
+                 class="form-control form-control-sm mb-1" placeholder="Username" />
+          <div class="input-group input-group-sm mb-1">
+            <input type="password" id="t_cmems_password" autocomplete="current-password"
+                   class="form-control form-control-sm" placeholder="Password" />
+            <button class="btn btn-outline-secondary btn-sm" type="button"
+                    onclick="togglePw('t_cmems_password')" tabindex="-1">
+              <i class="fa-regular fa-eye"></i>
+            </button>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="t_cmems_remember" />
+            <label class="form-check-label" for="t_cmems_remember" style="font-size:.75rem;color:#6c757d;">
+              Remember in this browser
+            </label>
+          </div>
+        </div>
+
+        <div class="section-label">
+          <i class="fa-solid fa-draw-polygon"></i> Transect Endpoints
+          <span class="badge bg-secondary ms-auto" id="t-click-status">Click map to set</span>
+        </div>
+        <div class="row g-1 mb-1">
+          <div class="col-6">
+            <label class="form-label mb-0" style="color:#198754;">
+              <i class="fa-solid fa-circle-dot" style="font-size:.65rem;"></i> Start Lon
+            </label>
+            <input type="number" id="start_lon" step="0.000001" class="form-control form-control-sm" value="{{ default_start[0] }}" />
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="color:#198754;">
+              <i class="fa-solid fa-circle-dot" style="font-size:.65rem;"></i> Start Lat
+            </label>
+            <input type="number" id="start_lat" step="0.000001" class="form-control form-control-sm" value="{{ default_start[1] }}" />
+          </div>
+        </div>
+        <div class="row g-1 mb-1">
+          <div class="col-6">
+            <label class="form-label mb-0" style="color:#dc3545;">
+              <i class="fa-solid fa-circle-dot" style="font-size:.65rem;"></i> End Lon
+            </label>
+            <input type="number" id="end_lon" step="0.000001" class="form-control form-control-sm" value="{{ default_end[0] }}" />
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0" style="color:#dc3545;">
+              <i class="fa-solid fa-circle-dot" style="font-size:.65rem;"></i> End Lat
+            </label>
+            <input type="number" id="end_lat" step="0.000001" class="form-control form-control-sm" value="{{ default_end[1] }}" />
+          </div>
+        </div>
+
+        <div class="section-label" role="button" data-bs-toggle="collapse"
+             data-bs-target="#options-body" aria-expanded="false"
+             style="cursor:pointer; user-select:none;">
+          <i class="fa-solid fa-sliders"></i> Transect Options
+          <i class="fa-solid fa-chevron-down ms-auto" id="options-chevron"
+             style="font-size:.6rem; transition:transform .2s;"></i>
+        </div>
+        <div class="collapse" id="options-body">
+          <div class="row g-1 mb-1">
+            <div class="col-6">
+              <label class="form-label mb-0">Points along transect</label>
+              <input type="number" id="npts" min="10" max="2000" step="10" class="form-control form-control-sm" value="500" />
+            </div>
+            <div class="col-6">
+              <label class="form-label mb-0">X-axis</label>
+              <select id="x_axis" class="form-select form-select-sm">
+                <option value="distance">distance (km)</option>
+                <option value="lon">longitude</option>
+                <option value="lat">latitude</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-label" role="button" data-bs-toggle="collapse"
+             data-bs-target="#depth-range-body" aria-expanded="false"
+             style="cursor:pointer; user-select:none;">
+          <i class="fa-solid fa-water"></i> Depth Range
+          <i class="fa-solid fa-chevron-down ms-auto" id="depth-range-chevron"
+             style="font-size:.6rem; transition:transform .2s;"></i>
+        </div>
+        <div class="collapse" id="depth-range-body">
+          <div class="row g-1 mb-1">
+            <div class="col-4">
+              <label class="form-label mb-0">Min (m)</label>
+              <input type="number" id="depth_min" min="0" max="6000" step="10" class="form-control form-control-sm" value="0" />
+            </div>
+            <div class="col-4">
+              <label class="form-label mb-0">Max (m)</label>
+              <input type="number" id="depth_max" min="10" max="6000" step="10" class="form-control form-control-sm" value="1000" />
+            </div>
+            <div class="col-4">
+              <label class="form-label mb-0">Step (m)</label>
+              <input type="number" id="depth_spacing" min="1" max="500" step="1" class="form-control form-control-sm" value="10" />
+            </div>
+          </div>
+        </div>
+
+        <div class="section-label" role="button" data-bs-toggle="collapse"
+             data-bs-target="#color-limits-body" aria-expanded="false"
+             style="cursor:pointer; user-select:none;">
+          <i class="fa-solid fa-palette"></i> Color Limits
+          <i class="fa-solid fa-chevron-down ms-auto" id="color-limits-chevron"
+             style="font-size:.6rem; transition:transform .2s;"></i>
+        </div>
+        <div class="collapse" id="color-limits-body">
+          <div class="row g-1 mb-1 align-items-end">
+            <div class="col-12"><span class="text-muted" style="font-size:.72rem;">Temperature (°C)</span></div>
+            <div class="col-4"><label class="form-label mb-0">Min</label><input type="number" id="temp_min" step="0.5" class="form-control form-control-sm" value="4" /></div>
+            <div class="col-4"><label class="form-label mb-0">Max</label><input type="number" id="temp_max" step="0.5" class="form-control form-control-sm" value="28" /></div>
+            <div class="col-4"><label class="form-label mb-0">Step</label><input type="number" id="temp_step" step="0.1" class="form-control form-control-sm" value="1" /></div>
+          </div>
+          <div class="row g-1 mb-1 align-items-end">
+            <div class="col-12"><span class="text-muted" style="font-size:.72rem;">Salinity (PSU)</span></div>
+            <div class="col-4"><label class="form-label mb-0">Min</label><input type="number" id="sal_min" step="0.1" class="form-control form-control-sm" value="34.9" /></div>
+            <div class="col-4"><label class="form-label mb-0">Max</label><input type="number" id="sal_max" step="0.1" class="form-control form-control-sm" value="36.6" /></div>
+            <div class="col-4"><label class="form-label mb-0">Step</label><input type="number" id="sal_step" step="0.05" class="form-control form-control-sm" value="0.1" /></div>
+          </div>
+          <div class="row g-1 mb-2 align-items-end">
+            <div class="col-12"><span class="text-muted" style="font-size:.72rem;">Speed (m/s)</span></div>
+            <div class="col-6"><label class="form-label mb-0">Max</label><input type="number" id="spd_max" step="0.1" class="form-control form-control-sm" value="1" /></div>
+            <div class="col-6"><label class="form-label mb-0">Step</label><input type="number" id="spd_step" step="0.05" class="form-control form-control-sm" value="0.1" /></div>
+          </div>
+        </div>
+
+        <div class="section-label" role="button" data-bs-toggle="collapse"
+             data-bs-target="#interp-body" aria-expanded="false"
+             style="cursor:pointer; user-select:none;">
+          <i class="fa-solid fa-wave-square"></i> Interpolation
+          <i class="fa-solid fa-chevron-down ms-auto" id="interp-chevron"
+             style="font-size:.6rem; transition:transform .2s;"></i>
+        </div>
+        <div class="collapse" id="interp-body">
+          <div class="btn-group w-100 mb-2" role="group">
+            <input type="radio" class="btn-check" name="t_interp" id="t-interp-linear" value="linear" checked />
+            <label class="btn btn-outline-secondary btn-sm" for="t-interp-linear">Linear</label>
+            <input type="radio" class="btn-check" name="t_interp" id="t-interp-nearest" value="nearest" />
+            <label class="btn btn-outline-secondary btn-sm" for="t-interp-nearest">Nearest Neighbor</label>
+          </div>
+        </div>
+
+        <div id="sidebar-error" class="alert alert-danger py-1 px-2 mb-1 d-none" style="font-size:.75rem;"></div>
+
+        <button class="btn btn-generate w-100 mt-2" onclick="runTransect()">
+          <i class="fa-solid fa-play me-1"></i> Generate Transect
+        </button>
+
+      </div><!-- /#panel-transect -->
+
+      <!-- ══════════ PROFILE PANEL ══════════ -->
+      <div id="panel-profile" style="display:none;">
+
+        <div class="section-label"><i class="fa-solid fa-layer-group"></i> Models</div>
+        <div class="form-check mb-1">
+          <input class="form-check-input" type="checkbox" id="inc_rtofs" checked />
+          <label class="form-check-label" for="inc_rtofs">
+            RTOFS East Coast <span class="text-muted" style="font-size:.72rem;">(NOAA)</span>
+          </label>
+        </div>
+        <div id="rtofs-warn-profile" class="alert alert-warning py-1 px-2 mb-1 d-none" style="font-size:.73rem;">
+          <i class="fa-solid fa-triangle-exclamation me-1"></i>RTOFS is currently only available for the US East Coast.
+        </div>
+        <div class="form-check mb-1">
+          <input class="form-check-input" type="checkbox" id="inc_espc" />
+          <label class="form-check-label" for="inc_espc">
+            ESPC Global <span class="text-muted" style="font-size:.72rem;">(Navy)</span>
+          </label>
+        </div>
+        <div class="form-check mb-1">
+          <input class="form-check-input" type="checkbox" id="inc_cmems" />
+          <label class="form-check-label" for="inc_cmems">
+            CMEMS Global <span class="text-muted" style="font-size:.72rem;">(Copernicus)</span>
+          </label>
+        </div>
+
+        <!-- CMEMS creds — profile -->
+        <div id="cmems-creds-profile" class="creds-card" style="display:none;">
+          <div class="d-flex align-items-center mb-1" style="gap:6px;">
+            <i class="fa-solid fa-key text-secondary" style="font-size:.8rem;"></i>
+            <span class="fw-semibold" style="font-size:.78rem;">CMEMS Credentials</span>
+            <a href="https://marine.copernicus.eu" target="_blank" class="ms-auto text-decoration-none"
+               style="font-size:.72rem;color:#0d6efd;">Free account <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:.6rem;"></i></a>
+          </div>
+          <input type="text" id="p_cmems_username" autocomplete="username"
+                 class="form-control form-control-sm mb-1" placeholder="Username" />
+          <div class="input-group input-group-sm mb-1">
+            <input type="password" id="p_cmems_password" autocomplete="current-password"
+                   class="form-control form-control-sm" placeholder="Password" />
+            <button class="btn btn-outline-secondary btn-sm" type="button"
+                    onclick="togglePw('p_cmems_password')" tabindex="-1">
+              <i class="fa-regular fa-eye"></i>
+            </button>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="p_cmems_remember" />
+            <label class="form-check-label" for="p_cmems_remember" style="font-size:.75rem;color:#6c757d;">
+              Remember in this browser
+            </label>
+          </div>
+        </div>
+
+        <div class="section-label">
+          <i class="fa-solid fa-location-dot"></i> Profile Location
+          <span class="badge bg-secondary ms-auto" id="p-click-status">Click map to set</span>
+        </div>
+        <div class="row g-1 mb-1">
+          <div class="col-6">
+            <label class="form-label mb-0">Longitude</label>
+            <input type="number" id="prof_lon" step="0.01" class="form-control form-control-sm" value="-68.0" />
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0">Latitude</label>
+            <input type="number" id="prof_lat" step="0.01" class="form-control form-control-sm" value="41.5" />
+          </div>
+        </div>
+
+        <div class="section-label"><i class="fa-solid fa-water"></i> Depth</div>
+        <div class="mb-2">
+          <div class="d-flex justify-content-between">
+            <label class="form-label mb-0">Max depth (m)</label>
+            <span class="fw-semibold text-primary" id="depth-label">400</span>
+          </div>
+          <input type="range" id="prof_max_depth" min="50" max="5000" step="50" value="400"
+                 class="form-range"
+                 oninput="document.getElementById('depth-label').textContent=this.value" />
+          <div class="d-flex justify-content-between" style="font-size:.68rem;color:#6c757d;margin-top:-2px;">
+            <span>50 m</span><span>5000 m</span>
+          </div>
+        </div>
+
+        <div class="section-label"><i class="fa-solid fa-chart-line"></i> Optional Variables</div>
+        <div class="d-flex gap-3 mb-1 flex-wrap">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="inc_u" checked />
+            <label class="form-check-label" for="inc_u">U velocity</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="inc_v" checked />
+            <label class="form-check-label" for="inc_v">V velocity</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="inc_ss" checked />
+            <label class="form-check-label" for="inc_ss">Sound speed</label>
+          </div>
+        </div>
+
+        <div class="section-label"><i class="fa-solid fa-wave-square"></i> Interpolation</div>
+        <div class="btn-group w-100 mb-2" role="group">
+          <input type="radio" class="btn-check" name="p_interp" id="p-interp-linear" value="linear" checked />
+          <label class="btn btn-outline-secondary btn-sm" for="p-interp-linear">Linear</label>
+          <input type="radio" class="btn-check" name="p_interp" id="p-interp-nearest" value="nearest" />
+          <label class="btn btn-outline-secondary btn-sm" for="p-interp-nearest">Nearest Neighbor</label>
+        </div>
+
+        <button class="btn btn-generate w-100 mt-2" onclick="runProfile()">
+          <i class="fa-solid fa-play me-1"></i> Generate Profile
+        </button>
+
+      </div><!-- /#panel-profile -->
+
+      <!-- ══════════ HISTORY ══════════ -->
+      <div id="panel-history">
+        <div class="section-label">
+          <i class="fa-solid fa-clock-rotate-left"></i> History
+          <button class="btn btn-outline-secondary py-0 px-1 ms-auto"
+                  style="font-size:.62rem;line-height:1.5;border-color:#dee2e6;"
+                  onclick="clearHistory()">Clear</button>
+        </div>
+        <div id="history-list">
+          <div class="text-muted" style="font-size:.75rem;">No plots generated yet.</div>
+        </div>
+      </div>
+
+    </div><!-- /#sidebar -->
+
+    <!-- ═══════════ MAIN ═══════════ -->
+    <div id="main">
+      <div id="map-wrap">
+        <div id="map"></div>
+        <button id="overlay-trigger-btn"
+                data-bs-toggle="modal" data-bs-target="#overlayModal"
+                title="Toggle map overlay">
+          <i class="fa-solid fa-layer-group"></i> Layers
+        </button>
+        <div id="basemap-selector" title="Change basemap">
+          <i class="fa-solid fa-map"></i>
+          <select id="basemap-select">
+            <option value="voyager">Voyager</option>
+            <option value="esri-ocean" selected>ESRI Ocean</option>
+            <option value="esri-satellite">Satellite</option>
+            <option value="carto-dark">Dark Matter</option>
+            <option value="osm">OpenStreetMap</option>
+          </select>
+        </div>
+        <div id="map-hint-pill">
+          <i class="fa-solid fa-hand-pointer me-1"></i><span id="hint-text">Click to set start point</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /#workspace -->
+</div><!-- /#app -->
+
+<!-- ═══════════ OVERLAY MODAL ═══════════ -->
+<div class="modal" id="overlayModal" tabindex="-1"
+     data-bs-backdrop="false" data-bs-keyboard="true">
+  <div class="modal-dialog shadow-lg">
+    <div class="modal-content">
+
+      <div class="modal-header py-2 px-3">
+        <span class="modal-title fw-bold" style="font-size:.88rem;">
+          <i class="fa-solid fa-map me-1 text-primary"></i>Map Overlay
+        </span>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body px-3 py-2" style="font-size:.82rem;">
+
+        <!-- Enable toggle -->
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" id="overlay-enable"
+                 onchange="overlayToggle()" />
+          <label class="form-check-label fw-semibold" for="overlay-enable">
+            Show surface overlay
+          </label>
+        </div>
+
+        <hr class="my-2" />
+
+        <!-- Model -->
+        <div class="mb-2">
+          <label class="form-label mb-1">Model</label>
+          <div class="d-flex flex-column gap-1" id="overlay-model-radios">
+            <div class="d-flex align-items-center gap-2">
+              <input class="form-check-input mt-0" type="radio" name="overlay-model-radio"
+                     id="om-rtofs" value="RTOFS" checked onchange="overlayModelChange()" />
+              <label class="form-check-label" for="om-rtofs">
+                RTOFS East
+                <span class="badge bg-success ms-1" style="font-size:.6rem;">WMS · instant</span>
+              </label>
+            </div>
+            <!-- RTOFS-P commented out
+            <div class="d-flex align-items-center gap-2">
+              <input class="form-check-input mt-0" type="radio" name="overlay-model-radio"
+                     id="om-rtofsp" value="RTOFS-P" onchange="overlayModelChange()" />
+              <label class="form-check-label" for="om-rtofsp">
+                RTOFS-P Parallel
+                <span class="badge bg-success ms-1" style="font-size:.6rem;">WMS · instant</span>
+              </label>
+            </div>
+            -->
+            <div class="d-flex align-items-center gap-2">
+              <input class="form-check-input mt-0" type="radio" name="overlay-model-radio"
+                     id="om-espc" value="ESPC" onchange="overlayModelChange()" />
+              <label class="form-check-label" for="om-espc">
+                ESPC <span class="text-muted">(Navy)</span>
+                <span class="badge bg-success ms-1" style="font-size:.6rem;">WMS · instant</span>
+              </label>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <input class="form-check-input mt-0" type="radio" name="overlay-model-radio"
+                     id="om-cmems" value="CMEMS" onchange="overlayModelChange()" />
+              <label class="form-check-label" for="om-cmems">CMEMS <span class="text-muted">(Copernicus)</span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Variable -->
+        <div class="mb-2">
+          <label class="form-label mb-1">Variable</label>
+          <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="overlay-var-radio" id="ov-temp"
+                   value="temperature" checked onchange="overlayVariableChange()" />
+            <label class="btn btn-outline-secondary btn-sm" for="ov-temp">Temp</label>
+
+            <input type="radio" class="btn-check" name="overlay-var-radio" id="ov-sal"
+                   value="salinity" onchange="overlayVariableChange()" />
+            <label class="btn btn-outline-secondary btn-sm" for="ov-sal">Salinity</label>
+
+            <input type="radio" class="btn-check" name="overlay-var-radio" id="ov-spd"
+                   value="speed" onchange="overlayVariableChange()" />
+            <label class="btn btn-outline-secondary btn-sm" for="ov-spd">Speed</label>
+          </div>
+        </div>
+
+        <!-- Depth -->
+        <div class="mb-2">
+          <label class="form-label mb-1">Depth</label>
+          <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="overlay-depth-radio" id="od-0"
+                   value="0" checked onchange="overlayParamChange()" />
+            <label class="btn btn-outline-secondary btn-sm" for="od-0">0 m</label>
+
+            <input type="radio" class="btn-check" name="overlay-depth-radio" id="od-500"
+                   value="500" onchange="overlayParamChange()" />
+            <label class="btn btn-outline-secondary btn-sm" for="od-500">500 m</label>
+
+            <input type="radio" class="btn-check" name="overlay-depth-radio" id="od-1500"
+                   value="1500" onchange="overlayParamChange()" />
+            <label class="btn btn-outline-secondary btn-sm" for="od-1500">1500 m</label>
+          </div>
+        </div>
+
+        <!-- Color range -->
+        <div class="row g-1 mb-2">
+          <div class="col-6">
+            <label class="form-label mb-0">Min</label>
+            <input type="number" id="overlay-vmin" step="0.5" value="4"
+                   class="form-control form-control-sm" onchange="overlayParamChange()" />
+          </div>
+          <div class="col-6">
+            <label class="form-label mb-0">Max</label>
+            <input type="number" id="overlay-vmax" step="0.5" value="28"
+                   class="form-control form-control-sm" onchange="overlayParamChange()" />
+          </div>
+        </div>
+
+        <!-- Opacity -->
+        <div class="mb-2">
+          <div class="d-flex justify-content-between">
+            <label class="form-label mb-0">Opacity</label>
+            <span id="overlay-opacity-label"
+                  style="font-size:.78rem;font-weight:600;color:#0d6efd;">0.60</span>
+          </div>
+          <input type="range" id="overlay-opacity" min="0.1" max="1.0" step="0.05" value="0.6"
+                 class="form-range"
+                 oninput="document.getElementById('overlay-opacity-label').textContent=parseFloat(this.value).toFixed(2); overlayOpacityChange()" />
+        </div>
+
+        <!-- CMEMS creds -->
+        <div id="overlay-cmems-creds" class="creds-card" style="display:none;">
+          <div class="d-flex align-items-center mb-1" style="gap:6px;">
+            <i class="fa-solid fa-key text-secondary" style="font-size:.8rem;"></i>
+            <span class="fw-semibold" style="font-size:.78rem;">CMEMS Credentials</span>
+          </div>
+          <input type="text" id="ov_cmems_username" autocomplete="username"
+                 class="form-control form-control-sm mb-1" placeholder="Username" />
+          <div class="input-group input-group-sm">
+            <input type="password" id="ov_cmems_password" autocomplete="current-password"
+                   class="form-control form-control-sm" placeholder="Password" />
+            <button class="btn btn-outline-secondary btn-sm" type="button"
+                    onclick="togglePw('ov_cmems_password')" tabindex="-1">
+              <i class="fa-regular fa-eye"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Load button — hidden for WMS combos, shown for CMEMS / server-side fallback -->
+        <button id="overlay-load-btn" class="btn btn-primary btn-sm w-100 mt-1"
+                style="display:none;" onclick="loadOverlay()">
+          <i class="fa-solid fa-layer-group me-1"></i>Load Overlay
+        </button>
+
+        <div id="overlay-status" class="mt-2" style="font-size:.72rem;"></div>
+
+        <hr class="my-2" />
+
+        <!-- Platforms -->
+        <div class="fw-semibold mb-1" style="font-size:.78rem;">
+          <i class="fa-solid fa-satellite-dish me-1 text-secondary"></i>Platforms
+        </div>
+        <div class="d-flex gap-3 mb-1">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="plat-gliders" />
+            <label class="form-check-label" for="plat-gliders">
+              <span style="color:#00bcd4;font-size:1rem;">●</span> Gliders
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="plat-argo" />
+            <label class="form-check-label" for="plat-argo">
+              <span style="color:#ff9800;font-size:1rem;">●</span> Argo
+            </label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="plat-redwing" />
+            <label class="form-check-label" for="plat-redwing">
+              <span style="color:#e91e63;font-size:1rem;">●</span> Redwing
+            </label>
+          </div>
+        </div>
+        <div class="row g-1 mb-1">
+          <div class="col-7">
+            <label class="form-label mb-0">Days back</label>
+            <select id="plat-days" class="form-select form-select-sm">
+              <option value="7" selected>7 days</option>
+              <option value="14">14 days</option>
+              <option value="30">30 days</option>
+              <option value="60">60 days</option>
+            </select>
+          </div>
+          <div class="col-5 d-flex align-items-end">
+            <button class="btn btn-outline-primary btn-sm w-100" onclick="reloadPlatforms()">
+              <i class="fa-solid fa-arrows-rotate me-1"></i>Load
+            </button>
+          </div>
+        </div>
+        <div id="plat-status" class="mt-1" style="font-size:.72rem;"></div>
+
+      </div><!-- /.modal-body -->
+    </div>
+  </div>
+</div><!-- /#overlayModal -->
+
+<!-- ═══════════ PLOT MODAL ═══════════ -->
+<div class="modal" id="plotModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header py-2 px-3">
+        <span class="modal-title fw-semibold" id="plot-modal-title" style="font-size:.88rem;">
+          <i class="fa-solid fa-chart-area me-1 text-primary"></i>Plot
+        </span>
+        <a id="plot-download-btn" class="btn btn-outline-secondary btn-sm me-2 d-none" download>
+          <i class="fa-solid fa-download me-1"></i>Download PNG
+        </a>
+        <button id="plot-csv-btn" class="btn btn-outline-secondary btn-sm me-2 d-none"
+                onclick="downloadLastCsv()">
+          <i class="fa-solid fa-table me-1"></i>Download CSV
+        </button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body text-center p-3">
+        <div id="plot-modal-spinner" class="py-5 d-none">
+          <div class="spinner-border text-primary mb-3" style="width:2rem;height:2rem;" role="status"></div>
+          <div class="text-muted mt-2" id="plot-modal-msg">Loading…</div>
+        </div>
+        <div id="plot-modal-error"    class="alert alert-danger  text-start d-none"></div>
+        <div id="plot-modal-warnings" class="alert alert-warning text-start d-none"></div>
+        <img id="plot-modal-img" class="img-fluid d-none" alt="Plot" />
+      </div>
+
+    </div>
+  </div>
+</div><!-- /#plotModal -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// ═══════════════════════════ COLLAPSIBLE SECTION CHEVRONS ════════════════════
+[
+  ['options-body',      'options-chevron'],
+  ['depth-range-body',  'depth-range-chevron'],
+  ['color-limits-body', 'color-limits-chevron'],
+  ['interp-body',       'interp-chevron'],
+].forEach(([bodyId, chevronId]) => {
+  const body    = document.getElementById(bodyId);
+  const chevron = document.getElementById(chevronId);
+  body.addEventListener('show.bs.collapse', () => { chevron.style.transform = 'rotate(180deg)'; });
+  body.addEventListener('hide.bs.collapse', () => { chevron.style.transform = 'rotate(0deg)'; });
+});
+
+// ═══════════════════════════ MODE SWITCHING ══════════════════════════════════
+let currentMode = 'transect';
+let _lastResponseData     = null;
+let _lastResponseType     = null;
+let _lastResponseFilename = null;
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('btn-transect').classList.toggle('active', mode === 'transect');
+  document.getElementById('btn-profile').classList.toggle('active', mode === 'profile');
+  document.getElementById('panel-transect').style.display = mode === 'transect' ? 'block' : 'none';
+  document.getElementById('panel-profile').style.display  = mode === 'profile'  ? 'block' : 'none';
+  updateHint();
+  if (mode === 'transect') {
+    clearProfileMarker();
+    syncTransectMarkers();
+  } else {
+    clearTransectMarkers();
+    syncProfileMarker();
+  }
+}
+
+// ═══════════════════════════ LEAFLET MAP ═════════════════════════════════════
+const map = L.map('map').setView([35, -72], 5);
+
+const BASEMAPS = {
+  'voyager': L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 19
+  }),
+  'esri-ocean': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>, GEBCO, NOAA, NGA, DeLorme',
+    maxZoom: 13
+  }),
+  'esri-satellite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; <a href="https://www.esri.com/">Esri</a>, Maxar, Earthstar Geographics',
+    maxZoom: 19
+  }),
+  'carto-dark': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 19
+  }),
+  'osm': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }),
+};
+
+let activeBasemap = BASEMAPS['esri-ocean'].addTo(map);
+
+document.getElementById('basemap-select').addEventListener('change', function() {
+  map.removeLayer(activeBasemap);
+  activeBasemap = BASEMAPS[this.value].addTo(map);
+  // Keep overlay and platform layers on top
+  activeBasemap.bringToBack();
+});
+
+// ── icons ──
+const mkIcon = color => L.divIcon({
+  html: `<div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,.4)"></div>`,
+  iconSize: [12,12], iconAnchor: [6,6], className: ''
+});
+const greenIcon = mkIcon('#198754');
+const redIcon   = mkIcon('#dc3545');
+const blueIcon  = mkIcon('#0d6efd');
+
+// ── transect state ──
+let startMarker = null, endMarker = null, transectLine = null;
+let tClickPhase = 0;
+
+function placeStartMarker(latlng) {
+  if (startMarker) map.removeLayer(startMarker);
+  startMarker = L.marker(latlng, { icon: greenIcon }).bindTooltip('Start').addTo(map);
+  document.getElementById('start_lon').value = latlng.lng.toFixed(6);
+  document.getElementById('start_lat').value = latlng.lat.toFixed(6);
+}
+function placeEndMarker(latlng) {
+  if (endMarker) map.removeLayer(endMarker);
+  endMarker = L.marker(latlng, { icon: redIcon }).bindTooltip('End').addTo(map);
+  document.getElementById('end_lon').value = latlng.lng.toFixed(6);
+  document.getElementById('end_lat').value = latlng.lat.toFixed(6);
+}
+function updateTransectLine() {
+  if (transectLine) { map.removeLayer(transectLine); transectLine = null; }
+  if (startMarker && endMarker) {
+    transectLine = L.polyline([startMarker.getLatLng(), endMarker.getLatLng()],
+      { color: '#0d6efd', weight: 2.5, dashArray: '6,4' }).addTo(map);
+  }
+}
+function clearTransectMarkers() {
+  [startMarker, endMarker, transectLine].forEach(l => l && map.removeLayer(l));
+  startMarker = endMarker = transectLine = null;
+}
+function syncTransectMarkers() {
+  const sLon = parseFloat(document.getElementById('start_lon').value);
+  const sLat = parseFloat(document.getElementById('start_lat').value);
+  const eLon = parseFloat(document.getElementById('end_lon').value);
+  const eLat = parseFloat(document.getElementById('end_lat').value);
+  if (!isNaN(sLon) && !isNaN(sLat)) placeStartMarker({ lat: sLat, lng: sLon });
+  if (!isNaN(eLon) && !isNaN(eLat)) placeEndMarker({ lat: eLat, lng: eLon });
+  updateTransectLine();
+}
+
+// ── profile state ──
+let profileMarker = null;
+
+function placeProfileMarker(latlng) {
+  if (profileMarker) map.removeLayer(profileMarker);
+  profileMarker = L.marker(latlng, { icon: blueIcon }).bindTooltip('Profile point').addTo(map);
+  document.getElementById('prof_lon').value = latlng.lng.toFixed(6);
+  document.getElementById('prof_lat').value = latlng.lat.toFixed(6);
+}
+function clearProfileMarker() {
+  if (profileMarker) { map.removeLayer(profileMarker); profileMarker = null; }
+}
+function syncProfileMarker() {
+  const lon = parseFloat(document.getElementById('prof_lon').value);
+  const lat = parseFloat(document.getElementById('prof_lat').value);
+  if (!isNaN(lon) && !isNaN(lat)) placeProfileMarker({ lat, lng: lon });
+}
+
+// ── map clicks ──
+const tStatus = document.getElementById('t-click-status');
+const pStatus = document.getElementById('p-click-status');
+
+function updateHint() {
+  const el = document.getElementById('hint-text');
+  if (currentMode === 'transect') {
+    el.textContent = tClickPhase === 0 ? 'Click to set start point' : 'Click to set end point';
+  } else {
+    el.textContent = 'Click to set profile location';
+  }
+}
+
+map.on('click', function(e) {
+  if (currentMode === 'transect') {
+    if (tClickPhase === 0) {
+      placeStartMarker(e.latlng);
+      if (endMarker) { map.removeLayer(endMarker); endMarker = null; }
+      updateTransectLine();
+      tStatus.textContent = 'Click for End';
+      tStatus.className = 'badge bg-danger ms-auto';
+      tClickPhase = 1;
+    } else {
+      placeEndMarker(e.latlng);
+      updateTransectLine();
+      tStatus.textContent = 'Click to reset';
+      tStatus.className = 'badge bg-secondary ms-auto';
+      tClickPhase = 0;
+    }
+  } else {
+    placeProfileMarker(e.latlng);
+    pStatus.textContent = 'Point set';
+    pStatus.className = 'badge bg-primary ms-auto';
+  }
+  updateHint();
+});
+
+['start_lon','start_lat','end_lon','end_lat'].forEach(id =>
+  document.getElementById(id).addEventListener('change', syncTransectMarkers)
+);
+['prof_lon','prof_lat'].forEach(id =>
+  document.getElementById(id).addEventListener('change', syncProfileMarker)
+);
+
+syncTransectMarkers();
+syncProfileMarker();
+updateHint();
+
+// ═══════════════════════════ CMEMS CREDENTIALS ════════════════════════════════
+function setupCredentials(usernameId, passwordId, rememberCheckId) {
+  const uEl = document.getElementById(usernameId);
+  const pEl = document.getElementById(passwordId);
+  const rEl = document.getElementById(rememberCheckId);
+
+  const saved = localStorage.getItem('cmems_creds');
+  if (saved) {
+    try {
+      const { username, password } = JSON.parse(saved);
+      uEl.value = username || '';
+      pEl.value = password || '';
+      rEl.checked = true;
+    } catch(_) {}
+  }
+
+  const save = () => localStorage.setItem('cmems_creds', JSON.stringify({ username: uEl.value, password: pEl.value }));
+  rEl.addEventListener('change', () => { if (rEl.checked) save(); else localStorage.removeItem('cmems_creds'); });
+  [uEl, pEl].forEach(el => el.addEventListener('input', () => { if (rEl.checked) save(); }));
+}
+
+setupCredentials('t_cmems_username', 't_cmems_password', 't_cmems_remember');
+setupCredentials('p_cmems_username', 'p_cmems_password', 'p_cmems_remember');
+
+document.getElementById('model').addEventListener('change', function() {
+  document.getElementById('cmems-creds-transect').style.display =
+    this.value === 'CMEMS' ? 'block' : 'none';
+  document.getElementById('rtofs-warn-transect').classList.toggle('d-none', this.value !== 'RTOFS');
+});
+
+document.getElementById('inc_rtofs').addEventListener('change', function() {
+  document.getElementById('rtofs-warn-profile').classList.toggle('d-none', !this.checked);
+});
+
+document.getElementById('inc_cmems').addEventListener('change', function() {
+  document.getElementById('cmems-creds-profile').style.display =
+    this.checked ? 'block' : 'none';
+  if (this.checked) {
+    const saved = localStorage.getItem('cmems_creds');
+    if (saved) {
+      try {
+        const { username, password } = JSON.parse(saved);
+        document.getElementById('p_cmems_username').value = username || '';
+        document.getElementById('p_cmems_password').value = password || '';
+        document.getElementById('p_cmems_remember').checked = true;
+      } catch(_) {}
+    }
+  }
+});
+
+function togglePw(inputId) {
+  const el = document.getElementById(inputId);
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+// ═══════════════════════════ GENERATE TRANSECT ════════════════════════════════
+async function runTransect() {
+  hideError();
+  const payload = {
+    model:          document.getElementById('model').value,
+    date:           document.getElementById('date').value,
+    hour:           parseInt(document.getElementById('hour').value),
+    start_lon:      parseFloat(document.getElementById('start_lon').value),
+    start_lat:      parseFloat(document.getElementById('start_lat').value),
+    end_lon:        parseFloat(document.getElementById('end_lon').value),
+    end_lat:        parseFloat(document.getElementById('end_lat').value),
+    npts:           parseInt(document.getElementById('npts').value),
+    x_axis:         document.getElementById('x_axis').value,
+    depth_min:      parseFloat(document.getElementById('depth_min').value),
+    depth_max:      parseFloat(document.getElementById('depth_max').value),
+    depth_spacing:  parseFloat(document.getElementById('depth_spacing').value),
+    temp_min:       parseFloat(document.getElementById('temp_min').value),
+    temp_max:       parseFloat(document.getElementById('temp_max').value),
+    temp_step:      parseFloat(document.getElementById('temp_step').value),
+    sal_min:        parseFloat(document.getElementById('sal_min').value),
+    sal_max:        parseFloat(document.getElementById('sal_max').value),
+    sal_step:       parseFloat(document.getElementById('sal_step').value),
+    spd_max:        parseFloat(document.getElementById('spd_max').value),
+    spd_step:       parseFloat(document.getElementById('spd_step').value),
+    interp_method:  document.querySelector('input[name="t_interp"]:checked').value,
+    cmems_username: document.getElementById('t_cmems_username').value.trim(),
+    cmems_password: document.getElementById('t_cmems_password').value,
+  };
+
+  if (isNaN(payload.start_lon) || isNaN(payload.start_lat) ||
+      isNaN(payload.end_lon)   || isNaN(payload.end_lat)) {
+    showError('Set both start and end coordinates on the map or in the fields.');
+    return;
+  }
+  if (payload.model === 'CMEMS' && (!payload.cmems_username || !payload.cmems_password)) {
+    showError('Enter your CMEMS username and password.');
+    return;
+  }
+  await submitAndShow('/generate', payload, 'Fetching transect data…');
+}
+
+// ═══════════════════════════ GENERATE PROFILE ═════════════════════════════════
+async function runProfile() {
+  hideError();
+  const incRtofs = document.getElementById('inc_rtofs').checked;
+  const incEspc  = document.getElementById('inc_espc').checked;
+  const incCmems = document.getElementById('inc_cmems').checked;
+
+  if (!incRtofs && !incEspc && !incCmems) { showError('Select at least one model.'); return; }
+
+  const lon = parseFloat(document.getElementById('prof_lon').value);
+  const lat = parseFloat(document.getElementById('prof_lat').value);
+  if (isNaN(lon) || isNaN(lat)) { showError('Set a profile location on the map or in the fields.'); return; }
+
+  const puname = document.getElementById('p_cmems_username').value.trim();
+  const ppw    = document.getElementById('p_cmems_password').value;
+  if (incCmems && (!puname || !ppw)) { showError('Enter your CMEMS username and password.'); return; }
+
+  const payload = {
+    include_rtofs:       incRtofs,
+    include_espc:        incEspc,
+    include_cmems:       incCmems,
+    include_u:           document.getElementById('inc_u').checked,
+    include_v:           document.getElementById('inc_v').checked,
+    include_sound_speed: document.getElementById('inc_ss').checked,
+    lon, lat,
+    date:           document.getElementById('date').value,
+    hour:           parseInt(document.getElementById('hour').value),
+    max_depth:      parseInt(document.getElementById('prof_max_depth').value),
+    interp_method:  document.querySelector('input[name="p_interp"]:checked').value,
+    cmems_username: puname,
+    cmems_password: ppw,
+  };
+  await submitAndShow('/generate_profile', payload, 'Fetching profile data…');
+}
+
+// ═══════════════════════════ CSV DOWNLOAD ════════════════════════════════════
+function downloadLastCsv() {
+  if (!_lastResponseData) return;
+  const csvFilename = (_lastResponseFilename || 'download').replace('.png', '.csv');
+  let rows;
+
+  if (_lastResponseType === 'profile') {
+    rows = ['model,depth_m,temperature_C,salinity_PSU,density_kgm3,sound_speed_ms,u_ms,v_ms'];
+    for (const [model, d] of Object.entries(_lastResponseData)) {
+      for (let i = 0; i < d.depth.length; i++) {
+        rows.push([
+          model, d.depth[i],
+          d.temperature ? (d.temperature[i] ?? '') : '',
+          d.salinity    ? (d.salinity[i]    ?? '') : '',
+          d.density     ? (d.density[i]     ?? '') : '',
+          d.sound_speed ? (d.sound_speed[i] ?? '') : '',
+          d.u ? (d.u[i] ?? '') : '',
+          d.v ? (d.v[i] ?? '') : '',
+        ].join(','));
+      }
+    }
+  } else {
+    const d = _lastResponseData;
+    rows = ['depth_m,distance_km,longitude,temperature_C,salinity_PSU,speed_ms'];
+    for (let di = 0; di < d.depth.length; di++) {
+      for (let pi = 0; pi < d.distance_km.length; pi++) {
+        rows.push([
+          d.depth[di],
+          d.distance_km[pi] ?? '',
+          d.longitude[pi]   ?? '',
+          d.temperature ? (d.temperature[di]?.[pi] ?? '') : '',
+          d.salinity    ? (d.salinity[di]?.[pi]    ?? '') : '',
+          d.speed       ? (d.speed[di]?.[pi]       ?? '') : '',
+        ].join(','));
+      }
+    }
+  }
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = csvFilename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════ HISTORY ═════════════════════════════════════════
+const historyItems = [];
+const MAX_HISTORY  = 20;
+
+function pushHistory(endpoint, filename, image) {
+  const type = endpoint.includes('profile') ? 'profile' : 'transect';
+  historyItems.unshift({ type, filename, image, ts: new Date() });
+  if (historyItems.length > MAX_HISTORY) historyItems.length = MAX_HISTORY;
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = document.getElementById('history-list');
+  if (!historyItems.length) {
+    el.innerHTML = '<div class="text-muted" style="font-size:.75rem;">No plots generated yet.</div>';
+    return;
+  }
+  el.innerHTML = historyItems.map((item, i) => {
+    const icon    = item.type === 'profile' ? 'fa-arrow-down' : 'fa-route';
+    const timeStr = item.ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `
+      <div class="history-item" onclick="openHistoryItem(${i})" title="${item.filename}">
+        <img src="data:image/png;base64,${item.image}" alt="" />
+        <div style="min-width:0;">
+          <div class="hi-label"><i class="fa-solid ${icon} me-1"></i>${item.filename}</div>
+          <div class="hi-meta">${timeStr}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function clearHistory() {
+  historyItems.length = 0;
+  renderHistory();
+}
+
+function openHistoryItem(i) {
+  const item = historyItems[i];
+  if (!item) return;
+  const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('plotModal'));
+  const icon  = item.type === 'profile' ? 'fa-arrow-down' : 'fa-chart-area';
+  document.getElementById('plot-modal-title').innerHTML =
+    `<i class="fa-solid ${icon} me-1 text-primary"></i>${item.filename}`;
+  document.getElementById('plot-modal-spinner').classList.add('d-none');
+  document.getElementById('plot-modal-error').classList.add('d-none');
+  document.getElementById('plot-modal-warnings').classList.add('d-none');
+  const img = document.getElementById('plot-modal-img');
+  img.src = 'data:image/png;base64,' + item.image;
+  img.classList.remove('d-none');
+  const dlBtn    = document.getElementById('plot-download-btn');
+  dlBtn.href     = 'data:image/png;base64,' + item.image;
+  dlBtn.download = item.filename;
+  dlBtn.classList.remove('d-none');
+  modal.show();
+}
+
+// ═══════════════════════════ SHARED SUBMIT ════════════════════════════════════
+async function submitAndShow(endpoint, payload, msg) {
+  // Open modal immediately with spinner so user knows work is in progress
+  const modalEl = document.getElementById('plotModal');
+  const modal   = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+  document.getElementById('plot-modal-title').innerHTML =
+    `<i class="fa-solid fa-chart-area me-1 text-primary"></i>Generating…`;
+  document.getElementById('plot-modal-msg').textContent = msg;
+  document.getElementById('plot-modal-spinner').classList.remove('d-none');
+  document.getElementById('plot-modal-img').classList.add('d-none');
+  document.getElementById('plot-modal-error').classList.add('d-none');
+  document.getElementById('plot-modal-warnings').classList.add('d-none');
+  document.getElementById('plot-download-btn').classList.add('d-none');
+  document.getElementById('plot-csv-btn').classList.add('d-none');
+  modal.show();
+
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await resp.json();
+    document.getElementById('plot-modal-spinner').classList.add('d-none');
+
+    if (json.status === 'ok') {
+      const img  = document.getElementById('plot-modal-img');
+      img.src = 'data:image/png;base64,' + json.image;
+      img.classList.remove('d-none');
+
+      document.getElementById('plot-modal-title').innerHTML =
+        `<i class="fa-solid fa-chart-area me-1 text-primary"></i>${json.filename || 'Plot'}`;
+
+      const dlBtn    = document.getElementById('plot-download-btn');
+      dlBtn.href     = 'data:image/png;base64,' + json.image;
+      dlBtn.download = json.filename;
+      dlBtn.classList.remove('d-none');
+
+      _lastResponseData = json.data || null;
+      _lastResponseType = endpoint.includes('profile') ? 'profile' : 'transect';
+      _lastResponseFilename = json.filename || 'download';
+      document.getElementById('plot-csv-btn').classList.toggle('d-none', !_lastResponseData);
+
+      pushHistory(endpoint, json.filename, json.image);
+
+      if (json.warnings && json.warnings.length) {
+        const wEl = document.getElementById('plot-modal-warnings');
+        wEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i>Some models failed: ' +
+          json.warnings.join(' | ');
+        wEl.classList.remove('d-none');
+      }
+    } else {
+      const eEl = document.getElementById('plot-modal-error');
+      eEl.innerHTML = '<i class="fa-solid fa-circle-xmark me-1"></i>' + (json.message || 'Unknown error');
+      eEl.classList.remove('d-none');
+    }
+  } catch(err) {
+    document.getElementById('plot-modal-spinner').classList.add('d-none');
+    const eEl = document.getElementById('plot-modal-error');
+    eEl.innerHTML = '<i class="fa-solid fa-circle-xmark me-1"></i>Request failed: ' + err.message;
+    eEl.classList.remove('d-none');
+  }
+}
+
+// ═══════════════════════════ UI helpers ══════════════════════════════════════
+// showError is used for pre-flight validation (before the request is sent)
+function showError(msg) {
+  const el = document.getElementById('sidebar-error');
+  el.innerHTML = '<i class="fa-solid fa-circle-xmark me-1"></i>' + msg;
+  el.classList.remove('d-none');
+}
+function hideError() { document.getElementById('sidebar-error').classList.add('d-none'); }
+
+// ═══════════════════════════ MAP OVERLAY ═════════════════════════════════════
+// WMS-first (tiles, instant) with automatic fallback to server-side rendering.
+
+const OVERLAY_DEFAULTS = {
+  temperature: { vmin: 4,    vmax: 28,  cmap: 'cmo.thermal' },
+  salinity:    { vmin: 34,   vmax: 37,  cmap: 'cmo.haline'  },
+  speed:       { vmin: 0,    vmax: 1.5, cmap: 'cmo.speed'   },
+};
+
+// WMS endpoints — RTOFS (Rutgers THREDDS) and ESPC (HYCOM)
+const WMS_URLS = {
+  'RTOFS': 'https://tds.marine.rutgers.edu/thredds/wms/cool/rtofs/rtofs_us_east_scraped',
+  'ESPC':  'https://wms.hycom.org/thredds/wms/FMRC_ESPC-D-V02_all/FMRC_ESPC-D-V02_all_best.ncd',
+};
+const WMS_VERSIONS = { 'RTOFS': '1.1.1', 'ESPC': '1.3.0' };
+const WMS_LAYER_NAMES = {
+  'RTOFS': { temperature: 'temperature', salinity: 'salinity', speed: 'u:v-mag' },
+  'ESPC':  { temperature: 'water_temp',  salinity: 'salinity', speed: null },
+};
+const WMS_STYLES = {
+  'RTOFS': { temperature: 'default-scalar/default', salinity: 'default-scalar/default', speed: 'default-scalar/default' },
+  'ESPC':  { temperature: 'boxfill/sst_36',         salinity: 'boxfill/occam',          speed: null },
+};
+
+let overlayLayer  = null;
+let _wmsErrCount  = 0;
+
+function _overlayModel()    { return document.querySelector('input[name="overlay-model-radio"]:checked')?.value || 'RTOFS'; }
+function _overlayVariable() { return document.querySelector('input[name="overlay-var-radio"]:checked')?.value   || 'temperature'; }
+function _overlayDepth()    { return parseFloat(document.querySelector('input[name="overlay-depth-radio"]:checked')?.value || 0); }
+
+// Returns true when the current model+variable combo has a WMS layer defined
+function _isWmsLayer() {
+  const m = _overlayModel(), v = _overlayVariable();
+  return !!(WMS_URLS[m] && WMS_LAYER_NAMES[m] && WMS_LAYER_NAMES[m][v]);
+}
+
+function _syncOverlayUI() {
+  const model = _overlayModel();
+  document.getElementById('overlay-cmems-creds').style.display = model === 'CMEMS' ? 'block' : 'none';
+  if (model === 'CMEMS') {
+    const saved = localStorage.getItem('cmems_creds');
+    if (saved) {
+      try {
+        const { username, password } = JSON.parse(saved);
+        document.getElementById('ov_cmems_username').value = username || '';
+        document.getElementById('ov_cmems_password').value = password || '';
+      } catch(_) {}
+    }
+  }
+  // Load button only needed for CMEMS / server-side combos; WMS auto-loads
+  document.getElementById('overlay-load-btn').style.display = _isWmsLayer() ? 'none' : '';
+}
+
+function overlayToggle() {
+  const enabled = document.getElementById('overlay-enable').checked;
+  document.getElementById('overlay-trigger-btn').classList.toggle('overlay-active', enabled);
+  if (enabled) { _syncOverlayUI(); loadOverlay(); }
+  else          { removeOverlay(); }
+}
+
+function overlayModelChange() {
+  _syncOverlayUI(); removeOverlay();
+  if (document.getElementById('overlay-enable').checked) loadOverlay();
+}
+function overlayVariableChange() {
+  const d = OVERLAY_DEFAULTS[_overlayVariable()];
+  document.getElementById('overlay-vmin').value = d.vmin;
+  document.getElementById('overlay-vmax').value = d.vmax;
+  _syncOverlayUI(); removeOverlay();
+  if (document.getElementById('overlay-enable').checked) loadOverlay();
+}
+function overlayParamChange() {
+  removeOverlay();
+  if (document.getElementById('overlay-enable').checked && _isWmsLayer()) loadOverlay();
+}
+
+function overlayOpacityChange() {
+  if (!overlayLayer) return;
+  const opacity = parseFloat(document.getElementById('overlay-opacity').value);
+  if (overlayLayer.setOpacity) overlayLayer.setOpacity(opacity);
+}
+
+function removeOverlay() {
+  if (overlayLayer) { map.removeLayer(overlayLayer); overlayLayer = null; }
+  _wmsErrCount = 0;
+  document.getElementById('overlay-status').textContent = '';
+}
+
+// ── Server-side (Flask /map_overlay) rendering ────────────────────────────
+async function _loadServerSide() {
+  const model      = _overlayModel();
+  const variable   = _overlayVariable();
+  const depth      = _overlayDepth();
+  const opacity    = parseFloat(document.getElementById('overlay-opacity').value);
+  const vmin       = parseFloat(document.getElementById('overlay-vmin').value);
+  const vmax       = parseFloat(document.getElementById('overlay-vmax').value);
+  const statusEl   = document.getElementById('overlay-status');
+  const depthLabel = depth === 0 ? 'surface' : `${depth} m`;
+
+  const b = map.getBounds();
+  const payload = {
+    model, variable, depth,
+    date:           document.getElementById('date').value,
+    hour:           parseInt(document.getElementById('hour').value),
+    west:           b.getWest(),
+    east:           b.getEast(),
+    south:          b.getSouth(),
+    north:          b.getNorth(),
+    vmin, vmax,
+    cmap:           OVERLAY_DEFAULTS[variable].cmap,
+    cmems_username: document.getElementById('ov_cmems_username').value.trim(),
+    cmems_password: document.getElementById('ov_cmems_password').value,
+  };
+
+  statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Loading…';
+  const loadBtn = document.getElementById('overlay-load-btn');
+  loadBtn.style.display = '';   // ensure visible for refresh
+  loadBtn.disabled = true;
+
+  try {
+    const resp = await fetch('/map_overlay', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    const json = await resp.json();
+    if (json.status === 'ok') {
+      const bnd = json.bounds;
+      overlayLayer = L.imageOverlay(
+        'data:image/png;base64,' + json.image,
+        [[bnd.south, bnd.west], [bnd.north, bnd.east]],
+        { opacity }
+      ).addTo(map);
+      statusEl.innerHTML =
+        `<i class="fa-solid fa-circle-check text-success me-1"></i>` +
+        `${model} · ${variable} · ${depthLabel} · ${payload.date} ${String(payload.hour).padStart(2,'0')}Z` +
+        `<br><span class="text-muted">Current viewport — click Load to refresh</span>`;
+    } else {
+      statusEl.innerHTML =
+        `<i class="fa-solid fa-circle-xmark text-danger me-1"></i>${json.message}`;
+    }
+  } catch(err) {
+    statusEl.innerHTML =
+      `<i class="fa-solid fa-circle-xmark text-danger me-1"></i>${err.message}`;
+  } finally {
+    loadBtn.disabled = false;
+  }
+}
+
+// ── WMS tile rendering with automatic fallback ────────────────────────────
+function loadOverlay() {
+  if (!document.getElementById('overlay-enable').checked) return;
+  removeOverlay();
+
+  if (!_isWmsLayer()) { _loadServerSide(); return; }
+
+  const model    = _overlayModel();
+  const variable = _overlayVariable();
+  const depth    = _overlayDepth();
+  const opacity  = parseFloat(document.getElementById('overlay-opacity').value);
+  const date     = document.getElementById('date').value;
+  const hour     = parseInt(document.getElementById('hour').value);
+  const statusEl = document.getElementById('overlay-status');
+
+  const timeStr = `${date}T${String(hour).padStart(2,'0')}:00:00.000Z`;
+  const elev    = depth > 0 ? -depth : 0;
+
+  statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Loading WMS tiles…';
+
+  overlayLayer = L.tileLayer.wms(WMS_URLS[model], {
+    version:     WMS_VERSIONS[model],
+    layers:      WMS_LAYER_NAMES[model][variable],
+    styles:      WMS_STYLES[model][variable] || '',
+    format:      'image/png',
+    transparent: true,
+    opacity,
+    TIME:        timeStr,
+    ELEVATION:   elev,
+    attribution: model === 'RTOFS' ? 'Rutgers/NOAA RTOFS' : 'HYCOM/ESPC',
+  }).addTo(map);
+
+  overlayLayer.once('load', () => {
+    statusEl.innerHTML =
+      `<i class="fa-solid fa-circle-check text-success me-1"></i>` +
+      `${model} · ${variable} · ${depth === 0 ? 'surface' : depth + ' m'} · ${date} ${String(hour).padStart(2,'0')}Z` +
+      `<span class="text-muted ms-2">WMS</span>`;
+  });
+
+  _wmsErrCount = 0;
+  overlayLayer.on('tileerror', () => {
+    _wmsErrCount++;
+    if (_wmsErrCount >= 2) {
+      statusEl.innerHTML =
+        `<i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>` +
+        `WMS unavailable — switching to server-side rendering…`;
+      map.removeLayer(overlayLayer);
+      overlayLayer = null;
+      _wmsErrCount = 0;
+      _loadServerSide();
+    }
+  });
+}
+
+// Auto-reload WMS when date or hour changes (no button click needed for WMS)
+document.getElementById('date').addEventListener('change', () => {
+  if (document.getElementById('overlay-enable').checked && _isWmsLayer()) loadOverlay();
+});
+document.getElementById('hour').addEventListener('change', () => {
+  if (document.getElementById('overlay-enable').checked && _isWmsLayer()) loadOverlay();
+});
+
+// Auto-load overlay on page ready
+overlayToggle();
+
+// ═══════════════════════════ PLATFORMS ═══════════════════════════════════════
+
+let gliderLayer = null;
+let argoLayer   = null;
+
+const ARGO_STYLE   = { radius: 5, fillColor: '#ff9800', color: '#fff', weight: 1.5, fillOpacity: 0.9 };
+
+// Distinct palette for glider colors — enough variety to tell them apart
+const GLIDER_PALETTE = [
+  '#00bcd4','#4caf50','#9c27b0','#f44336','#2196f3',
+  '#ff5722','#3f51b5','#8bc34a','#ffc107','#009688',
+  '#e040fb','#00acc1','#c62828','#558b2f','#1565c0',
+];
+function _gliderColor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return GLIDER_PALETTE[h % GLIDER_PALETTE.length];
+}
+
+function _geojsonToLayer(geojson, style) {
+  return L.geoJSON(geojson, {
+    pointToLayer: (feature, latlng) => L.circleMarker(latlng, style),
+    onEachFeature: (feature, layer) => {
+      const p = feature.properties;
+      const t = p.time ? p.time.slice(0, 16).replace('T', ' ') + ' Z' : 'N/A';
+      layer.bindPopup(
+        `<strong>${p.id}</strong><br><span style="font-size:.75rem;color:#6c757d;">${t}</span>`
+      );
+    }
+  });
+}
+
+let redwingLayer = null;
+
+async function reloadPlatforms() {
+  const wantGliders = document.getElementById('plat-gliders').checked;
+  const wantArgo    = document.getElementById('plat-argo').checked;
+  const wantRedwing = document.getElementById('plat-redwing').checked;
+  const days        = parseInt(document.getElementById('plat-days').value);
+  const statusEl    = document.getElementById('plat-status');
+
+  if (gliderLayer)  { map.removeLayer(gliderLayer);  gliderLayer  = null; }
+  if (argoLayer)    { map.removeLayer(argoLayer);    argoLayer    = null; }
+  if (redwingLayer) { map.removeLayer(redwingLayer); redwingLayer = null; }
+
+  if (!wantGliders && !wantArgo && !wantRedwing) { statusEl.textContent = ''; return; }
+
+  statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Loading platforms…';
+
+  const promises = [];
+  if (wantGliders) promises.push(
+    fetch(`/platforms?type=gliders&days=${days}`).then(r => r.json()).then(d => ({ type: 'gliders', data: d }))
+  );
+  if (wantArgo) promises.push(
+    fetch(`/platforms?type=argo&days=${days}`).then(r => r.json()).then(d => ({ type: 'argo', data: d }))
+  );
+  if (wantRedwing) promises.push(
+    fetch('/redwing').then(r => r.json()).then(d => ({ type: 'redwing', data: d }))
+  );
+
+  try {
+    const results = await Promise.all(promises);
+    let gCount = 0, aCount = 0, rCount = 0;
+    for (const { type, data } of results) {
+      if (data.status === 'error') throw new Error(`${type}: ${data.message}`);
+      if (type === 'gliders') {
+        gliderLayer = L.geoJSON(data, {
+          style: feature => {
+            const c = _gliderColor(feature.properties.id);
+            return { color: c, weight: 1.5, opacity: 0.8 };
+          },
+          pointToLayer: (feature, latlng) => {
+            const c = _gliderColor(feature.properties.id);
+            return L.circleMarker(latlng, { radius: 5, fillColor: c, color: '#fff', weight: 1.5, fillOpacity: 1 });
+          },
+          onEachFeature: (feature, layer) => {
+            const p = feature.properties;
+            const c = _gliderColor(p.id);
+            const dot = `<span style="color:${c};font-size:1rem;vertical-align:middle;">●</span> `;
+            if (feature.geometry.type === 'Point') {
+              const t = p.time ? p.time.slice(0, 16).replace('T', ' ') + ' Z' : 'N/A';
+              layer.bindPopup(`${dot}<strong>${p.id}</strong><br><span style="font-size:.75rem;color:#6c757d;">Last: ${t}</span>`);
+            } else {
+              layer.bindPopup(`${dot}<strong>${p.id}</strong><br><span style="font-size:.75rem;color:#6c757d;">${p.n} positions</span>`);
+            }
+          },
+        }).addTo(map);
+        gCount = data.features?.filter(f => f.geometry.type === 'LineString').length || 0;
+      } else if (type === 'argo') {
+        argoLayer = _geojsonToLayer(data, ARGO_STYLE).addTo(map);
+        aCount = data.features?.length || 0;
+      } else if (type === 'redwing') {
+        redwingLayer = L.geoJSON(data, {
+          style: () => ({ color: '#e91e63', weight: 2.5, opacity: 0.9 }),
+          pointToLayer: (_, latlng) =>
+            L.circleMarker(latlng, { radius: 7, fillColor: '#e91e63', color: '#fff', weight: 2, fillOpacity: 1 }),
+          onEachFeature: (feature, layer) => {
+            const p = feature.properties;
+            if (feature.geometry.type === 'Point') {
+              const t = p.time ? p.time.slice(0, 16).replace('T', ' ') + ' Z' : 'N/A';
+              layer.bindPopup(
+                `<strong>${p.id}</strong><br><span style="font-size:.75rem;color:#6c757d;">Last GPS: ${t}</span>`
+              );
+            } else {
+              const end = p.end_time ? p.end_time.slice(0, 16).replace('T', ' ') + ' Z' : 'N/A';
+              layer.bindPopup(
+                `<strong>${p.id}</strong><br><span style="font-size:.75rem;color:#6c757d;">${p.n} surfacings · last ${end}</span>`
+              );
+            }
+          },
+        }).addTo(map);
+        const track = data.features?.find(f => f.geometry.type === 'LineString');
+        rCount = track?.properties?.n || 0;
+      }
+    }
+    const parts = [];
+    if (wantGliders) parts.push(`${gCount} gliders`);
+    if (wantArgo)    parts.push(`${aCount} Argo floats`);
+    if (wantRedwing) parts.push(`Redwing (${rCount} surfacings)`);
+    const daySuffix = (wantGliders || wantArgo) ? ` (last ${days} days)` : '';
+    statusEl.innerHTML =
+      `<i class="fa-solid fa-circle-check text-success me-1"></i>${parts.join(' · ')}${daySuffix}`;
+  } catch (err) {
+    statusEl.innerHTML =
+      `<i class="fa-solid fa-circle-xmark text-danger me-1"></i>${err.message}`;
+  }
+}
+
+// Toggling any platform checkbox triggers a reload
+['plat-gliders', 'plat-argo', 'plat-redwing'].forEach(id =>
+  document.getElementById(id).addEventListener('change', reloadPlatforms)
+);
+</script>
+</body>
+</html>

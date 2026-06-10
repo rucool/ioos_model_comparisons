@@ -1,0 +1,7 @@
+uwsgi
+
+flask>=3.0
+requests>=2.31
+gunicorn>=21.0
+erddapy>=2.0
+pandas>=1.5

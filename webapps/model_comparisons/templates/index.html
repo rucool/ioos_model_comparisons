@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IOOS Model Comparisons Archive Explorer – RUCOOL</title>
+  <meta name="description" content="Interactive ocean model comparison viewer showing RTOFS, GOFS, and Copernicus model plots across U.S. coastal regions." />
+
+  <!-- Bootstrap 5 CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+</head>
+
+<body>
+
+<!-- ══════════════════════════════════════════════════════ NAVBAR -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-navy py-3" id="mainNavbar">
+  <div class="container-fluid px-4">
+    <div class="d-flex align-items-center gap-2">
+      <a href="https://rucool.marine.rutgers.edu" target="_blank">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="RUCOOL Logo" height="55" class="me-2">
+      </a>
+      <a class="navbar-brand m-0 p-0" href="#">
+        <span class="fw-700 brand-title" style="font-size: 2.3rem;">IOOS Model Comparisons Archive Explorer</span>
+      </a>
+    </div>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+      data-bs-target="#navbarContent" aria-controls="navbarContent"
+      aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarContent">
+      <ul class="navbar-nav ms-auto align-items-center gap-1">
+        <li class="nav-item ms-2">
+          <span class="nav-timestamp text-light-muted" id="currentDateTime"></span>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════ MAIN LAYOUT -->
+<div class="app-wrapper">
+
+  <!-- ─── TAB NAV ─── -->
+  <div class="tab-nav-bar">
+    <div class="container-fluid px-4">
+      <ul class="nav nav-pills tab-pills" id="mainTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="overview-tab" data-bs-toggle="pill"
+            data-bs-target="#overview-pane" type="button" role="tab"
+            aria-controls="overview-pane" aria-selected="true">
+            <i class="bi bi-eye me-1"></i>Overview (Most Recent)
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="maps-tab" data-bs-toggle="pill"
+            data-bs-target="#maps-pane" type="button" role="tab"
+            aria-controls="maps-pane" aria-selected="false">
+            <i class="bi bi-map me-1"></i>Maps Archive
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="profiles-tab" data-bs-toggle="pill"
+            data-bs-target="#profiles-pane" type="button" role="tab"
+            aria-controls="profiles-pane" aria-selected="false">
+            <i class="bi bi-graph-up me-1"></i>Profiles Archive
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="adaptive-tab" data-bs-toggle="pill"
+            data-bs-target="#adaptive-pane" type="button" role="tab"
+            aria-controls="adaptive-pane" aria-selected="false">
+            <i class="bi bi-compass me-1"></i>Adaptive Sampling Archive
+          </button>
+        </li>
+        <li class="nav-item ms-auto">
+          <a class="nav-link" href="https://transects.marine.rutgers.edu/" target="_blank" rel="noopener">
+            <i class="bi bi-grid-3x3-gap me-1"></i>Transect/Profile Tool <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75em;opacity:0.75;"></i>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ─── TAB CONTENT ─── -->
+  <div class="tab-content flex-grow-1" id="mainTabContent">
+
+    <!-- ══════════ OVERVIEW TAB ══════════ -->
+    <div class="tab-pane fade show active" id="overview-pane" role="tabpanel" aria-labelledby="overview-tab">
+
+      <!-- Region bar across top -->
+      <div class="ov-region-bar">
+        <div class="d-flex flex-wrap gap-1" role="group">
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_carib" value="Caribbean" autocomplete="off" checked>
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_carib">Caribbean</label>
+
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_gom" value="Gulf of Mexico" autocomplete="off">
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_gom">Gulf of Mexico</label>
+
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_sab" value="South Atlantic Bight" autocomplete="off">
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_sab">South Atlantic</label>
+
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_mab" value="Mid Atlantic Bight" autocomplete="off">
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_mab">Mid Atlantic</label>
+
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_wfs" value="West Florida Shelf" autocomplete="off">
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_wfs">West FL Shelf</label>
+
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_twa" value="Tropical Western Atlantic" autocomplete="off">
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_twa">Tropical W. Atl</label>
+
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_epm" value="Eastern Pacific - Mexico" autocomplete="off">
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_epm">E. Pacific (Mex)</label>
+
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_hawaii" value="Hawaii" autocomplete="off">
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_hawaii">Hawaii</label>
+
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_guam" value="Guam" autocomplete="off">
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_guam">Guam</label>
+
+          <input type="radio" class="btn-check" name="ov_region" id="ov_reg_fiji" value="Fiji" autocomplete="off">
+          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_fiji">Fiji</label>
+        </div>
+      </div>
+
+      <!-- Sidebar + image layout -->
+      <div class="ov-sidebar-grid">
+
+        <!-- Controls sidebar -->
+        <aside class="controls-sidebar">
+          <div class="controls-card">
+            <div class="controls-header">
+              <i class="bi bi-sliders2 me-2"></i>Overview Controls
+            </div>
+            <div class="controls-body">
+
+              <!-- Variable -->
+              <div class="control-group">
+                <label class="control-label">
+                  <i class="bi bi-layers me-1"></i>Variable
+                </label>
+                <div class="btn-group-vertical w-100" role="group">
+                  <input type="radio" class="btn-check" name="ov_variable" id="ov_var_temp" value="temperature" autocomplete="off" checked>
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_var_temp">Temperature</label>
+
+                  <input type="radio" class="btn-check" name="ov_variable" id="ov_var_salt" value="salinity" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_var_salt">Salinity</label>
+
+                  <input type="radio" class="btn-check" name="ov_variable" id="ov_var_curr" value="currents" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_var_curr">Currents</label>
+
+                  <input type="radio" class="btn-check" name="ov_variable" id="ov_var_ohc" value="ocean_heat_content" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_var_ohc">Ocean Heat Content</label>
+                </div>
+              </div>
+
+              <!-- Depth (dynamic, populated by JS per region) -->
+              <div class="control-group" id="ov_depth_group">
+                <label class="control-label">
+                  <i class="bi bi-arrow-down me-1"></i>Depth
+                </label>
+                <div class="d-flex flex-wrap gap-1" id="ov_depth_btns">
+                  <!-- rebuilt by updateOverviewDepths() on region change -->
+                </div>
+              </div>
+
+              <!-- Model -->
+              <div class="control-group">
+                <label class="control-label">
+                  <i class="bi bi-cpu me-1"></i>Comparison
+                </label>
+                <div class="btn-group-vertical w-100" role="group">
+                  <input type="radio" class="btn-check" name="ov_model" id="ov_mod_espc" value="espc" autocomplete="off" checked>
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_espc">ESPC</label>
+
+                  <input type="radio" class="btn-check" name="ov_model" id="ov_mod_copernicus" value="copernicus" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_copernicus">Copernicus</label>
+
+                  <input type="radio" class="btn-check" name="ov_model" id="ov_mod_goes" value="goes" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_goes">GOES</label>
+                </div>
+              </div>
+
+              <!-- Download -->
+              <button class="btn btn-outline-ocean w-100 btn-sm mt-1" onclick="downloadPlot(null, 'ov_image')" title="Download Image">
+                <i class="bi bi-download me-1"></i>Download
+              </button>
+
+            </div>
+          </div>
+        </aside>
+
+        <!-- Image display -->
+        <main class="image-display">
+          <div class="image-panel" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+            <div class="image-panel-header justify-content-between">
+              <div class="d-flex align-items-center gap-2">
+                <span class="panel-badge bg-ocean-light text-ocean-blue"><i class="bi bi-geo-alt me-1"></i><span id="ov_region_label">Caribbean</span></span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="time-badge" id="ov_time_badge">--Z</span>
+                <span class="text-muted small fw-medium" id="ov_date_label">YYYY-MM-DD</span>
+              </div>
+            </div>
+
+            <div class="image-panel-body position-relative" id="ov_image_container" style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+
+              <!-- Left/Right Model Flip Buttons -->
+              <button id="ov_prev_model" class="btn btn-dark region-flip-btn position-absolute top-50 start-0 translate-middle-y ms-2 rounded-circle shadow" style="opacity:0.7;width:40px;height:40px;z-index:5;">
+                <i class="bi bi-chevron-left"></i>
+              </button>
+              <button id="ov_next_model" class="btn btn-dark region-flip-btn position-absolute top-50 end-0 translate-middle-y me-2 rounded-circle shadow" style="opacity:0.7;width:40px;height:40px;z-index:5;">
+                <i class="bi bi-chevron-right"></i>
+              </button>
+
+              <!-- States -->
+              <div class="placeholder-state" id="ov_placeholder">
+                <i class="bi bi-image text-muted opacity-50 mb-2" style="font-size:2rem;"></i>
+                <span class="fw-medium text-muted">Loading latest map...</span>
+              </div>
+              <div class="loading-state d-none" id="ov_loading">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+                <span class="fw-medium">Fetching newest data...</span>
+              </div>
+              <div class="unavailable-state d-none" id="ov_unavailable">
+                <i class="bi bi-exclamation-circle text-danger mb-1" style="font-size:1.5rem;"></i>
+                <span class="fw-medium text-danger">Image not available for this combination.</span>
+              </div>
+              <img src="" id="ov_image" class="plot-image d-none">
+            </div>
+          </div>
+        </main>
+
+      </div><!-- /ov-sidebar-grid -->
+    </div><!-- /overview-pane -->
+
+    <!-- ══════════ MAPS TAB ══════════ -->
+    <div class="tab-pane fade" id="maps-pane" role="tabpanel" aria-labelledby="maps-tab">
+      <div class="content-grid">
+
+        <!-- Controls sidebar -->
+        <aside class="controls-sidebar">
+          <div class="controls-card">
+            <div class="controls-header">
+              <i class="bi bi-sliders2 me-2"></i>Map Controls
+            </div>
+            <div class="controls-body">
+
+              <!-- Date -->
+              <div class="control-group">
+                <label class="control-label" for="mapDate">
+                  <i class="bi bi-calendar3 me-1"></i>Date
+                </label>
+                <input type="date" id="mapDate" class="form-control form-control-sm control-input"
+                  value="{{ today }}" />
+              </div>
+
+              <!-- Time step nav -->
+              <div class="control-group">
+                <label class="control-label">
+                  <i class="bi bi-clock me-1"></i>Time Step
+                </label>
+                <div class="d-flex align-items-center gap-2">
+                  <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="mapTimeBack"
+                    title="Go back 6 hours">
+                    <i class="bi bi-chevron-left"></i>&nbsp;6h
+                  </button>
+                  <span class="time-badge" id="mapTimeDisplay">00Z</span>
+                  <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="mapTimeForward"
+                    title="Go forward 6 hours">
+                    6h&nbsp;<i class="bi bi-chevron-right"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <label class="control-label" for="mapRegion">
+                  <i class="bi bi-geo-alt me-1"></i>Region
+                </label>
+                <select id="mapRegion" class="form-select form-select-sm control-input">
+                  {% for region in map_regions %}
+                  <option value="{{ region }}">{{ region }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <!-- Variable & Depth (populated by JS) -->
+              <div class="control-group">
+                <label class="control-label" for="mapVarDepth">
+                  <i class="bi bi-layers me-1"></i>Variable &amp; Depth
+                </label>
+                <select id="mapVarDepth" class="form-select form-select-sm control-input">
+                </select>
+              </div>
+
+              <!-- Update button -->
+              <button class="btn btn-ocean w-100 mt-2" id="mapUpdateBtn" onclick="loadMaps()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Update Maps
+              </button>
+
+              <!-- Auto-update toggle -->
+              <div class="form-check form-switch d-flex align-items-center gap-2 mt-3 ps-0">
+                <input class="form-check-input ms-0" type="checkbox" id="mapAutoUpdate" role="switch" style="cursor:pointer; width:2.2em; height:1.2em;">
+                <label class="form-check-label text-muted small" for="mapAutoUpdate" style="cursor:pointer;">
+                  Update on change
+                </label>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Legend card -->
+          <div class="controls-card mt-3">
+            <div class="controls-header">
+              <i class="bi bi-info-circle me-2"></i>Legend
+            </div>
+            <div class="controls-body">
+              <div class="legend-item">
+                <span class="legend-dot" style="background:#0d6efd;"></span>
+                <small>RTOFS vs. Copernicus (CMEMS)</small>
+              </div>
+              <div class="legend-item mt-1">
+                <span class="legend-dot" style="background:#00897b;"></span>
+                <small>RTOFS vs. ESPC</small>
+              </div>
+              <div class="legend-item mt-1">
+                <span class="legend-dot" style="background:#d97706;"></span>
+                <small>RTOFS vs. GOES</small>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Image display – single toggle panel -->
+        <main class="image-display">
+          <div class="image-panel" id="mapPanel1" style="display:flex; flex-direction:column; min-height:0;">
+            <!-- Model Tabs -->
+            <div class="image-panel-header p-0 d-flex justify-content-between align-items-center pe-2" style="border-bottom: 1px solid var(--panel-border);">
+              <ul class="nav nav-tabs border-0" id="mapModelTabs" role="tablist" style="gap:2px;">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active fw-medium px-4 py-2" id="mapTab-copernicus"
+                    data-model="copernicus" role="tab" style="border-radius: var(--radius-md) var(--radius-md) 0 0; font-size:.85rem;">
+                    RTOFS / CMEMS
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link fw-medium px-4 py-2" id="mapTab-espc"
+                    data-model="espc" role="tab" style="border-radius: var(--radius-md) var(--radius-md) 0 0; font-size:.85rem;">
+                    RTOFS / ESPC
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link fw-medium px-4 py-2" id="mapTab-goes"
+                    data-model="goes" role="tab" style="border-radius: var(--radius-md) var(--radius-md) 0 0; font-size:.85rem;">
+                    RTOFS / GOES
+                  </button>
+                </li>
+              </ul>
+              <button class="btn btn-sm btn-outline-ocean" onclick="downloadPlot('mapImageContainer')" title="Download Image">
+                <i class="bi bi-download"></i> Download
+              </button>
+            </div>
+            <!-- Image body – scales to fill available height, no scrolling -->
+            <div class="image-panel-body" id="mapImageContainer">
+              <div class="placeholder-state">
+                <i class="bi bi-image text-muted" style="font-size:3rem;"></i>
+                <p class="text-muted mt-2">Select controls and click <strong>Update Maps</strong></p>
+              </div>
+            </div>
+          </div>
+        </main>
+
+      </div><!-- /content-grid -->
+    </div><!-- /maps-pane -->
+
+
+    <!-- ══════════ PROFILES TAB ══════════ -->
+    <div class="tab-pane fade" id="profiles-pane" role="tabpanel" aria-labelledby="profiles-tab">
+      <div class="content-grid">
+
+        <!-- Controls sidebar -->
+        <aside class="controls-sidebar">
+          <div class="controls-card">
+            <div class="controls-header">
+              <i class="bi bi-sliders2 me-2"></i>Profile Controls
+            </div>
+            <div class="controls-body">
+
+              <!-- Profile Date -->
+              <div class="control-group">
+                <label class="control-label" for="profileDate">
+                  <i class="bi bi-calendar3 me-1"></i>Date
+                </label>
+                <input type="date" id="profileDate" class="form-control form-control-sm control-input"
+                  value="{{ today }}" />
+              </div>
+
+              <!-- Day nav -->
+              <div class="control-group">
+                <label class="control-label">
+                  <i class="bi bi-clock me-1"></i>Navigate Days
+                </label>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-outline-ocean btn-sm flex-grow-1" id="profileDayBack">
+                    <i class="bi bi-chevron-left"></i>&nbsp;1 Day
+                  </button>
+                  <button class="btn btn-outline-ocean btn-sm flex-grow-1" id="profileDayForward">
+                    1 Day&nbsp;<i class="bi bi-chevron-right"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Profile Type -->
+              <div class="control-group">
+                <label class="control-label" for="profileType">
+                  <i class="bi bi-person-workspace me-1"></i>Profile Type
+                </label>
+                <div class="btn-group w-100" role="group" id="profileTypeGroup">
+                  <input type="radio" class="btn-check" name="profileType" id="typeGlider" value="Glider" checked />
+                  <label class="btn btn-outline-ocean btn-sm" for="typeGlider">
+                    <i class="bi bi-water me-1"></i>Glider
+                  </label>
+                  <input type="radio" class="btn-check" name="profileType" id="typeArgo" value="Argo" />
+                  <label class="btn btn-outline-ocean btn-sm" for="typeArgo">
+                    <i class="bi bi-circle-half me-1"></i>Argo
+                  </label>
+                  <input type="radio" class="btn-check" name="profileType" id="typeFvon" value="FVON" />
+                  <label class="btn btn-outline-ocean btn-sm" for="typeFvon">
+                    <i class="bi bi-geo me-1"></i>FVON
+                  </label>
+                </div>
+              </div>
+
+              <!-- Profile Region (hidden for Glider) -->
+              <div class="control-group" id="argoRegionGroup" style="display:none!important;">
+                <label class="control-label" for="argoRegion">
+                  <i class="bi bi-geo-alt me-1"></i>Region
+                </label>
+                <select id="argoRegion" class="form-select form-select-sm control-input">
+                  {% for region in region_info %}
+                  <option value="{{ region }}">{{ region }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <!-- Platform ID select -->
+              <div class="control-group" id="platformIdGroup">
+                <label class="control-label" for="platformId">
+                  <i class="bi bi-tag me-1"></i>Platform ID
+                </label>
+                <select id="platformId" class="form-select form-select-sm control-input">
+                  <option value="">Loading…</option>
+                </select>
+                <div id="noPlatformMsg" class="no-data-msg d-none">
+                  No profiles available for this date
+                </div>
+              </div>
+
+              <!-- Update button -->
+              <button class="btn btn-ocean w-100 mt-2" id="profileUpdateBtn" onclick="loadProfile()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Update Profile
+              </button>
+
+              <!-- Auto-update toggle -->
+              <div class="form-check form-switch d-flex align-items-center gap-2 mt-3 ps-0">
+                <input class="form-check-input ms-0" type="checkbox" id="profileAutoUpdate" role="switch" style="cursor:pointer; width:2.2em; height:1.2em;">
+                <label class="form-check-label text-muted small" for="profileAutoUpdate" style="cursor:pointer;">
+                  Update on change
+                </label>
+              </div>
+
+              <!-- Map visibility toggle -->
+              <div class="form-check form-switch d-flex align-items-center gap-2 mt-2 ps-0">
+                <input class="form-check-input ms-0" type="checkbox" id="profileMapToggle" role="switch" checked style="cursor:pointer; width:2.2em; height:1.2em;" onchange="document.getElementById('profileMapPanel').style.display = this.checked ? 'flex' : 'none'; if(this.checked && profileMap) { setTimeout(() => profileMap.invalidateSize(), 50); }">
+                <label class="form-check-label text-muted small" for="profileMapToggle" style="cursor:pointer;">
+                  Show Map
+                </label>
+              </div>
+
+            </div>
+          </div>
+        </aside>
+
+        <!-- Profile Image display -->
+        <main class="image-display d-flex gap-3" style="flex-direction: row;">
+          
+          <!-- Map Panel -->
+          <!-- We use resize: horizontal to allow dragging the edge, requiring width instead of flex-basis -->
+          <div class="image-panel position-relative" id="profileMapPanel" style="width: 350px; flex: none; display: flex; flex-direction: column; resize: horizontal; overflow: hidden; min-width: 200px; max-width: 800px; padding-bottom: 0;">
+            <div class="image-panel-header d-flex justify-content-between align-items-center">
+              <div>
+                <span class="panel-badge" style="background:#20c99720;color:#20c997;">Profile Locations</span>
+              </div>
+              <button class="btn btn-sm text-muted p-0 border-0" onclick="document.getElementById('profileMapToggle').click();" title="Hide Map">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div class="image-panel-body p-0" id="profileMapContainer" style="flex: 1; min-height: 400px; z-index: 1;">
+              <!-- Leaflet Map will render here -->
+            </div>
+          </div>
+
+          <!-- Profile Plot Panel -->
+          <div class="image-panel" id="profilePanel" style="flex: 1; display:flex; flex-direction:column;">
+            <div class="image-panel-header d-flex justify-content-between align-items-center">
+              <div>
+                <span class="panel-badge" style="background:#6f42c120;color:#6f42c1;">Profile Comparison</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span id="profileLabel" class="text-muted small"></span>
+                <button class="btn btn-sm btn-outline-ocean ms-2" onclick="downloadPlot('profileImageContainer')" title="Download Image">
+                  <i class="bi bi-download"></i> Download
+                </button>
+              </div>
+            </div>
+            <div class="image-panel-body" id="profileImageContainer">
+              <div class="placeholder-state">
+                <i class="bi bi-graph-up text-muted" style="font-size:3rem;"></i>
+                <p class="text-muted mt-2">Select controls and click <strong>Update Profile</strong></p>
+              </div>
+            </div>
+          </div>
+        </main>
+
+      </div>
+    </div><!-- /profiles-pane -->
+
+    <!-- ══════════ ADAPTIVE SAMPLING TAB ══════════ -->
+    <div class="tab-pane fade" id="adaptive-pane" role="tabpanel" aria-labelledby="adaptive-tab">
+      <div class="content-grid">
+
+        <!-- Controls sidebar -->
+        <aside class="controls-sidebar">
+          <div class="controls-card">
+            <div class="controls-header">
+              <i class="bi bi-compass me-2"></i>Adaptive Sampling Controls
+            </div>
+            <div class="controls-body">
+
+              <!-- Date -->
+              <div class="control-group">
+                <label class="control-label" for="asgDate">
+                  <i class="bi bi-calendar3 me-1"></i>Date
+                </label>
+                <input type="date" id="asgDate" class="form-control form-control-sm control-input"
+                  value="{{ asg_latest }}" />
+              </div>
+
+              <!-- Time step nav -->
+              <div class="control-group">
+                <label class="control-label">
+                  <i class="bi bi-clock me-1"></i>Time Step
+                </label>
+                <div class="d-flex align-items-center gap-2">
+                  <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="asgTimeBack"
+                    title="Go back 6 hours">
+                    <i class="bi bi-chevron-left"></i>&nbsp;6h
+                  </button>
+                  <span class="time-badge" id="asgTimeDisplay">00Z</span>
+                  <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="asgTimeForward"
+                    title="Go forward 6 hours">
+                    6h&nbsp;<i class="bi bi-chevron-right"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Region -->
+              <div class="control-group">
+                <label class="control-label" for="asgRegion">
+                  <i class="bi bi-geo-alt me-1"></i>Region
+                </label>
+                <select id="asgRegion" class="form-select form-select-sm control-input">
+                  {% for region in adaptive_sampling_regions %}
+                  <option value="{{ region }}">{{ region }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <!-- Variable -->
+              <div class="control-group">
+                <label class="control-label" for="asgVariable">
+                  <i class="bi bi-layers me-1"></i>Variable
+                </label>
+                <select id="asgVariable" class="form-select form-select-sm control-input">
+                  {% for var in adaptive_sampling_variables %}
+                  <option value="{{ var }}">{{ var }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <!-- Model -->
+              <div class="control-group">
+                <label class="control-label" for="asgModel">
+                  <i class="bi bi-cpu me-1"></i>Comparison Model
+                </label>
+                <select id="asgModel" class="form-select form-select-sm control-input">
+                  {% for model in adaptive_sampling_models %}
+                  <option value="{{ model }}">{{ model }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <!-- Update button -->
+              <button class="btn btn-ocean w-100 mt-2" id="asgUpdateBtn" onclick="loadAdaptiveSampling()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Update Figure
+              </button>
+
+              <!-- Auto-update toggle -->
+              <div class="form-check form-switch d-flex align-items-center gap-2 mt-3 ps-0">
+                <input class="form-check-input ms-0" type="checkbox" id="asgAutoUpdate" role="switch" style="cursor:pointer; width:2.2em; height:1.2em;">
+                <label class="form-check-label text-muted small" for="asgAutoUpdate" style="cursor:pointer;">
+                  Update on change
+                </label>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Info card -->
+          <div class="controls-card mt-3">
+            <div class="controls-header">
+              <i class="bi bi-info-circle me-2"></i>About
+            </div>
+            <div class="controls-body">
+              <p class="mb-1" style="font-size:.78rem;color:var(--text-muted);line-height:1.5;">
+                Adaptive sampling guidance figures showing RTOFS model comparisons across key ocean variables to support hurricane glider mission planning.
+              </p>
+              <a href="https://rucool.marine.rutgers.edu/hurricane/adaptive_sampling_guidance/"
+                target="_blank" rel="noopener"
+                class="btn btn-outline-ocean btn-sm w-100 mt-2">
+                <i class="bi bi-box-arrow-up-right me-1"></i>View Raw Files
+              </a>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Adaptive Sampling Image display -->
+        <main class="image-display">
+          <div class="image-panel" id="asgPanel">
+            <div class="image-panel-header d-flex justify-content-between align-items-center">
+              <div>
+                <span class="panel-badge" style="background:#e65100;opacity:.9;background:#ff6d0020;color:#e65100;">Adaptive Sampling Guidance</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span id="asgLabel" class="text-muted small"></span>
+                <button class="btn btn-sm btn-outline-ocean ms-2" onclick="downloadPlot('asgImageContainer')" title="Download Image">
+                  <i class="bi bi-download"></i> Download
+                </button>
+              </div>
+            </div>
+            <div class="image-panel-body" id="asgImageContainer">
+              <div class="placeholder-state">
+                <i class="bi bi-compass text-muted" style="font-size:3rem;"></i>
+                <p class="text-muted mt-2">Select controls and click <strong>Update Figure</strong></p>
+              </div>
+            </div>
+          </div>
+        </main>
+
+      </div>
+    </div><!-- /adaptive-pane -->
+
+  </div><!-- /tab-content -->
+</div><!-- /app-wrapper -->
+
+<!-- ══════════════════════════════════════════════════════ TOAST NOTIFICATION -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="alertToast" class="toast align-items-center text-bg-danger border-0" role="alert"
+    aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="alertToastMsg">Image not available.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ SCRIPTS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Pass server-side metadata to JS
+  const API_BASE = {{ request.script_root | tojson }};
+  const REGION_INFO = {{ region_info | tojson }};
+  const MAP_REGIONS = {{ map_regions | tojson }};
+  const ASG_REGIONS   = {{ adaptive_sampling_regions | tojson }};
+  const ASG_VARIABLES = {{ adaptive_sampling_variables | tojson }};
+  const ASG_MODELS    = {{ adaptive_sampling_models | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+</body>
+</html>

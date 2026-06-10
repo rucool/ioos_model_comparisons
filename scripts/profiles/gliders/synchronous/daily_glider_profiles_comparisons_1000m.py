@@ -62,6 +62,9 @@ plot_density = True
 # Depth
 depth = 1000
 
+# Glider profile averaging method: 'bin' or 'interpolate'
+glider_depth_method = 'interpolate'
+
 # Time threshold (in hours). If a profile time is greater than this, we won't 
 # grab the corresponding profile from the model
 time_threshold = 6 # hours
@@ -293,8 +296,10 @@ def plot_glider_profiles(id, gliders):
                 if not pdf.empty:
                     print(f'plotting profile {name}')
                     pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
-                    tmp_depth = depth_bin(pdf.select_dtypes(exclude=['object']), depth_var='depth', depth_min=-1, depth_max=depth+10, stride=5, aggregation='mean')
-                    # tmp_depth = depth_interpolate(pdf, depth_min=0, depth_max=400, bins=bins)
+                    if glider_depth_method == 'interpolate':
+                        tmp_depth = depth_interpolate(pdf.select_dtypes(exclude=['object']), depth_var='depth', bins=bins)
+                    else:
+                        tmp_depth = depth_bin(pdf.select_dtypes(exclude=['object']), depth_var='depth', aggregation='mean', bins=bins)
                     binned.append(tmp_depth)
                     pid = name[0]
                     time_glider = name[1] 
@@ -363,11 +368,16 @@ def plot_glider_profiles(id, gliders):
 
             # espc_loaded
             gds = gds.sel(depth=slice(0,depth)).squeeze()
+            # FMRC datasets retain a reftime dimension after time selection; drop it
+            extra_dims = [d for d in gds.dims if d != 'depth']
+            if extra_dims:
+                gds = gds.isel({d: 0 for d in extra_dims})
             gds['salinity'].load()
             gds['temperature'].load()
 
             # Calculate density
-            gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
+            d_g = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, float(gds['lat']), float(gds['lon']))
+            gds['density'] = (('depth'), d_g)
 
             print(f"ESPC - Time: {pd.to_datetime(gds.time.values)}")
 
@@ -443,7 +453,8 @@ def plot_glider_profiles(id, gliders):
             #     print(f"Difference between profile and nearest CMEMS time is {delta_time}. Interpolating to profile")
 
             # Calculate density
-            cds['density'] = density(cds['temperature'].values, -cds['depth'].values, cds['salinity'].values, cds['lat'].values, cds['lon'].values)
+            d_c = density(cds['temperature'].values, -cds['depth'].values, cds['salinity'].values, float(cds['lat']), float(cds['lon']))
+            cds['density'] = (('depth'), d_c)
             ohc_cmems = ocean_heat_content(cds['depth'].values, cds['temperature'].values, cds['density'].values)
             
         # Plot model profiles

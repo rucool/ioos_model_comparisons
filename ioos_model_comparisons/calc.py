@@ -524,7 +524,7 @@ def depth_interpolate(
 
     return temp
 
-def depth_bin(df, depth_var="depth", depth_min=0, depth_max=None, stride=1, aggregation='mean', index_type='mid'):
+def depth_bin(df, depth_var="depth", depth_min=0, depth_max=None, stride=1, aggregation='mean', index_type='mid', bins=None):
     """
     Bins a depth profile from a pandas dataframe and computes aggregated values for each bin, with the bin edges or mid-points as the index. Ensures all bins above a specified minimum are included, even if empty.
 
@@ -536,6 +536,7 @@ def depth_bin(df, depth_var="depth", depth_min=0, depth_max=None, stride=1, aggr
     - stride (int): Interval between depth bins. Defaults to 1.
     - aggregation (str): Aggregation method (e.g., 'mean', 'sum', 'median'). Defaults to 'mean'.
     - index_type (str): Type of index for the bins ('edge' or 'mid'). Defaults to 'mid'.
+    - bins (array-like, optional): Custom bin edges. Overrides depth_min, depth_max, and stride when provided.
 
     Returns:
     - pd.DataFrame: Dataframe with data aggregated into specified depth bins, indexed by bin edges or mid-points.
@@ -549,18 +550,20 @@ def depth_bin(df, depth_var="depth", depth_min=0, depth_max=None, stride=1, aggr
     if depth_var not in df.columns:
         raise ValueError(f"{depth_var} column not found in DataFrame")
 
-    if not isinstance(depth_min, (int, float)) or not isinstance(depth_max, (int, float, type(None))) or not isinstance(stride, (int, float)):
-        raise ValueError("depth_min, depth_max, and stride must be numbers")
-
-    if depth_max is not None and depth_max <= depth_min:
-        raise ValueError("depth_max must be greater than depth_min")
-
     if index_type not in ['edge', 'mid']:
         raise ValueError("index_type must be 'edge' or 'mid'")
 
-    depth_max = depth_max or max(df[depth_var].max(), depth_min)
+    if bins is None:
+        if not isinstance(depth_min, (int, float)) or not isinstance(depth_max, (int, float, type(None))) or not isinstance(stride, (int, float)):
+            raise ValueError("depth_min, depth_max, and stride must be numbers")
 
-    bins = np.arange(depth_min, depth_max + stride, stride)
+        if depth_max is not None and depth_max <= depth_min:
+            raise ValueError("depth_max must be greater than depth_min")
+
+        depth_max = depth_max or max(df[depth_var].max(), depth_min)
+        bins = np.arange(depth_min, depth_max + stride, stride)
+
+    bins = np.asarray(bins)
     cut = pd.cut(df[depth_var], bins, right=False, labels=False, include_lowest=True)
 
     if aggregation not in ['mean', 'sum', 'median']:

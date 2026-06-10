@@ -18,7 +18,8 @@ import ioos_model_comparisons.configs as configs
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import (density,
                                          ocean_heat_content,
-                                         depth_bin
+                                         depth_bin,
+                                         depth_interpolate
                                          )
 from ioos_model_comparisons.platforms import get_active_gliders, get_ohc
 from ioos_model_comparisons.regions import region_config
@@ -84,6 +85,9 @@ plot_para = False
 plot_temperature = True
 plot_salinity = True
 plot_density = True
+
+# Glider profile averaging method: 'bin' or 'interpolate'
+glider_depth_method = 'interpolate'
 
 # Time threshold (in hours). If a profile time is greater than this, we won't 
 # grab the corresponding profile from the model
@@ -287,7 +291,10 @@ def plot_glider_profiles(id, gliders):
                 if not pdf.empty:
                     print(f'plotting profile {name}')
                     pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
-                    tmp_depth = depth_bin(pdf.select_dtypes(exclude=['object']), depth_var='depth', depth_min=0, depth_max=400, stride=10, aggregation='mean')
+                    if glider_depth_method == 'interpolate':
+                        tmp_depth = depth_interpolate(pdf.select_dtypes(exclude=['object']), depth_var='depth', bins=bins)
+                    else:
+                        tmp_depth = depth_bin(pdf.select_dtypes(exclude=['object']), depth_var='depth', aggregation='mean', bins=bins)
                     binned.append(tmp_depth)
                     pid = name[0]
                     time_glider = name[1] 
@@ -348,7 +355,8 @@ def plot_glider_profiles(id, gliders):
             gds = espc_loaded.get_point(mlon, mlat, time_glider, interp=False)
 
             # Calculate density
-            gds['density'] = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, gds['lat'].values, gds['lon'].values)
+            d_g = density(gds['temperature'].values, -gds['depth'].values, gds['salinity'].values, float(gds['lat']), float(gds['lon']))
+            gds['density'] = (('depth'), d_g)
 
             print(f"ESPC - Time: {pd.to_datetime(gds.time.values)}")
 
