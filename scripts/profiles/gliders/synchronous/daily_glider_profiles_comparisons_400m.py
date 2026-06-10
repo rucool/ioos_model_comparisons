@@ -70,7 +70,7 @@ parallel = False
 timeout = 60
 days = 2
 today = dt.date.today()
-interp = False
+spatial_interp = False
 workers = 4
 
 # Region selection
@@ -297,7 +297,7 @@ def plot_glider_profiles(id, gliders):
         lat_track = []
     
         # Filter glider depth
-        tdf = tdf[tdf["depth"] <= 400]
+        tdf = tdf[(tdf["depth"] > 0.5) & (tdf["depth"] <= 400)]
 
         # Groupby glider profiles
         maxd = []
@@ -411,7 +411,7 @@ def plot_glider_profiles(id, gliders):
             rlonI = np.interp(mlon, rlon, rx) # lon -> x
             rlatI = np.interp(mlat, rlat, ry) # lat -> y
 
-            if interp:
+            if spatial_interp:
                 rds = rds.interp(
                     x=rlonI,
                     y=rlatI,
@@ -437,7 +437,7 @@ def plot_glider_profiles(id, gliders):
             rlonI = np.interp(mlon, rlon, rx) # lon -> x
             rlatI = np.interp(mlat, rlat, ry) # lat -> y
 
-            if interp:
+            if spatial_interp:
                 rdsp = rdsp.interp(
                     x=rlonI,
                     y=rlatI,
@@ -456,10 +456,7 @@ def plot_glider_profiles(id, gliders):
             
         if plot_cmems:
             # CMEMS
-            if interp:
-                cds = cobj.get_point(mlon, mlat, time_glider, interp=True)
-            else:
-                cds = cobj.get_point(mlon, mlat, time_glider, interp=False)
+            cds = cobj.get_point(mlon, mlat, time_glider, interp=spatial_interp)
             cds = cds.sel(depth=slice(0, depth)).squeeze()
 
             cds['salinity'].load()
@@ -571,7 +568,7 @@ def plot_glider_profiles(id, gliders):
         # Rotate the x-axis labels by 45 degrees (you can adjust this angle)
         dax.tick_params(axis='x', labelrotation=45)
 
-        if interp:
+        if spatial_interp:
             method = "Interpolation"
         else:
             method = "Nearest-Neighbor"
