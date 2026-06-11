@@ -471,12 +471,12 @@ def region_config(regions=None, model=None):
         # extent = [-89, -58, 7, 28]
         sea_water_temperature = [
             dict(depth=0, limits=[26.0, 30.25, 0.25]),
-            # dict(depth=150, limits=[17, 25, .5]),
+            dict(depth=150, limits=[17, 25, .5]),
             # dict(depth=200, limits=[14, 22.5, .5])
             ]
         salinity = [
-            # dict(depth=0, limits=[34.6, 36.8, .1]),
-            # dict(depth=150, limits=[35.7, 37.4, .1]),
+            dict(depth=0, limits=[34.6, 36.8, .1]),
+            dict(depth=150, limits=[35.7, 37.4, .1]),
             # dict(depth=200, limits=[35.6, 37.1, .1])
             ]
         sea_surface_height = [
@@ -491,7 +491,7 @@ def region_config(regions=None, model=None):
             )
         currents = dict(
             bool=True,
-            depths = [0, 150, 200],
+            depths = [0, 150],
             limits = [0, 1.5, .1],
             coarsen=dict(rtofs=11, espc=12),
             kwargs=dict(
