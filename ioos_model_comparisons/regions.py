@@ -330,6 +330,7 @@ def region_config(regions=None, model=None):
                 color="black"
                 )
             )
+        eez = True
         figure = dict(
             legend = dict(columns=7),
             figsize = (12, 7)
@@ -499,7 +500,7 @@ def region_config(regions=None, model=None):
                 color="black"
                 )
             )
-        eez = False
+        eez = True
         figure = dict(
             legend = dict(columns=8),
             figsize = (12.5,6.5)
@@ -662,11 +663,12 @@ def region_config(regions=None, model=None):
                 linewidth=.5
                 )
             )
+        eez = True
         figure = dict(
             figsize = (12, 8.5),
             legend = dict(columns=9),
             )
-        
+
     key = "passengers"
     if key in regions:
         # Mid Atlantic Bight Limits
