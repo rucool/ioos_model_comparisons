@@ -20,6 +20,12 @@ from ioos_model_comparisons.plotting import (
     plot_sst
 )
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import (
+    apply_colorbar_overrides,
+    ensure_plot_index,
+    fetch_completed_plot_keys,
+    log_plots,
+)
 from cool_maps.plot import get_bathymetry
 
 # Formatter for time
@@ -36,6 +42,8 @@ start_time = time.time()
 
 # Save path for plots
 path_save = conf.path_plots / "maps"
+
+SCRIPT_ID = "pacific"
 
 # Model selection flags
 plot_rtofs = True
@@ -137,8 +145,107 @@ if rds is not None:
     grid_lons, grid_lats = rds.lon.values[0, :], rds.lat.values[:, 0]
     grid_x, grid_y = rds.x.values, rds.y.values
 
-def main():
+def _expected_plot_keys(ctime, region) -> set:
+    """Return the set of (region, iso_ts, plot_type, variable, depth, m1, m2) tuples
+    expected for this (ctime, region) — no file I/O.
+
+    In the Pacific script every enabled model pair gets both model_comparison
+    and streamplot, so the same pair list drives both.
+    """
+    t      = pd.to_datetime(ctime)
+    tstr_k = t.strftime("%Y-%m-%dT%H%M%SZ")
+    rname  = region['name']
+    keys   = set()
+
+    model_pairs = []
+    if plot_rtofs and plot_espc:
+        model_pairs.append(('rtofs', 'espc'))
+    if plot_rtofs and plot_para:
+        model_pairs.append(('rtofs', 'rtofs'))
+    if plot_rtofs and plot_cmems:
+        model_pairs.append(('rtofs', 'cmems'))
+    if plot_rtofs and plot_amseas:
+        model_pairs.append(('rtofs', 'amseas'))
+
+    for m1, m2 in model_pairs:
+        for k, depth_list in region['variables'].items():
+            for de in depth_list:
+                keys.add((rname, tstr_k, "model_comparison", k, de['depth'], m1, m2))
+        if region['currents']['bool']:
+            for depth in region['currents']['depths']:
+                keys.add((rname, tstr_k, "streamplot", "currents", depth, m1, m2))
+
+    if plot_rtofs and sst_sorted is not None:
+        keys.add((rname, tstr_k, "sst", "temperature", 0, "rtofs", "GOES16"))
+
+    return keys
+
+
+def _mc_records(region, ts_dt, m1, m2):
+    return [
+        {"region": region['name'], "timestamp": ts_dt, "plot_type": "model_comparison",
+         "variable": k, "depth": de['depth'], "model1": m1, "model2": m2}
+        for k, dl in region['variables'].items() for de in dl
+    ]
+
+
+def _sp_records(region, ts_dt, m1, m2):
+    return [
+        {"region": region['name'], "timestamp": ts_dt, "plot_type": "streamplot",
+         "variable": "currents", "depth": depth, "model1": m1, "model2": m2}
+        for depth in region['currents']['depths']
+    ]
+
+
+def _sst_record(region, ts_dt, satellite_tag):
+    return {"region": region['name'], "timestamp": ts_dt, "plot_type": "sst",
+            "variable": "temperature", "depth": 0, "model1": "rtofs", "model2": satellite_tag}
+
+
+def pre_check_date_list(date_list) -> pd.DatetimeIndex:
+    """Return a filtered DatetimeIndex with only timestamps that still need processing.
+
+    Tries MongoDB first (one round-trip); falls back to a no-op pass-through
+    (all timestamps queued) if the database is unavailable, since this script
+    has no file-existence check to fall back on.
+    """
+    expected_by_ts = {}
     for ctime in date_list:
+        keys = set()
+        for item in conf.regions:
+            region = region_config(item)
+            region = apply_colorbar_overrides(item, region)
+            keys |= _expected_plot_keys(ctime, region)
+        expected_by_ts[ctime] = keys
+
+    done_keys = fetch_completed_plot_keys(SCRIPT_ID, list(date_list))
+
+    needed_dates = []
+    skipped = 0
+    if done_keys is not None:
+        for ctime in date_list:
+            if expected_by_ts[ctime].issubset(done_keys):
+                skipped += 1
+            else:
+                needed_dates.append(ctime)
+        logger.info(f"Pre-check (MongoDB): {skipped}/{len(date_list)} timestamp(s) fully done — skipping.")
+    else:
+        logger.warning("MongoDB unavailable — processing all timestamps.")
+        needed_dates = list(date_list)
+
+    logger.info(f"Pre-check: {len(needed_dates)}/{len(date_list)} timestamp(s) queued.")
+    return pd.DatetimeIndex(needed_dates)
+
+
+def main():
+    ensure_plot_index()
+    date_list_pending = pre_check_date_list(date_list)
+
+    if len(date_list_pending) == 0:
+        logger.info("All outputs already exist. Nothing to do.")
+        return
+
+    for ctime in date_list_pending:
         logger.info(f"Starting processing for time: {ctime}")
 
         # Attempt to load data for each model
@@ -152,8 +259,8 @@ def main():
         # Process each region
         for item in conf.regions:
             region = region_config(item)
+            region = apply_colorbar_overrides(item, region)
 
-            # gdt_flag, gdt = attempt_cmems_data_load(gds_instance, ctime, region['extent']) if plot_espc else (False, None)
             cdt_flag, cdt = attempt_cmems_data_load(cmems_instance, ctime, region['extent']) if plot_cmems else (False, None)
             logger.info(f"Processing region: {region['name']} at time: {ctime}")
             process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
@@ -271,10 +378,15 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             logger.warning(f"SST data unavailable for region {region['name']} at time {ctime}")
 
         # Plot data
+        pending_logs = []
+        ts_dt        = pd.to_datetime(ctime).to_pydatetime()
+
         try:
             if rdt_flag and gdt_flag:
                 plot_model_region_comparison(rds_sub, gds_ts, region, **kwargs)
                 plot_model_region_comparison_streamplot(rds_sub, gds_uv, region, **kwargs)
+                pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'espc'))
+                pending_logs.extend(_sp_records(region, ts_dt, 'rtofs', 'espc'))
                 logger.info(f"Successfully plotted RTOFS vs ESPC for region {region['name']} at time {ctime}")
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs ESPC at {ctime} for region {region['name']}: {e}")
@@ -283,6 +395,8 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             if rdt_flag and rdtp_flag:
                 plot_model_region_comparison(rds_sub, rdtp_sub, region, **kwargs)
                 plot_model_region_comparison_streamplot(rds_sub, rdtp_sub, region, **kwargs)
+                pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'rtofs'))
+                pending_logs.extend(_sp_records(region, ts_dt, 'rtofs', 'rtofs'))
                 logger.info(f"Successfully plotted RTOFS vs Parallel for region {region['name']} at time {ctime}")
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs Parallel at {ctime} for region {region['name']}: {e}")
@@ -291,6 +405,8 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             if rdt_flag and cdt_flag:
                 plot_model_region_comparison(rds_sub, cds_sub, region, **kwargs)
                 plot_model_region_comparison_streamplot(rds_sub, cds_sub, region, **kwargs)
+                pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'cmems'))
+                pending_logs.extend(_sp_records(region, ts_dt, 'rtofs', 'cmems'))
                 logger.info(f"Successfully plotted RTOFS vs CMEMS for region {region['name']} at time {ctime}")
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs CMEMS at {ctime} for region {region['name']}: {e}")
@@ -299,13 +415,18 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             if rdt_flag and amt_flag:
                 plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
                 plot_model_region_comparison_streamplot(rds_sub, am_sub, region, **kwargs)
+                pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'amseas'))
+                pending_logs.extend(_sp_records(region, ts_dt, 'rtofs', 'amseas'))
                 logger.info(f"Successfully plotted RTOFS vs AMSEAS for region {region['name']} at time {ctime}")
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs AMSEAS at {ctime} for region {region['name']}: {e}")
 
         if sst is not None:
             plot_sst(rds_sub, sst, region, **remove_kwargs(['eez', 'currents', 'legend']))
+            pending_logs.append(_sst_record(region, ts_dt, 'GOES16'))
             logger.info(f"Successfully plotted SST for region {region['name']} at time {ctime}")
+
+        log_plots(SCRIPT_ID, pending_logs)
 
     except Exception as e:
         logger.error(f"Failed to process region {region['name']} at time {ctime}: {e}")

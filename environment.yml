@@ -23,3 +23,8 @@ dependencies:
   - jupyterlab
   - copernicusmarine
   - cool_maps
+  - pymongo
+  - xesmf
+  - tropycal
+  - pip:
+    - tcmarkers
