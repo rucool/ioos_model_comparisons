@@ -380,7 +380,7 @@ def process_time(ctime):
             region_name=configs["name"],
             ctime=ctime,
             bathy=bathy_data,
-            eez=configs.get('eez', True),
+            eez=False,
             path_save=path_save / configs["folder"],
             transform=config['projection'],
             dpi=config['dpi'],
@@ -414,7 +414,7 @@ def main(parallel=True, max_workers=None):
     plot_rtofs = True
     plot_espc = True
     plot_cmems = True
-    replot = True
+    replot = False
 
     conf.days = 1
     path_save = conf.path_plots / "adaptive_sampling_guidance" / "maps"

@@ -442,7 +442,7 @@ def process_time(ctime):
             bathy=bathy_data,
             argo=argo,
             gliders=gliders,
-            eez=configs.get('eez', True),
+            eez=False,
             transform=config['projection'],
             dpi=config['dpi'],
             overwrite=config.get('overwrite', False),
@@ -515,7 +515,7 @@ def main(parallel=True, max_workers=None):
     plot_rtofs = True
     plot_espc = True
     plot_cmems = True
-    replot = True
+    replot = False
 
     conf.days = 2
     path_save = conf.path_plots / "adaptive_sampling_guidance" / "maps"
