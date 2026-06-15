@@ -427,7 +427,7 @@ def process_time(ctime):
                 & (glider_region.index.get_level_values('time') < search_window_t1)
             ]
 
-        salinity_cfg = next((item for item in configs.get('salinity', []) if item.get('depth') == 0), None)
+        salinity_cfg = next((item for item in configs.get('variables', {}).get('salinity', []) if item.get('depth') == 0), None)
         current_limits = configs.get('currents', {}).get('limits', [0, 1.5, 0.1])
         salinity_limits = salinity_cfg.get('limits', [30, 38, 0.5]) if salinity_cfg else [30, 38, 0.5]
 
@@ -515,7 +515,7 @@ def main(parallel=True, max_workers=None):
     plot_rtofs = True
     plot_espc = True
     plot_cmems = True
-    replot = False
+    replot = True
 
     conf.days = 2
     path_save = conf.path_plots / "adaptive_sampling_guidance" / "maps"

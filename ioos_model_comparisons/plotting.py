@@ -5018,7 +5018,7 @@ def plot_sss_three_panel(sss_rtofs, sss_comp, extent, region_name, comp_model_na
     print(f"Plotting SSS three-panel ({comp_model_name}) for {region_name} at {tstr_title}")
 
     sss_levels = np.arange(sss_min, sss_max + sss_stride, sss_stride)
-    diff_stride = max(0.5, diff_lim / 6)
+    diff_stride = max(0.25, diff_lim / 12)
     diff_levels = np.arange(-diff_lim, diff_lim + diff_stride, diff_stride)
     diff = sss_rtofs - sss_comp
 
@@ -5161,7 +5161,7 @@ def plot_sss_three_panel(sss_rtofs, sss_comp, extent, region_name, comp_model_na
     # Difference colorbar (panel 2)
     cb2 = fig.colorbar(handles[2], ax=axes[2], orientation="horizontal",
                        fraction=0.03, pad=0.1, aspect=20)
-    cb2_stride = max(0.5, diff_lim / 3)
+    cb2_stride = max(0.5, diff_lim / 6)
     cb2.set_ticks(np.arange(-diff_lim, diff_lim + cb2_stride, cb2_stride))
     cb2.ax.tick_params(labelsize=11)
     cb2.set_label("PSU", fontsize=12, fontweight="bold")
