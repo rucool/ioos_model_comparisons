@@ -558,16 +558,30 @@ def get_ohc(bbox=None, time=None):
         print("No data available for this time period.")
         return
 
-def get_goes():
-    # Load SST data with error handling
+def get_goes(satellite='goes16'):
+    """
+    Load GOES SST data.
+
+    Args:
+        satellite (str): 'goes16' for hourly GOES-16 (default) or 'goes19' for daily-average GOES-19.
+
+    Returns:
+        xarray.Dataset or None
+    """
     try:
-        sstdata = xr.open_dataset('http://basin.ceoe.udel.edu/thredds/dodsC/GOESNOAASST.nc')
-        sstdata = sstdata.rename({'latitude': 'lat', 'longitude': 'lon'})
+        if satellite == 'goes19':
+            url = 'https://basin.ceoe.udel.edu/thredds/dodsC/noaagoes19cleansst2.nc'
+            sstdata = xr.open_dataset(url)
+            sstdata = sstdata.rename({'latitude': 'lat', 'longitude': 'lon'})
+        else:
+            url = 'http://basin.ceoe.udel.edu/thredds/dodsC/GOESNOAASST.nc'
+            sstdata = xr.open_dataset(url)
+            sstdata = sstdata.rename({'latitude': 'lat', 'longitude': 'lon'})
         sst_sorted = sstdata.isel(time=~sstdata['time'].to_series().duplicated()).sortby('time')
-        logger.info('SST data loaded successfully.')
+        logger.info(f'SST data loaded successfully ({satellite}).')
     except Exception as e:
-        logger.error(f"Failed to load SST data: {e}")
-        sst_sorted = None  # Set to None to avoid using it later if it fails
+        logger.error(f"Failed to load SST data ({satellite}): {e}")
+        sst_sorted = None
     return sst_sorted
 
 

@@ -8886,8 +8886,9 @@ def plot_sst(ds1, ds2, region,
              argo=None,
              gliders=None,
              cols=6,
+             satellite='GOES-16',
              transform=dict(
-                 map=proj['map'], 
+                 map=proj['map'],
                  data=proj['data']
                  ),
              path_save=os.getcwd(),
@@ -8899,12 +8900,13 @@ def plot_sst(ds1, ds2, region,
     k = 'temperature'
     depth = 0
     time = pd.to_datetime(ds1.time.data)
-    # Convert to a Python datetime object
+    sst_time = pd.to_datetime(ds2.time.data)
     # Create subdirectory for depth under variable subdirectory
     save_dir_final = path_save / f"{k}_{depth}m" / time.strftime('%Y/%m')
     os.makedirs(save_dir_final, exist_ok=True)
-    
-    sname = f'{"-".join(region["folder"].split("_"))}_{time.strftime("%Y-%m-%dT%H%M%SZ")}_{k}-{depth}m_{ds1.model.lower()}-vs-GOES'
+
+    satellite_tag = satellite.replace('-', '').upper()
+    sname = f'{"-".join(region["folder"].split("_"))}_{time.strftime("%Y-%m-%dT%H%M%SZ")}_{k}-{depth}m_{ds1.model.lower()}-vs-{satellite_tag}'
 
     sfname = save_dir_final / sname
 
@@ -8914,13 +8916,8 @@ def plot_sst(ds1, ds2, region,
             return
         else:
             print(f"{sfname} exists. Overwrite: True. Replotting.")
-    
-    # Convert ds.time value to a normal datetime
-    time = pd.to_datetime(ds1.time.data)
-    extent = region['extent']
 
-    # Formatter for time
-    tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
+    extent = region['extent']
 
     # Create subdirectory for region
     # region_file_str = ('_').join(region_name.lower().split(' '))
@@ -8997,9 +8994,11 @@ def plot_sst(ds1, ds2, region,
     plot_regional_assets(ax1, **rargs)
     plot_regional_assets(ax2, **rargs)
 
-    # Label the subplots
-    ax1.set_title(ds1.model, fontsize=16, fontweight="bold")
-    ax2.set_title('GOES', fontsize=16, fontweight="bold")
+    # Label the subplots with model/satellite name and their respective times
+    _satellite_product = {'GOES-16': 'GOES-16 (Hourly)', 'GOES-19': 'GOES-19 (Daily Avg)'}
+    satellite_display = _satellite_product.get(satellite, satellite)
+    ax1.set_title(f"{ds1.model}\n{time.strftime('%Y-%m-%d %H:%M UTC')}", fontsize=14, fontweight="bold")
+    ax2.set_title(f"{satellite_display}\n{sst_time.strftime('%Y-%m-%d %H:%M UTC')}", fontsize=14, fontweight="bold")
     txt = plt.suptitle("", fontsize=22, fontweight="bold")
     
     # Deal with the third axes
@@ -9056,7 +9055,7 @@ def plot_sst(ds1, ds2, region,
     save_file = save_dir_final / f"{sname}.png"
                     
     # Add the super title (title for both subplots)
-    txt.set_text(f"{var_str} ({depth} m) - {tstr_title}\n")
+    txt.set_text(f"{var_str} ({depth} m)\n")
 
     # Create dictionary for variable argument inputs for contourf
     vargs = {}
@@ -9099,10 +9098,11 @@ def plot_sst(ds1, ds2, region,
         cb.ax.tick_params(labelsize=12)
         cb.set_label(f'{k.title()} ({rsub.units})', fontsize=12, fontweight="bold")
 
-    # Plot the RTOFS 200m temperature if it exists
-    rtofs_tmp = ds1.sel(depth=200)['temperature']
-    ax1.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
-    ax2.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+    # 15°C isotherm at 200m — Gulf Stream north wall indicator, MAB only
+    if region['name'] == 'Mid Atlantic Bight':
+        rtofs_tmp = ds1.sel(depth=200)['temperature']
+        ax1.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+        ax2.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
 
     # Add EEZ
     # eez1 = map_add_eez(ax1, zorder=10)

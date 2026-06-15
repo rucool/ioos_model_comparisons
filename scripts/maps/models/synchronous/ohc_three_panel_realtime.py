@@ -43,6 +43,8 @@ _worker_region_configs = None
 _worker_config = None
 _worker_path_save = None
 _worker_cache_dir = None
+_worker_storms = None
+_worker_forecasts = None
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -187,6 +189,18 @@ def worker_initializer(
             'temperature': cobj.get_variable('temperature').sel(longitude=lon_slice, latitude=lat_slice, depth=depth_slice),
             'salinity':    cobj.get_variable('salinity').sel(longitude=lon_slice, latitude=lat_slice, depth=depth_slice),
         }
+
+    global _worker_storms, _worker_forecasts
+    _worker_storms, _worker_forecasts = [], []
+    try:
+        from tropycal import realtime as trealtime
+        _rt = trealtime.Realtime()
+        _keys = _rt.list_active_storms(basin='north_atlantic')
+        _worker_storms = [_rt.get_storm(k) for k in _keys]
+        _worker_forecasts = [s.get_forecast_realtime(True) for s in _worker_storms]
+        print(f"Worker fetched {len(_worker_storms)} active storm(s)")
+    except Exception as e:
+        print(f"Warning: Could not fetch hurricane data: {e}")
 
     print(f"Worker {mp.current_process().name} initialized")
 
@@ -366,7 +380,7 @@ def process_time(ctime):
             region_name=configs["name"],
             ctime=ctime,
             bathy=bathy_data,
-            eez=True,
+            eez=configs.get('eez', True),
             path_save=path_save / configs["folder"],
             transform=config['projection'],
             dpi=config['dpi'],
@@ -377,6 +391,8 @@ def process_time(ctime):
             ohc_max=150,
             ohc_stride=10,
             diff_lim=50,
+            storms=_worker_storms,
+            forecasts=_worker_forecasts,
         )
 
         if ohc_espc is not None:
@@ -398,9 +414,9 @@ def main(parallel=True, max_workers=None):
     plot_rtofs = True
     plot_espc = True
     plot_cmems = True
-    replot = False
+    replot = True
 
-    conf.days = 3
+    conf.days = 1
     path_save = conf.path_plots / "adaptive_sampling_guidance" / "maps"
 
     cache_dir = Path("./cache")
