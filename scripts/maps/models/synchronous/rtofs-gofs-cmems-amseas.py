@@ -168,19 +168,21 @@ def process_time(ctime):
     _,         gdt_uv = attempt_data_load(_worker_gds_uv, ctime, "ESPC UV")         if plot_espc   else (False, None)
 
     plots_generated = []
+    all_pending_logs = []
     for item in conf.regions:
         region    = region_config(item)
         region    = apply_colorbar_overrides(item, region)
         cdt_flag, cdt = attempt_cmems_data_load(_worker_cmems, ctime, region['extent']) if plot_cmems else (False, None)
 
-        plots = process_region(
+        plots, pending_logs = process_region(
             ctime, rdt_flag, rdt, rdtp_flag, rdtp,
             gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
             amt_flag, amt, cnt_flag, cnt, region
         )
         plots_generated.extend(plots)
+        all_pending_logs.extend(pending_logs)
 
-    return {'ctime': ctime, 'plots': plots_generated}
+    return {'ctime': ctime, 'plots': plots_generated, 'pending_logs': all_pending_logs}
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -255,6 +257,7 @@ def main():
                 try:
                     result = future.result()
                     all_results.append(result)
+                    log_plots(SCRIPT_ID, result['pending_logs'])
                     logger.info(f"[{completed}/{total}] {ct} done ({len(result['plots'])} plots)")
                 except Exception as exc:
                     logger.error(f"[{completed}/{total}] {ct} ERROR: {exc}")
@@ -264,6 +267,7 @@ def main():
         for ct in date_list_pending:
             result = process_time(ct)
             all_results.append(result)
+            log_plots(SCRIPT_ID, result['pending_logs'])
 
     # ── Summary ───────────────────────────────────────────────────────────────
     total_plots = sum(len(r['plots']) for r in all_results if isinstance(r, dict))
@@ -465,12 +469,11 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             pending_logs.append(_sst_record(region, ts_dt, 'GOES19'))
             logger.info(f"Successfully plotted GOES-19 SST for region {region['name']} at time {ctime}")
 
-        log_plots(SCRIPT_ID, pending_logs)
-        return plots
+        return plots, pending_logs
 
     except Exception as e:
         logger.error(f"Failed to process region {region['name']} at time {ctime}: {e}")
-        return []
+        return [], []
 
 
 def subset_data(data, extent, grid_lons, grid_lats, grid_x, grid_y):
