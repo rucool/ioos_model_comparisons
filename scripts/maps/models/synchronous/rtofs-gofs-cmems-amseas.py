@@ -447,6 +447,15 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             logger.error(f"Failed to process RTOFS vs CMEMS at {ctime} for region {region['name']}: {e}")
 
         try:
+            if rdt_flag and cdt_flag:
+                plot_model_region_comparison_streamplot(rds_sub, cds_sub, region, **kwargs)
+                plots.append(f"{region['name']} | RTOFS vs CMEMS (currents)")
+                pending_logs.extend(_sp_records(region, ts_dt, 'rtofs', 'cmems'))
+                logger.info(f"Successfully plotted RTOFS vs CMEMS currents for region {region['name']} at time {ctime}")
+        except Exception as e:
+            logger.error(f"Failed to process RTOFS vs CMEMS currents at {ctime} for region {region['name']}: {e}")
+
+        try:
             if rdt_flag and amt_flag:
                 plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
                 plot_model_region_comparison_streamplot(rds_sub, am_sub, region, **kwargs)
@@ -593,6 +602,8 @@ def _expected_outputs(ctime, region) -> set:
             stream_pairs.append(('rtofs', 'espc'))
         if plot_rtofs and plot_para:
             stream_pairs.append(('rtofs', 'rtofs'))
+        if plot_rtofs and plot_cmems:
+            stream_pairs.append(('rtofs', 'cmems'))
         if plot_rtofs and plot_amseas:
             stream_pairs.append(('rtofs', 'amseas'))
 
@@ -646,6 +657,8 @@ def _expected_plot_keys(ctime, region) -> set:
             stream_pairs.append(('rtofs', 'espc'))
         if plot_rtofs and plot_para:
             stream_pairs.append(('rtofs', 'rtofs'))
+        if plot_rtofs and plot_cmems:
+            stream_pairs.append(('rtofs', 'cmems'))
         if plot_rtofs and plot_amseas:
             stream_pairs.append(('rtofs', 'amseas'))
         for m1, m2 in stream_pairs:

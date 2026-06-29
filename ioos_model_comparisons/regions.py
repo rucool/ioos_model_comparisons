@@ -1094,9 +1094,8 @@ def region_config(regions=None, model=None):
         extent = [134.75-5, 155.25+5, 4.75, 25.25]
 
         sea_water_temperature = [
-            dict(depth=0, limits=[10, 22, 1]),
-            dict(depth=150, limits=[10, 22, 1]),
-            # dict(depth=200, limits=[12, 23, .5])
+            dict(depth=0, limits=[26, 31.5, .5]),
+            dict(depth=150, limits=[14, 24, 1]),
             ]
         salinity = [
             dict(depth=0, limits=[34.0, 35.6, .1]), 
@@ -1157,6 +1156,40 @@ def region_config(regions=None, model=None):
             bool=True,
             depths=[0, 1500],
             limits=[0, 1.5, .1],
+            coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
+            kwargs=dict(
+                ptype="streamplot",
+                color="black",
+                density=3,
+            )
+        )
+        eez = True
+        figure = dict(
+            legend=dict(columns=10),
+            figsize=(14, 8)
+        )
+
+    key = "south_africa"
+    if key in regions:
+        name = "South Africa"
+        folder = "south_africa"
+        extent = [10, 40, -40, -25]
+
+        sea_water_temperature = [
+            dict(depth=0, limits=[14, 28, 1]),
+            dict(depth=150, limits=[8, 18, .5]),
+        ]
+        salinity = [
+            dict(depth=0, limits=[34.5, 36.0, .1]),
+            dict(depth=150, limits=[34.5, 35.5, .1]),
+        ]
+        sea_surface_height = []
+        salinity_max = None
+        ocean_heat_content = None
+        currents = dict(
+            bool=True,
+            depths=[0, 1500],
+            limits=[0, 2.0, .1],
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
             kwargs=dict(
                 ptype="streamplot",

@@ -4060,7 +4060,7 @@ def plot_ohc(ds1, ds2, extent, region_name,
                            )
         # Add eez lines
         if eez:
-            map_add_eez(ax, color='black', zorder=10)
+            map_add_eez(ax, color='white', zorder=10)
 
         # Plot gliders and argo floats
         plot_regional_assets(ax, **rargs)

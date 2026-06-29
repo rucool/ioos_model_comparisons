@@ -41,7 +41,7 @@ import argparse
 import os
 import tarfile
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -93,13 +93,13 @@ def download_file(url, destination, retries=3):
 def extract_tgz(tgz_path, output_dir):
     print(f"  Extracting {tgz_path.name}...")
     with tarfile.open(tgz_path, "r:gz") as tar:
-        tar.extractall(path=output_dir)
+        tar.extractall(path=output_dir, filter="data")
     tgz_path.unlink()
 
 
 def find_latest_date(max_lookback=5):
     for days_ago in range(max_lookback):
-        date = datetime.utcnow() - timedelta(days=days_ago)
+        date = datetime.now(tz=timezone.utc) - timedelta(days=days_ago)
         date_str = date.strftime("%Y%m%d")
         test_url = f"{BASE_URL}/rtofs.{date_str}/rtofs_glo.t00z.{FORECAST_HOURS[0]}.archv.b"
         try:
@@ -217,10 +217,9 @@ def main():
             "Set --grid-dir to the directory containing regional.grid.a and regional.depth.a"
         )
 
-    tmp_dir = output_dir / ".tmp"
-    os.makedirs(tmp_dir, exist_ok=True)
-
     date_str = find_latest_date()
+    tmp_dir = output_dir / ".tmp" / date_str
+    os.makedirs(tmp_dir, exist_ok=True)
     day_url = f"{BASE_URL}/rtofs.{date_str}"
 
     for fhr in FORECAST_HOURS:
