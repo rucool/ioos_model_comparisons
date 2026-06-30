@@ -2987,6 +2987,7 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         # Initialize qargs dictionary for input into contour plot of magnitude
         qargs = {}
         qargs['transform'] = transform['data']
+        qargs['transform_first'] = True
         qargs['cmap'] = cmocean.cm.speed
         qargs['extend'] = "max"
 
@@ -3192,8 +3193,16 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         ax3.set_axis_off()
 
         # Filled contour for each model variable
-        m1 = ax1.contourf(ds1_depth["lon"], ds1_depth["lat"], mag_r, **qargs)
-        m2 = ax2.contourf(ds2_depth["lon"], ds2_depth["lat"], mag_g, **qargs)
+        if ds1_depth["lon"].ndim == 1 and ds1_depth["lat"].ndim == 1:
+            r_lons, r_lats = np.meshgrid(ds1_depth["lon"], ds1_depth["lat"])
+        else:
+            r_lons, r_lats = ds1_depth["lon"], ds1_depth["lat"]
+        if ds2_depth["lon"].ndim == 1 and ds2_depth["lat"].ndim == 1:
+            g_lons, g_lats = np.meshgrid(ds2_depth["lon"], ds2_depth["lat"])
+        else:
+            g_lons, g_lats = ds2_depth["lon"], ds2_depth["lat"]
+        m1 = ax1.contourf(r_lons, r_lats, mag_r, **qargs)
+        m2 = ax2.contourf(g_lons, g_lats, mag_g, **qargs)
 
         # Set coarsening configs to a variable
         if 'coarsen' in cdict:
@@ -3208,8 +3217,8 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
 
         # Add EEZ
         if eez:
-            eez1 = map_add_eez(ax1, zorder=10, color='red', linewidth=3, linestyle='-')
-            eez2 = map_add_eez(ax2, zorder=10, color='red', linewidth=3, linestyle='-')
+            eez1 = map_add_eez(ax1, zorder=10, color='red')
+            eez2 = map_add_eez(ax2, zorder=10, color='red')
 
         if colorbar:
             cb = fig.colorbar(m1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
@@ -3470,8 +3479,8 @@ def plot_model_region_comparison_streamplot_idalia(ds1, ds2, region,
 
         # Add EEZ
         if eez:
-            eez1 = map_add_eez(ax1, zorder=10, color='red', linewidth=3, linestyle='-')
-            eez2 = map_add_eez(ax2, zorder=10, color='red', linewidth=3, linestyle='-')
+            eez1 = map_add_eez(ax1, zorder=10)
+            eez2 = map_add_eez(ax2, zorder=10)
 
         if colorbar:
             cb = fig.colorbar(m1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
@@ -4008,9 +4017,11 @@ def plot_ohc(ds1, ds2, extent, region_name,
     # Make sure path_save exists
     os.makedirs(path_save, exist_ok=True)
     
+    tstr_title = time.strftime('%Y-%m-%d %H:%M:%S')
+
     print(f"Plotting Ocean Heat Content of {region_name} at {tstr_title}")
- 
-    # Initialize figure    
+
+    # Initialize figure
     fig, _ = plt.subplot_mosaic(
         """
         RG
@@ -4033,48 +4044,51 @@ def plot_ohc(ds1, ds2, extent, region_name,
     ax2 = axs[1] # gofs
     ax3 = axs[2] # legend for argo/gliders
 
-    # Setup keyword arguments dictionary for plot_regional_assets
-    rargs = {}
-    rargs['argo'] = argo
-    rargs['gliders'] = gliders
-    rargs['transform'] = transform['data']  
-    
-    for ax in [ax1, ax2]:
-        create(extent, ax=ax1, ticks=False)
-        create(extent, ax=ax2, ticks=False)
-        
-        # Make the map pretty  
-        # add_features(ax)# zorder=0)
+    # Set map extent
+    ax1.set_extent(extent)
+    ax2.set_extent(extent)
 
-        # Add features to both map axes. Land, water, coastlines, etc.
-        # add_features(ax)
+    # Add features to both map axes
+    add_features(ax1)
+    add_features(ax2)
 
-        # Add bathymetry lines
-        if bathy:       
-            add_bathymetry(ax,
-                           bathy.longitude.values, 
-                           bathy.latitude.values, 
+    # Add bathymetry lines
+    if bathy:
+        try:
+            add_bathymetry(ax1,
+                           bathy.longitude.values,
+                           bathy.latitude.values,
                            bathy.z.values,
                            levels=(-1000, -100),
-                           zorder=1.5
-                           )
-        # Add eez lines
-        if eez:
-            map_add_eez(ax, color='white', zorder=10)
-
-        # Plot gliders and argo floats
-        plot_regional_assets(ax, **rargs)
-
-        # plot_hurricane_track(ax, time, basin, storm_id="AL092024")
-        # AL102023 Idalia
-        # AL092024 Helene
-        # AL142024 Milton
-        # plot_hurricane_track(ax, time, basin, storm_id="AL092024", markersize=20)
-        # plot_hurricane_track(ax, time, basin, storm_id="AL142024", linecolor='green', markersize=20)
+                           zorder=1.5)
+            add_bathymetry(ax2,
+                           bathy.longitude.values,
+                           bathy.latitude.values,
+                           bathy.z.values,
+                           levels=(-1000, -100),
+                           zorder=1.5)
+        except ValueError:
+            print("Bathymetry deeper than specified levels.")
 
     # Add ticks
     add_ticks(ax1, extent, label_left=True)
     add_ticks(ax2, extent, label_left=False, label_right=True)
+
+    # Setup keyword arguments dictionary for plot_regional_assets
+    rargs = {}
+    rargs['argo'] = argo
+    rargs['gliders'] = gliders
+    rargs['transform'] = transform['data']
+    plot_regional_assets(ax1, **rargs)
+    plot_regional_assets(ax2, **rargs)
+
+    # Add Guam marker
+    if region_name == 'Guam':
+        ax1.plot(144.73, 13.41, marker='D', markersize=12, markeredgecolor='red', markeredgewidth=2, color='None', transform=ccrs.PlateCarree(), zorder=10000)
+        ax2.plot(144.73, 13.41, marker='D', markersize=12, markeredgecolor='red', markeredgewidth=2, color='None', transform=ccrs.PlateCarree(), zorder=10000)
+        _guam_handle = mlines.Line2D([], [], marker='D', markersize=12, markeredgecolor='red', markeredgewidth=2, color='None', linestyle='None')
+        for ax in [ax1, ax2]:
+            ax.legend(handles=[_guam_handle], labels=['Guam'], loc='lower right', fontsize=10, framealpha=0.8)
 
     # Calculate contours
     if limits:
@@ -4183,10 +4197,15 @@ def plot_ohc(ds1, ds2, extent, region_name,
     cb.ax.tick_params(labelsize=12)
     cb.set_label('kJ/cm^2', fontsize=12, fontweight="bold")
 
+    # Add EEZ
+    if eez:
+        map_add_eez(ax1, color='white', zorder=10)
+        map_add_eez(ax2, color='white', zorder=10)
+
     # Set title for each axes
     ax1.set_title(f"{ds1.model.upper()} - {time.strftime(tstr_title)}", fontsize=16, fontweight='bold')
     ax2.set_title(f"{ds2.model.upper()} - {time2.strftime(tstr_title)}", fontsize=16, fontweight='bold')
-    fig.suptitle(f"Ocean Heat Content", fontweight="bold", fontsize=20)
+    fig.suptitle("Ocean Heat Content\n", fontweight="bold", fontsize=22)
 
     if storms and forecasts:
         from ioos_model_comparisons.plotting_hurricanes import plot_storms

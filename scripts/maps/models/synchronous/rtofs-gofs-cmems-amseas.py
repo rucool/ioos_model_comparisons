@@ -172,7 +172,8 @@ def process_time(ctime):
     for item in conf.regions:
         region    = region_config(item)
         region    = apply_colorbar_overrides(item, region)
-        cdt_flag, cdt = attempt_cmems_data_load(_worker_cmems, ctime, region['extent']) if plot_cmems else (False, None)
+        cmems_extent = np.add(region['extent'], [-1, 1, -1, 1]).tolist()
+        cdt_flag, cdt = attempt_cmems_data_load(_worker_cmems, ctime, cmems_extent) if plot_cmems else (False, None)
 
         plots, pending_logs = process_region(
             ctime, rdt_flag, rdt, rdtp_flag, rdtp,
