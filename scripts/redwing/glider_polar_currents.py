@@ -87,7 +87,7 @@ DEPTH_AVG_CONFIG = {
 # save_path = '/www/web/rucool/media/gliders'
 # save_path = '/Users/mikesmith/Documents/gliders/'
 # save_path = '/Users/mikesmith/Documents/gliders/glider_polar_currents'
-save_path = '/www/web/rucool/media/gliders/'
+save_path = '/www/web/rucool/media/'
 
 # Sub-directory layout inside each glider's folder:
 #   {save_path}/{glider}/currents/                   ← latest plots (overwritten)
