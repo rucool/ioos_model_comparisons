@@ -38,7 +38,7 @@ from ioos_model_comparisons.models import CMEMS, espc_uv, rtofs as load_rtofs
 
 # Run for all active gliders on the slocum-data ERDDAP server (True),
 # or only the single GLIDER_NAME below (False).
-RUN_ALL_ACTIVE_GLIDERS = False
+RUN_ALL_ACTIVE_GLIDERS = True
 
 # Only used when RUN_ALL_ACTIVE_GLIDERS is False, or as a fallback label.
 GLIDER_NAME = "ru29"
@@ -84,11 +84,11 @@ DEPTH_AVG_CONFIG = {
     "depth_step": 1.0,
 }
 
-# save_path = '/www/web/rucool/media/gliders'
+# save_path = '/www/web/rucool/media/gliders/depth-average'
+# save_path = '/Users/mikesmith/Documents/gliders/depth-average'
 
-# save_path = '/Users/mikesmith/Documents/gliders/'
-# save_path = '/Users/mikesmith/Documents/gliders/glider_polar_currents'
 save_path = '/www/web/rucool/media/'
+
 
 # Sub-directory layout inside each glider's folder:
 #   {save_path}/{glider}/currents/                   ← latest plots (overwritten)
@@ -1149,9 +1149,9 @@ def plot_vectors(
         title_text += f" | Disabled: {', '.join(disabled_models)}"
 
     table_ax.text(
-        0.5, 0.98, title_text,
+        0.5, 0.94, title_text,
         transform=table_ax.transAxes,
-        ha="center", va="top", fontsize=20, fontweight="bold", linespacing=1.5,
+        ha="center", fontsize=20, fontweight="bold", linespacing=1.5,
     )
 
     table = table_ax.table(
@@ -1187,7 +1187,7 @@ def plot_vectors(
         ha="right", va="bottom", fontsize=7, fontweight="bold",
     )
 
-    fig.subplots_adjust(left=0.18, right=0.97, top=0.95, bottom=0.08, wspace=0.3)
+    plt.tight_layout()
     if output_files is None:
         output_files = []
     for output_file in output_files:
