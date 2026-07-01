@@ -85,6 +85,7 @@ DEPTH_AVG_CONFIG = {
 }
 
 # save_path = '/www/web/rucool/media/gliders'
+
 # save_path = '/Users/mikesmith/Documents/gliders/'
 # save_path = '/Users/mikesmith/Documents/gliders/glider_polar_currents'
 save_path = '/www/web/rucool/media/'
@@ -1148,9 +1149,9 @@ def plot_vectors(
         title_text += f" | Disabled: {', '.join(disabled_models)}"
 
     table_ax.text(
-        0.5, 0.94, title_text,
+        0.5, 0.98, title_text,
         transform=table_ax.transAxes,
-        ha="center", fontsize=20, fontweight="bold", linespacing=1.5,
+        ha="center", va="top", fontsize=20, fontweight="bold", linespacing=1.5,
     )
 
     table = table_ax.table(
@@ -1186,7 +1187,7 @@ def plot_vectors(
         ha="right", va="bottom", fontsize=7, fontweight="bold",
     )
 
-    fig.subplots_adjust(left=0.05, right=0.97, top=0.95, bottom=0.08, wspace=0.35)
+    fig.subplots_adjust(left=0.18, right=0.97, top=0.95, bottom=0.08, wspace=0.3)
     if output_files is None:
         output_files = []
     for output_file in output_files:
