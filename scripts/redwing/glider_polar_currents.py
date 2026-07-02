@@ -1486,22 +1486,18 @@ def _slug_to_label(slug: str) -> str:
     return " ".join(token_map.get(t.lower(), t.capitalize()) for t in slug.split("-"))
 
 
-def _sidebar_html(active_glider: Optional[str], processed: List[Dict], include_fleet: bool = True) -> str:
-    fleet_link = (
-        '<a href="../index.html" class="sb-item"><i class="fas fa-water fa-fw"></i>Fleet Overview</a>'
-        if include_fleet else
-        '<a href="index.html" class="sb-item active"><i class="fas fa-water fa-fw"></i>Fleet Overview</a>'
-    )
+def _sidebar_html(active_glider: Optional[str], processed: List[Dict]) -> str:
+    # Fleet index lives at depth-average/index.html; glider pages at depth-average/<glider>/index.html.
+    # Links must be relative to whichever depth we're at.
+    prefix = "" if active_glider is None else "../"
     glider_links = "\n".join(
-        f'<a href="../{g["glider_name"]}/index.html" '
+        f'<a href="{prefix}{g["glider_name"]}/index.html" '
         f'class="sb-item{"" if g["glider_name"] != active_glider else " active"}">'
         f'<i class="fas fa-satellite-dish fa-fw"></i>{g["glider_name"].upper()}</a>'
         for g in processed
     )
     return f"""
-    <div class="sb-label">Navigation</div>
-    {fleet_link}
-    <div class="sb-label mt-2">Active Gliders</div>
+    <div class="sb-label">Active Gliders</div>
     {glider_links}
 """
 
@@ -1706,10 +1702,10 @@ def generate_glider_page(
   <div class="tab-pane fade" id="currents-section">{currents_content}</div>
 </div>
 """
-    sidebar = _sidebar_html(glider_name, processed, include_fleet=True)
+    sidebar = _sidebar_html(glider_name, processed)
     html    = _html_page(
-        title        = f"{glider_name.upper()} – RUCool Glider Currents",
-        navbar_title = f"Active Glider Fleet &rsaquo; {glider_name.upper()}",
+        title        = f"{glider_name.upper()} – Depth-Averaged Current Comparisons",
+        navbar_title = f"Active Gliders – Depth-Averaged Current Comparisons &rsaquo; {glider_name.upper()}",
         sidebar      = sidebar,
         content      = content,
     )
@@ -1773,17 +1769,17 @@ def generate_fleet_index(processed: List[Dict], base_dir: Path) -> None:
 
     content = f"""
 <p class="page-title">
-  <i class="fas fa-water me-2"></i>Active Glider Fleet
+  <i class="fas fa-water me-2"></i>Active Gliders – Depth-Averaged Current Comparisons
   <span style="font-size:.85rem;font-weight:400;color:#64748b;margin-left:.5rem">
     {len(processed)} glider(s) &nbsp;|&nbsp; {gen_time}
   </span>
 </p>
 <div class="row">{''.join(cards)}</div>
 """
-    sidebar = _sidebar_html(None, processed, include_fleet=False)
+    sidebar = _sidebar_html(None, processed)
     html    = _html_page(
-        title        = "RUCool Active Glider Fleet",
-        navbar_title = "Active Glider Fleet",
+        title        = "Active Gliders – Depth-Averaged Current Comparisons",
+        navbar_title = "Active Gliders – Depth-Averaged Current Comparisons",
         sidebar      = sidebar,
         content      = content,
     )
