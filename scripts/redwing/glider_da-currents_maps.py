@@ -40,10 +40,10 @@ logger = logging.getLogger(__name__)
 
 CONFIG = {
     'paths': {
-        'save_path': '/Users/mikesmith/Documents/gliders/depth-average/',   # local dev
-        'eez_path': '/Users/mikesmith/Downloads/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp'
-        # 'save_path': '/web/www/rucool_static/www/gliders/depth-average',
-        # 'eez_path': '/home/hurricaneadm/data/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp',
+        # 'save_path': '/Users/mikesmith/Documents/gliders/depth-average/',   # local dev
+        # 'eez_path': '/Users/mikesmith/Downloads/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp'
+        'save_path': '/web/www/rucool_static/www/gliders/depth-average',
+        'eez_path': '/home/hurricaneadm/data/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp',
     },
     'models': {
         'plot_model_data': True,
