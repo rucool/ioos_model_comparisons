@@ -1631,13 +1631,21 @@ def generate_glider_page(
             map_items.append((label, f"maps/{p.name}", slug))
 
     if map_items:
+        def _depthavg_first(item):
+            # (label, path, slug) — depth-avg slugs sort before surface slugs
+            return (0 if "depthavg" in item[2] else 1, item[2])
+
         zoom_items = [
             (label.replace(" (Zoom)", ""), path)
-            for label, path, slug in map_items if slug.endswith("-zoom")
+            for label, path, slug in sorted(
+                (i for i in map_items if i[2].endswith("-zoom")), key=_depthavg_first
+            )
         ]
         wide_items = [
             (label, path)
-            for label, path, slug in map_items if not slug.endswith("-zoom")
+            for label, path, slug in sorted(
+                (i for i in map_items if not i[2].endswith("-zoom")), key=_depthavg_first
+            )
         ]
 
         def _tab_group(group_id: str, items: List[Tuple[str, str]]) -> str:
@@ -1717,72 +1725,20 @@ def generate_glider_page(
 
 
 def generate_fleet_index(processed: List[Dict], base_dir: Path) -> None:
-    """Write {base_dir}/index.html listing all successfully processed gliders."""
-    gen_time = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%MZ")
-
-    cards = []
-    for g in processed:
-        name    = g["glider_name"]
-        dep     = g["deployment_id"]
-        record  = g.get("record") or {}
-        t       = pd.to_datetime(record.get("time", pd.NaT))
-        lat     = record.get("lat", float("nan"))
-        lon     = record.get("lon", float("nan"))
-
-        sfc_img = f"{name}/currents/{name}_surface_current_comparison.png"
-        da_img  = f"{name}/currents/{name}_depth_avg_current_comparison.png"
-
-        t_str  = t.strftime("%Y-%m-%d %H:%MZ") if pd.notna(t) else "—"
-        if np.isfinite(lat) and np.isfinite(lon):
-            pos_str = f"{lat:.2f}°N, {abs(lon):.2f}°{'W' if lon < 0 else 'E'}"
-        else:
-            pos_str = "position unknown"
-
-        def _thumb(src: str) -> str:
-            return (
-                f'<a href="{src}" target="_blank">'
-                f'<img src="{src}" class="thumb w-100" alt="{name}">'
-                f'</a>'
-            )
-
-        cards.append(f"""
-<div class="col-12 col-md-6 col-xl-4">
-  <a href="{name}/index.html" class="fleet-card card d-block text-decoration-none mb-3">
-    <div class="card-header py-2">
-      <span class="fw-bold" style="color:var(--ru)">{name.upper()}</span>
-      <span class="badge ms-2" style="background:var(--ru);font-size:.7rem">ACTIVE</span>
-      <div style="font-size:.78rem;color:#64748b">{dep}</div>
-    </div>
-    <div class="card-body p-2">
-      <div class="row g-1">
-        <div class="col-6">{_thumb(sfc_img)}</div>
-        <div class="col-6">{_thumb(da_img)}</div>
-      </div>
-    </div>
-    <div class="card-footer py-1" style="font-size:.78rem;color:#64748b">
-      <i class="fas fa-clock me-1"></i>{t_str}
-      &nbsp;|&nbsp;
-      <i class="fas fa-map-pin me-1"></i>{pos_str}
-    </div>
-  </a>
-</div>""")
-
-    content = f"""
-<p class="page-title">
-  <i class="fas fa-water me-2"></i>Active Gliders – Depth-Averaged Current Comparisons
-  <span style="font-size:.85rem;font-weight:400;color:#64748b;margin-left:.5rem">
-    {len(processed)} glider(s) &nbsp;|&nbsp; {gen_time}
-  </span>
-</p>
-<div class="row">{''.join(cards)}</div>
+    """Write {base_dir}/index.html — redirects immediately to the first glider alphabetically."""
+    first = sorted(processed, key=lambda g: g["glider_name"])[0]["glider_name"]
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="refresh" content="0; url={first}/index.html">
+  <title>Redirecting…</title>
+</head>
+<body>
+  <script>window.location.replace("{first}/index.html");</script>
+</body>
+</html>
 """
-    sidebar = _sidebar_html(None, processed)
-    html    = _html_page(
-        title        = "Active Gliders – Depth-Averaged Current Comparisons",
-        navbar_title = "Active Gliders – Depth-Averaged Current Comparisons",
-        sidebar      = sidebar,
-        content      = content,
-    )
 
     out = base_dir / "index.html"
     out.parent.mkdir(parents=True, exist_ok=True)
