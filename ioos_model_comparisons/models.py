@@ -1,11 +1,13 @@
 import xarray as xr
 import numpy as np
 from ioos_model_comparisons.calc import (
-    calculate_transect, 
-    lon180to360, 
+    calculate_transect,
+    lon180to360,
     lon360to180
     )
 import os
+import random
+import time as _time
 import copernicusmarine as cm
 from dateutil import parser
 import logging
@@ -1130,7 +1132,7 @@ def cnaps(rename=False):
     if rename:
         ds = ds.rename(
             {
-                'temp': 'temperature', 
+                'temp': 'temperature',
                 'salt': 'salinity',
                 'lat_rho': 'lat',
                 'lon_rho': 'lon',
@@ -1139,6 +1141,231 @@ def cnaps(rename=False):
                 }
             )
     return ds
+
+
+# =============================================================================
+# DOPPIO (ROMS) — Rutgers University high-resolution East Coast model
+# =============================================================================
+DOPPIO_URL = (
+    "https://tds.marine.rutgers.edu/thredds/dodsC/"
+    "roms/doppio/2017_da/his/History_Best"
+)
+DOPPIO_DEPTHS = [
+    0, 2, 4, 6, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 90,
+    100, 125, 150, 200, 250, 300, 350, 400, 500, 600, 700, 800, 900, 1000,
+    1250, 1500, 2000, 2500, 3000, 4000, 5000,
+]  # matches RTOFS depth levels (m)
+
+
+def _roms_s_to_z(h, hc, Cs_r, s_rho, Vtransform):
+    """Compute ROMS z-depths (positive-down, metres) from s-coordinates.
+
+    Assumes free-surface zeta = 0 (mean-depth approximation).
+    Returns array of shape (s_rho, eta_rho, xi_rho).
+    """
+    h  = np.asarray(h,    dtype=float)
+    Cs = np.asarray(Cs_r, dtype=float)[:, None, None]
+    s  = np.asarray(s_rho, dtype=float)[:, None, None]
+    H  = h[None, :, :]
+
+    if int(Vtransform) == 2:
+        S = (hc * s + H * Cs) / (hc + H)
+        z = S * H
+    else:  # Vtransform == 1
+        S = hc * s + (H - hc) * Cs
+        z = S
+
+    return -z  # ROMS z is negative-up; return positive-down
+
+
+def _roms_interp_to_z(data, z_rho, target_depths):
+    """Interpolate ROMS data from terrain-following s-levels to fixed z-depths.
+
+    Parameters
+    ----------
+    data          : ndarray (s_rho, eta, xi)
+    z_rho         : ndarray (s_rho, eta, xi) - positive-down metres.
+                    z_rho[0] is the deepest level, z_rho[-1] is nearest the surface.
+    target_depths : sequence of target depths in metres (positive-down).
+
+    Returns
+    -------
+    ndarray (len(target_depths), eta, xi)
+    """
+    ns, neta, nxi = data.shape
+    td = np.asarray(target_depths, dtype=float)
+    nd = len(td)
+    N  = neta * nxi
+
+    dr = data.reshape(ns, N)
+    zr = z_rho.reshape(ns, N)
+
+    # Flip so axis-0 goes from surface (small z) to bottom (large z)
+    dr = dr[::-1, :]
+    zr = zr[::-1, :]
+
+    result = np.full((nd, N), np.nan, dtype=float)
+
+    for k, depth in enumerate(td):
+        idx = np.sum(zr < depth, axis=0).astype(int)   # columns shallower than depth
+
+        below   = idx >= ns
+        surface = idx == 0
+
+        idx_hi = np.clip(idx,     1, ns - 1)
+        idx_lo = np.clip(idx - 1, 0, ns - 2)
+        col    = np.arange(N)
+
+        z_lo = zr[idx_lo, col];  z_hi = zr[idx_hi, col]
+        d_lo = dr[idx_lo, col];  d_hi = dr[idx_hi, col]
+
+        dz  = z_hi - z_lo
+        w   = np.where(dz > 0, (depth - z_lo) / dz, 0.5)
+        w   = np.clip(w, 0.0, 1.0)
+        val = d_lo + w * (d_hi - d_lo)
+
+        # Mask below-bathymetry and NaN source cells
+        val = np.where(below | np.isnan(d_lo) | np.isnan(d_hi), np.nan, val)
+        # At surface: extrapolate with the shallowest valid level
+        val = np.where(surface & ~np.isnan(dr[0, col]), dr[0, col], val)
+
+        result[k] = val
+
+    return result.reshape(nd, neta, nxi)
+
+
+def _doppio_at_time(raw_ds, z_rho, time, method='nearest'):
+    """Select one time step from the raw Doppio dataset and return on z-levels.
+
+    Returns xarray.Dataset with:
+    - variables: temperature, salinity, u, v, zeta
+    - coords: depth (m, positive-down), lon (2D), lat (2D), time (scalar)
+    - dims: depth, y, x   (y=eta_rho, x=xi_rho — matches RTOFS convention)
+    """
+    ds_t = raw_ds.sel(time=time, method=method)
+
+    temp = ds_t['temp'].values   # (s_rho, eta_rho, xi_rho)
+    salt = ds_t['salt'].values
+    ns, neta, nxi = temp.shape
+
+    # Interpolate u from (s_rho, eta_u, xi_u) to rho-points
+    u_s = ds_t['u'].values                               # (ns, neta, nxi-1)
+    u_r = np.empty((ns, neta, nxi))
+    u_r[:, :, 0]    = u_s[:, :, 0]
+    u_r[:, :, 1:-1] = 0.5 * (u_s[:, :, :-1] + u_s[:, :, 1:])
+    u_r[:, :, -1]   = u_s[:, :, -1]
+
+    # Interpolate v from (s_rho, eta_v, xi_v) to rho-points
+    v_s = ds_t['v'].values                               # (ns, neta-1, nxi)
+    v_r = np.empty((ns, neta, nxi))
+    v_r[:, 0, :]    = v_s[:, 0, :]
+    v_r[:, 1:-1, :] = 0.5 * (v_s[:, :-1, :] + v_s[:, 1:, :])
+    v_r[:, -1, :]   = v_s[:, -1, :]
+
+    temp_z = _roms_interp_to_z(temp, z_rho, DOPPIO_DEPTHS)
+    salt_z = _roms_interp_to_z(salt, z_rho, DOPPIO_DEPTHS)
+    u_z    = _roms_interp_to_z(u_r,  z_rho, DOPPIO_DEPTHS)
+    v_z    = _roms_interp_to_z(v_r,  z_rho, DOPPIO_DEPTHS)
+
+    lon2d = raw_ds['lon_rho'].values   # (eta_rho, xi_rho)
+    lat2d = raw_ds['lat_rho'].values
+
+    ds_out = xr.Dataset(
+        {
+            'temperature': (['depth', 'y', 'x'], temp_z,
+                            {'units': 'degrees_C', 'long_name': 'Temperature'}),
+            'salinity':    (['depth', 'y', 'x'], salt_z,
+                            {'units': 'psu', 'long_name': 'Salinity'}),
+            'u':           (['depth', 'y', 'x'], u_z,
+                            {'units': 'm s-1', 'long_name': 'Eastward velocity'}),
+            'v':           (['depth', 'y', 'x'], v_z,
+                            {'units': 'm s-1', 'long_name': 'Northward velocity'}),
+            'zeta':        (['y', 'x'], ds_t['zeta'].values,
+                            {'units': 'm', 'long_name': 'Sea surface height'}),
+        },
+        coords={
+            'depth': (['depth'], DOPPIO_DEPTHS, {'units': 'm', 'positive': 'down'}),
+            'lon':   (['y', 'x'], lon2d, {'units': 'degrees_east'}),
+            'lat':   (['y', 'x'], lat2d, {'units': 'degrees_north'}),
+            'time':  ds_t['time'].values,
+        },
+    )
+    ds_out.attrs['model'] = 'Doppio'
+    return ds_out
+
+
+class Doppio:
+    """Doppio ROMS model with lazy loading and s→z coordinate conversion.
+
+    Use .sel(time=...) to retrieve data for a specific time. Returns an
+    xarray.Dataset with temperature, salinity, u, v on fixed depth levels
+    and 2-D lon/lat coordinates — compatible with the rest of the comparison
+    framework.
+
+    Examples
+    --------
+    >>> dop = Doppio()
+    >>> ds  = dop.sel(time=datetime(2024, 6, 1))
+    >>> ds['temperature'].sel(depth=0, method='nearest')
+    """
+
+    def __init__(self):
+        # Open once to read static metadata, then close immediately.
+        # Re-opening per sel() call avoids persistent OPeNDAP connections that
+        # cause NC_EAUTH failures when multiple worker processes hit the THREDDS
+        # server simultaneously.
+        _ds = xr.open_dataset(DOPPIO_URL)
+        self._z_rho   = _roms_s_to_z(
+            _ds['h'].values,
+            float(_ds['hc']),
+            _ds['Cs_r'].values,
+            _ds['s_rho'].values,
+            int(_ds['Vtransform']),
+        )
+        self._lon_rho = _ds['lon_rho'].values
+        self._lat_rho = _ds['lat_rho'].values
+        _grid_shape   = _ds['h'].shape
+        _max_depth    = float(self._z_rho.max())
+        _ds.close()
+        self.attrs = {'model': 'Doppio'}
+        logger.info("Doppio loaded. Grid: %s  Max depth: %.0f m", _grid_shape, _max_depth)
+
+    def sel(self, time=None, method='nearest', **kwargs):
+        """Return dataset at *time* with depth coordinate in metres."""
+        if time is None:
+            raise ValueError("time is required")
+        last_exc = None
+        for attempt in range(4):
+            if attempt > 0:
+                _time.sleep(2 ** attempt + random.uniform(0, 1))
+            ds = xr.open_dataset(DOPPIO_URL)
+            try:
+                return _doppio_at_time(ds, self._z_rho, time, method=method)
+            except RuntimeError as e:
+                last_exc = e
+            finally:
+                ds.close()
+        raise last_exc
+
+    def subset_indices(self, extent):
+        """Return (eta_slice, xi_slice) for the bounding box *extent* = [lon0,lon1,lat0,lat1]."""
+        mask = ((self._lon_rho >= extent[0]) & (self._lon_rho <= extent[1]) &
+                (self._lat_rho >= extent[2]) & (self._lat_rho <= extent[3]))
+        eta_i, xi_i = np.where(mask)
+        if len(eta_i) == 0:
+            return slice(None), slice(None)
+        return (slice(int(eta_i.min()), int(eta_i.max()) + 1),
+                slice(int(xi_i.min()),  int(xi_i.max())  + 1))
+
+
+def doppio(rename=False):
+    """Load Doppio ROMS model from Rutgers THREDDS.
+
+    Returns a Doppio instance. Call .sel(time=...) to get data for a
+    specific time with s→z conversion and staggered-grid averaging applied.
+    """
+    return Doppio()
+
 
 if __name__ == '__main__':
     ds = rtofs()
