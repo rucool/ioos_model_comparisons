@@ -19,9 +19,10 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -30,7 +31,7 @@ import requests
 import datetime as dt
 
 from ioos_model_comparisons.calc import lon180to360
-from ioos_model_comparisons.models import CMEMS, espc_uv, rtofs as load_rtofs
+from ioos_model_comparisons.models import CMEMS, Doppio, espc_uv, rtofs as load_rtofs
 
 # ==============================================================================
 # Configuration
@@ -45,7 +46,7 @@ GLIDER_NAME = "ru29"
 
 # A glider dataset is considered "active" (worth fetching at all) if its
 # time_coverage_end is within this many days of now.
-ACTIVE_GLIDER_THRESHOLD_DAYS = 7
+ACTIVE_GLIDER_THRESHOLD_DAYS = 2
 
 # Even among active gliders, skip the plot if the most recent GPS surfacing is
 # older than this many hours.  Prevents comparing stale glider positions against
@@ -75,7 +76,16 @@ MODEL_CONFIG = {
         "color": "magenta",
         "timeout": 120,
     },
+    "Doppio": {
+        "enabled": True,
+        "color": "darkorange",
+        "timeout": 120,
+    },
 }
+
+# Geographic footprint of the Doppio ROMS model [lon_min, lon_max, lat_min, lat_max].
+# Gliders outside this box are silently skipped for Doppio comparisons.
+DOPPIO_DOMAIN = [-82, -55, 25, 48]
 
 # Depth-averaging configuration (used for Plot 2)
 DEPTH_AVG_CONFIG = {
@@ -84,10 +94,8 @@ DEPTH_AVG_CONFIG = {
     "depth_step": 1.0,
 }
 
-# save_path = '/www/web/rucool/media/gliders/depth-average'
-# save_path = '/Users/mikesmith/Documents/gliders/depth-average'
-
-save_path = '/www/web/rucool/media/'
+# save_path = '/Users/mikesmith/Documents/gliders/depth-average/'   # local dev
+save_path = '/web/www/rucool_static/www/gliders/depth-average'
 
 
 # Sub-directory layout inside each glider's folder:
@@ -732,6 +740,64 @@ def get_cmems_client():
     return CMEMS()
 
 
+@functools.lru_cache(maxsize=1)
+def get_doppio_instance():
+    """Instantiate and cache the Doppio object (reads static grid metadata only)."""
+    if not MODEL_CONFIG["Doppio"]["enabled"]:
+        return None
+    LOGGER.info("Instantiating Doppio instance")
+    return Doppio()
+
+
+def _doppio_nearest_ij(lon2d, lat2d, lon: float, lat: float):
+    """Return (iy, ix) of the nearest cell in a 2-D curvilinear grid."""
+    dist2 = (lon2d - lon) ** 2 + (lat2d - lat) ** 2
+    iy, ix = np.unravel_index(int(np.nanargmin(dist2)), dist2.shape)
+    return iy, ix
+
+
+def sample_doppio_surface_point(lon: float, lat: float, when: pd.Timestamp) -> Dict:
+    """Nearest-neighbour sample of Doppio surface layer at a single point."""
+    dop = get_doppio_instance()
+    if dop is None:
+        return None
+
+    ds = dop.sel(time=when)
+    iy, ix = _doppio_nearest_ij(dop._lon_rho, dop._lat_rho, lon, lat)
+    pt = ds.isel(depth=0, y=iy, x=ix).squeeze()
+
+    u = float(pt["u"].values)
+    v = float(pt["v"].values)
+    LOGGER.info("Doppio surface: u=%.4f m/s  v=%.4f m/s", u, v)
+    return _build_vector_record(
+        "Doppio", u, v,
+        float(pt["lon"].values), float(pt["lat"].values), pt["time"].values,
+    )
+
+
+def sample_doppio_depth_avg_point(lon: float, lat: float, when: pd.Timestamp) -> Dict:
+    """Nearest-neighbour sample of Doppio, then depth-average the profile."""
+    dop = get_doppio_instance()
+    if dop is None:
+        return None
+
+    ds = dop.sel(time=when)
+    iy, ix = _doppio_nearest_ij(dop._lon_rho, dop._lat_rho, lon, lat)
+    profile = ds.isel(y=iy, x=ix).squeeze()   # dims: depth
+
+    u, v = compute_depth_avg_uv(
+        profile,
+        min_depth=DEPTH_AVG_CONFIG["min_depth"],
+        max_depth=DEPTH_AVG_CONFIG["max_depth"],
+        depth_step=DEPTH_AVG_CONFIG["depth_step"],
+    )
+    LOGGER.info("Doppio depth-avg: u=%.4f m/s  v=%.4f m/s", u, v)
+    return _build_vector_record(
+        "Doppio", u, v,
+        float(profile["lon"].values), float(profile["lat"].values), profile["time"].values,
+    )
+
+
 def _build_vector_record(
     source: str, u: float, v: float,
     lon: float, lat: float, when: pd.Timestamp,
@@ -1223,33 +1289,77 @@ def process_surface_record(
         glider_record["time"],
     )
 
-    enabled_models = [m for m in MODEL_CONFIG if MODEL_CONFIG[m]["enabled"]]
+    glon, glat = glider_record["lon"], glider_record["lat"]
+    in_doppio_domain = (
+        MODEL_CONFIG["Doppio"]["enabled"]
+        and DOPPIO_DOMAIN[0] <= glon <= DOPPIO_DOMAIN[1]
+        and DOPPIO_DOMAIN[2] <= glat <= DOPPIO_DOMAIN[3]
+    )
+    if in_doppio_domain:
+        LOGGER.info("Glider at (%.3f, %.3f) is within Doppio domain.", glat, glon)
+    else:
+        LOGGER.info("Glider at (%.3f, %.3f) is outside Doppio domain; skipping.", glat, glon)
+
+    enabled_models = [
+        m for m in MODEL_CONFIG
+        if MODEL_CONFIG[m]["enabled"] and (m != "Doppio" or in_doppio_domain)
+    ]
+
+    when = glider_record["time"]
+
+    # ------------------------------------------------------------------
+    # Fire all remote calls concurrently — surface, depth-avg, and the
+    # glider ERDDAP fetch are all independent network operations.
+    # ------------------------------------------------------------------
+    tasks: Dict[str, Callable[[], Any]] = {
+        "rtofs_sfc":  lambda: safe_model_call(sample_rtofs_surface_point,    "RTOFS", glon, glat, when),
+        "espc_sfc":   lambda: safe_model_call(sample_espc_surface_point,     "ESPC",  glon, glat, when),
+        "cmems_sfc":  lambda: safe_model_call(sample_cmems_surface_point,    "CMEMS", glon, glat, when),
+        "glider_da":  lambda: fetch_glider_depth_avg_erddap(deployment_id, target_time=when),
+        "rtofs_da":   lambda: safe_model_call(sample_rtofs_depth_avg_point,  "RTOFS", glon, glat, when),
+        "espc_da":    lambda: safe_model_call(sample_espc_depth_avg_point,   "ESPC",  glon, glat, when),
+        "cmems_da":   lambda: safe_model_call(sample_cmems_depth_avg_point,  "CMEMS", glon, glat, when),
+    }
+    if in_doppio_domain:
+        tasks["doppio_sfc"] = lambda: safe_model_call(sample_doppio_surface_point,   "Doppio", glon, glat, when)
+        tasks["doppio_da"]  = lambda: safe_model_call(sample_doppio_depth_avg_point, "Doppio", glon, glat, when)
+
+    res: Dict[str, Any] = {}
+    with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
+        future_map = {pool.submit(fn): key for key, fn in tasks.items()}
+        for future in as_completed(future_map):
+            key = future_map[future]
+            try:
+                res[key] = future.result()
+            except Exception as exc:
+                LOGGER.error("Concurrent task '%s' raised: %s", key, exc)
+                res[key] = None
+
+    rtofs_sfc  = res.get("rtofs_sfc")
+    espc_sfc   = res.get("espc_sfc")
+    cmems_sfc  = res.get("cmems_sfc")
+    doppio_sfc = res.get("doppio_sfc")
+    glider_da_record = res.get("glider_da")
+    rtofs_da   = res.get("rtofs_da")
+    espc_da    = res.get("espc_da")
+    cmems_da   = res.get("cmems_da")
+    doppio_da  = res.get("doppio_da")
 
     # ------------------------------------------------------------------
     # Plot 1 — Surface currents
     # ------------------------------------------------------------------
-    rtofs_sfc = safe_model_call(
-        sample_rtofs_surface_point, "RTOFS",
-        glider_record["lon"], glider_record["lat"], glider_record["time"],
-    )
-    espc_sfc = safe_model_call(
-        sample_espc_surface_point, "ESPC",
-        glider_record["lon"], glider_record["lat"], glider_record["time"],
-    )
-    cmems_sfc = safe_model_call(
-        sample_cmems_surface_point, "CMEMS",
-        glider_record["lon"], glider_record["lat"], glider_record["time"],
-    )
-
     surface_records = [glider_record]
     for model_name, record in [
-        ("RTOFS", rtofs_sfc),
-        ("ESPC",  espc_sfc),
-        ("CMEMS", cmems_sfc),
+        ("RTOFS",  rtofs_sfc),
+        ("ESPC",   espc_sfc),
+        ("CMEMS",  cmems_sfc),
+        ("Doppio", doppio_sfc),
     ]:
         if record is not None:
             surface_records.append(record)
-        elif MODEL_CONFIG.get(model_name, {}).get("enabled", False):
+        elif model_name != "Doppio" and MODEL_CONFIG.get(model_name, {}).get("enabled", False):
+            surface_records.append(_build_unavailable_vector_record(model_name))
+        elif model_name == "Doppio" and in_doppio_domain:
             surface_records.append(_build_unavailable_vector_record(model_name))
 
     summary_sfc = build_summary_table(surface_records)
@@ -1268,32 +1378,18 @@ def process_surface_record(
     # ------------------------------------------------------------------
     # Plot 2 — Depth-averaged currents
     # ------------------------------------------------------------------
-    glider_da_record = fetch_glider_depth_avg_erddap(
-        deployment_id, target_time=glider_record["time"]
-    )
-
-    rtofs_da = safe_model_call(
-        sample_rtofs_depth_avg_point, "RTOFS",
-        glider_record["lon"], glider_record["lat"], glider_record["time"],
-    )
-    espc_da = safe_model_call(
-        sample_espc_depth_avg_point, "ESPC",
-        glider_record["lon"], glider_record["lat"], glider_record["time"],
-    )
-    cmems_da = safe_model_call(
-        sample_cmems_depth_avg_point, "CMEMS",
-        glider_record["lon"], glider_record["lat"], glider_record["time"],
-    )
-
     depth_avg_records = [glider_da_record]
     for model_name, record in [
-        ("RTOFS", rtofs_da),
-        ("ESPC",  espc_da),
-        ("CMEMS", cmems_da),
+        ("RTOFS",  rtofs_da),
+        ("ESPC",   espc_da),
+        ("CMEMS",  cmems_da),
+        ("Doppio", doppio_da),
     ]:
         if record is not None:
             depth_avg_records.append(record)
-        elif MODEL_CONFIG.get(model_name, {}).get("enabled", False):
+        elif model_name != "Doppio" and MODEL_CONFIG.get(model_name, {}).get("enabled", False):
+            depth_avg_records.append(_build_unavailable_vector_record(model_name))
+        elif model_name == "Doppio" and in_doppio_domain:
             depth_avg_records.append(_build_unavailable_vector_record(model_name))
 
     summary_da = build_summary_table(depth_avg_records)
@@ -1481,9 +1577,10 @@ def generate_glider_page(
         meta_line = "Location unavailable"
 
     # ── Currents section ──────────────────────────────────────────────────────
-    def _img_tag(path: Path, rel_prefix: str = "", thumb: bool = False) -> str:
+    # index.html lives at glider_dir; all image hrefs must be relative to that.
+    def _img_tag(path: Path, thumb: bool = False) -> str:
         cls = 'class="thumb w-100"' if thumb else 'class="w-100" style="border-radius:4px"'
-        href = f"{rel_prefix}{path.name}"
+        href = "/".join(path.relative_to(glider_dir).parts)
         return (
             f'<a href="{href}" target="_blank">'
             f'<img src="{href}" alt="{path.stem}" {cls}></a>'
@@ -1492,16 +1589,15 @@ def generate_glider_page(
     sfc_html = _img_tag(sfc_latest) if sfc_latest.exists() else "<p class='text-muted'>No surface plot yet.</p>"
     da_html  = _img_tag(da_latest)  if da_latest.exists()  else "<p class='text-muted'>No depth-avg plot yet.</p>"
 
-    # Archive thumbnails — all PNGs in archive/, newest first
+    # Archive thumbnails — all PNGs in currents/archive/, newest first
     archive_thumbs = ""
     if archive_dir.exists():
         pngs = sorted(archive_dir.glob("*.png"), reverse=True)
         if pngs:
             items = "\n".join(
                 f'<div class="col-6 col-md-4 col-lg-3 mb-2">'
-                f'<a href="archive/{p.name}" target="_blank">'
-                f'<img src="archive/{p.name}" class="thumb w-100" title="{p.stem}"></a>'
-                f'<div class="text-center" style="font-size:.7rem;color:#64748b;">'
+                + _img_tag(p, thumb=True)
+                + f'<div class="text-center" style="font-size:.7rem;color:#64748b;">'
                 f'{p.stem.split("_")[-1]}</div></div>'
                 for p in pngs
             )
@@ -1528,40 +1624,64 @@ def generate_glider_page(
 """
 
     # ── Maps section ──────────────────────────────────────────────────────────
-    map_items: List[Tuple[str, str]] = []   # (label, relative path)
+    # Glob for any region alias: {glider}_*_latest_*.png
+    map_items: List[Tuple[str, str, str]] = []   # (label, relative path, slug)
     if maps_dir.exists():
-        for p in sorted(maps_dir.glob(f"{glider_name}_twa_latest_*.png")):
-            slug  = p.stem.split("_twa_latest_")[-1]
+        for p in sorted(maps_dir.glob(f"{glider_name}_*_latest_*.png")):
+            # filename pattern: {glider}_{region}_latest_{slug}.png
+            parts = p.stem.split("_latest_", 1)
+            slug  = parts[1] if len(parts) == 2 else p.stem
             label = _slug_to_label(slug)
-            map_items.append((label, f"maps/{p.name}"))
+            map_items.append((label, f"maps/{p.name}", slug))
 
     if map_items:
-        tab_btns = "\n".join(
-            f'<li class="nav-item"><button class="nav-link{"" if i else ""}" '
-            f'id="map-tab-{i}" data-bs-toggle="tab" data-bs-target="#map-pane-{i}" type="button">'
-            f'{label}</button></li>'
-            for i, (label, _) in enumerate(map_items)
-        )
-        tab_panes = "\n".join(
-            f'<div class="tab-pane fade{"" if i else " show active"}" id="map-pane-{i}">'
-            f'<div class="card"><div class="card-body text-center p-2">'
-            f'<a href="{path}" target="_blank">'
-            f'<img src="{path}" class="w-100" style="border-radius:4px;max-height:75vh;object-fit:contain">'
-            f'</a></div></div></div>'
-            for i, (_, path) in enumerate(map_items)
-        )
-        # activate first tab button via JS
+        zoom_items = [
+            (label.replace(" (Zoom)", ""), path)
+            for label, path, slug in map_items if slug.endswith("-zoom")
+        ]
+        wide_items = [
+            (label, path)
+            for label, path, slug in map_items if not slug.endswith("-zoom")
+        ]
+
+        def _tab_group(group_id: str, items: List[Tuple[str, str]]) -> str:
+            if not items:
+                return "<p class='text-muted small'>No images available.</p>"
+            btns = "\n".join(
+                f'<li class="nav-item">'
+                f'<button class="nav-link{" active" if i == 0 else ""}" '
+                f'data-bs-toggle="tab" data-bs-target="#{group_id}-pane-{i}" type="button">'
+                f'{lbl}</button></li>'
+                for i, (lbl, _) in enumerate(items)
+            )
+            panes = "\n".join(
+                f'<div class="tab-pane fade{"  show active" if i == 0 else ""}" id="{group_id}-pane-{i}">'
+                f'<div class="card"><div class="card-body text-center p-2">'
+                f'<a href="{pth}" target="_blank">'
+                f'<img src="{pth}" class="w-100"'
+                f' style="border-radius:4px;max-height:70vh;object-fit:contain">'
+                f'</a></div></div></div>'
+                for i, (_, pth) in enumerate(items)
+            )
+            return (
+                f'<ul class="nav nav-tabs mb-2" id="{group_id}">{btns}</ul>'
+                f'<div class="tab-content">{panes}</div>'
+            )
+
         maps_content = f"""
-<ul class="nav nav-tabs mb-3" id="mapTabs" role="tablist">{tab_btns}</ul>
-<div class="tab-content">{tab_panes}</div>
-<script>
-  document.addEventListener("DOMContentLoaded", function() {{
-    var first = document.querySelector("#mapTabs .nav-link");
-    if (first) first.classList.add("active");
-    var firstPane = document.querySelector("#mapTabs + .tab-content .tab-pane");
-    if (firstPane) {{ firstPane.classList.add("show","active"); }}
-  }});
-</script>"""
+<div class="mb-4">
+  <h6 class="fw-bold mb-2" style="color:var(--dark)">
+    <i class="fas fa-search-plus me-1"></i>Zoomed Region
+  </h6>
+  {_tab_group("zoom", zoom_items)}
+</div>
+<div>
+  <h6 class="fw-bold mb-2" style="color:var(--dark)">
+    <i class="fas fa-globe me-1"></i>Wider Region
+  </h6>
+  {_tab_group("wide", wide_items)}
+</div>
+"""
     else:
         maps_content = "<p class='text-muted'>No map images found. Run ru29_map_tropical_western_atlantic.py first.</p>"
 
@@ -1775,17 +1895,17 @@ def main():
                 glider_info["glider_name"],
             )
 
-    # if processed:
-    #     # Regenerate all glider pages now that we have the complete fleet list
-    #     # (so every sidebar shows all active gliders).
-    #     for g in processed:
-    #         generate_glider_page(
-    #             g["glider_name"], g["deployment_id"],
-    #             Path(save_path) / g["glider_name"],
-    #             g.get("record"),
-    #             processed,
-    #         )
-    #     generate_fleet_index(processed, Path(save_path))
+    if processed:
+        # Regenerate all glider pages now that we have the complete fleet list
+        # (so every sidebar shows all active gliders).
+        for g in processed:
+            generate_glider_page(
+                g["glider_name"], g["deployment_id"],
+                Path(save_path) / g["glider_name"],
+                g.get("record"),
+                processed,
+            )
+        generate_fleet_index(processed, Path(save_path))
 
 
 if __name__ == "__main__":
