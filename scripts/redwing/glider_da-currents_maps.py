@@ -50,7 +50,7 @@ CONFIG = {
         'plot_rtofs': True,
         'plot_espc': True,
         'plot_cmems': True,
-        'plot_doppio': True,
+        'plot_doppio': False,
     },
     'glider': {
         # Single-glider fallback (used when RUN_ALL_ACTIVE_GLIDERS = False)
@@ -136,6 +136,11 @@ GLIDER_OVERRIDES = {
         },
     },
 }
+
+# Legacy path for ru29 — old URLs (https://rucool.marine.rutgers.edu/media/ru29/...)
+# were shared externally and must stay valid.  Latest-alias PNGs are mirrored here.
+# Set to None to disable.
+LEGACY_RU29_PATH = '/www/web/rucool/media/ru29'
 
 # Projections
 MAP_PROJECTION = ccrs.Mercator()
@@ -1039,6 +1044,24 @@ def plot_twa_map(
         plt.close(fig)
         logger.info(f"Saved map: {save_file}")
         logger.info(f"Saved alias: {alias_file}")
+
+        if _glider_name == "ru29" and LEGACY_RU29_PATH:
+            legacy_dir = Path(LEGACY_RU29_PATH)
+            try:
+                legacy_dir.mkdir(parents=True, exist_ok=True)
+                # Mirror with the new filename so the new path structure is duplicated.
+                legacy_alias = legacy_dir / alias_file.name
+                shutil.copyfile(alias_file, legacy_alias)
+                logger.info(f"Mirrored to legacy path: {legacy_alias}")
+                # Also write the old _twa_ filename so previously shared URLs stay valid.
+                legacy_twa = legacy_dir / alias_file.name.replace(
+                    f"_{region_slug}_latest_", "_twa_latest_"
+                )
+                if legacy_twa != legacy_alias:
+                    shutil.copyfile(alias_file, legacy_twa)
+                    logger.info(f"Wrote legacy twa alias: {legacy_twa}")
+            except Exception as exc:
+                logger.warning(f"Could not mirror to legacy path {legacy_dir}: {exc}")
 
     if ds_time is not None:
         title_time = ds_time.strftime("%Y-%m-%dT%HZ")

@@ -77,7 +77,7 @@ MODEL_CONFIG = {
         "timeout": 120,
     },
     "Doppio": {
-        "enabled": True,
+        "enabled": False,
         "color": "darkorange",
         "timeout": 120,
     },
@@ -1695,15 +1695,15 @@ def generate_glider_page(
 
 <ul class="nav nav-tabs mb-3" id="mainTabs" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab"
-      data-bs-target="#currents-section" type="button">
-    <i class="fas fa-compass me-1"></i>Current Comparisons</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab"
       data-bs-target="#maps-section" type="button">
     <i class="fas fa-map me-1"></i>Maps</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab"
+      data-bs-target="#currents-section" type="button">
+    <i class="fas fa-compass me-1"></i>Current Comparisons</button></li>
 </ul>
 <div class="tab-content">
-  <div class="tab-pane fade show active" id="currents-section">{currents_content}</div>
-  <div class="tab-pane fade" id="maps-section">{maps_content}</div>
+  <div class="tab-pane fade show active" id="maps-section">{maps_content}</div>
+  <div class="tab-pane fade" id="currents-section">{currents_content}</div>
 </div>
 """
     sidebar = _sidebar_html(glider_name, processed, include_fleet=True)
@@ -1808,6 +1808,16 @@ def _process_glider(glider_name: str, deployment_id: str) -> Optional[Dict]:
     archive_dir  = currents_dir / ARCHIVE_SUBDIR
     sfc_filename = f"{glider_name}_surface_current_comparison.png"
     da_filename  = f"{glider_name}_depth_avg_current_comparison.png"
+
+    # Pre-warm all dataset caches sequentially before threads are spawned.
+    # HDF5/OPeNDAP concurrent opens are not thread-safe and produce temp-file
+    # conflicts when multiple lru_cache functions hit the same server URL at once.
+    LOGGER.info("Pre-warming model dataset caches...")
+    for _fn in (get_rtofs_dataset, get_rtofs_full_dataset, get_espc_dataset, get_cmems_client):
+        try:
+            _fn()
+        except Exception as _exc:
+            LOGGER.warning("Cache warm-up failed for %s: %s", _fn.__name__, _exc)
 
     if SURFACING_MODE == "range":
         if not SURFACING_RANGE_START or not SURFACING_RANGE_END:
