@@ -1473,6 +1473,23 @@ _SHARED_CSS = f"""
     .fleet-card {{ transition:var(--tr); text-decoration:none; color:inherit; }}
     .fleet-card:hover {{ transform:translateY(-3px); box-shadow:0 6px 20px rgba(0,0,0,.12)!important;
                           color:inherit; }}
+    .hamburger {{ display:none; background:none; border:none; color:#fff;
+                  font-size:1.4rem; cursor:pointer; padding:.3rem .5rem;
+                  margin-right:.5rem; line-height:1; }}
+    #sidebar-overlay {{ display:none; position:fixed; inset:0;
+                        background:rgba(0,0,0,.4); z-index:1020; }}
+    @media (max-width:991px) {{
+      .hamburger {{ display:block; }}
+      #sidebar {{ position:fixed; top:66px; left:0; bottom:30px; z-index:1025;
+                  transform:translateX(-100%); transition:transform .25s ease;
+                  min-height:unset; }}
+      #sidebar.open {{ transform:translateX(0); }}
+      #sidebar-overlay.open {{ display:block; }}
+      .nav-tabs {{ flex-wrap:nowrap; overflow-x:auto;
+                   -webkit-overflow-scrolling:touch; scrollbar-width:none; }}
+      .nav-tabs::-webkit-scrollbar {{ display:none; }}
+      .nav-tabs .nav-link {{ flex-shrink:0; white-space:nowrap; }}
+    }}
 """
 
 
@@ -1516,6 +1533,7 @@ def _html_page(title: str, navbar_title: str, sidebar: str, content: str) -> str
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark sticky-top p-3">
+  <button class="hamburger" id="menuBtn" aria-label="Open menu">&#9776;</button>
   <a class="navbar-brand d-flex align-items-center" href="https://rucool.marine.rutgers.edu">
     <img src="{_RUCOOL_LOGO}" width="32" height="32" class="me-2 rounded" alt="RUCool">
     <span>{navbar_title}</span>
@@ -1528,14 +1546,26 @@ def _html_page(title: str, navbar_title: str, sidebar: str, content: str) -> str
     </li>
   </ul>
 </nav>
+<div id="sidebar-overlay"></div>
 <div id="body-row">
-  <div id="sidebar" class="d-none d-lg-flex flex-column">{sidebar}</div>
+  <div id="sidebar" class="d-flex flex-column">{sidebar}</div>
   <div id="main">{content}</div>
 </div>
 <div class="footer-bar">
   Rutgers University Center for Ocean Observing Leadership &nbsp;|&nbsp; Generated: {gen_time}
 </div>
 <script src="{_BS5_JS}"></script>
+<script>
+(function(){{
+  var btn=document.getElementById('menuBtn'),
+      sb=document.getElementById('sidebar'),
+      ov=document.getElementById('sidebar-overlay');
+  function open(){{sb.classList.add('open');ov.classList.add('open');}}
+  function close(){{sb.classList.remove('open');ov.classList.remove('open');}}
+  btn.addEventListener('click',function(){{sb.classList.contains('open')?close():open();}});
+  ov.addEventListener('click',close);
+}})();
+</script>
 </body>
 </html>"""
 
