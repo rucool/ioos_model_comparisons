@@ -45,7 +45,7 @@ def read_archive_time(archv_or_b_file):
     real-world UTC datetime: the inverse of `pyhycom.forday` (yrflag=3, where
     model day 1.0 = 1901-01-01 00:00 UTC).
     """
-    b_file = archv_or_b_file
+    b_file = str(archv_or_b_file)
     if b_file.endswith('.a') or b_file.endswith('.b'):
         b_file = b_file[:-2]
     b_file = b_file + '.b'
@@ -92,8 +92,9 @@ def get_grid_indices(grid_file, extent):
     i0, i1 = np.searchsorted(lon1d, [lonmin_shifted, lonmax_shifted])
     j0, j1 = np.searchsorted(lat1d, [latmin, latmax])
 
-    i0, i1 = max(i0 - 1, 0), min(i1 + 1, lon1d.size)
-    j0, j1 = max(j0 - 1, 0), min(j1 + 1, lat1d.size)
+    pad = 15
+    i0, i1 = max(i0 - pad, 0), min(i1 + pad, lon1d.size)
+    j0, j1 = max(j0 - pad, 0), min(j1 + pad, lat1d.size)
 
     # Wrap longitudes back to the standard [-180, 180) convention for output
     # (the unwrapped frame above is only needed for the index search).
