@@ -1,19 +1,9 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='ioos_model_comparisons',
     version='0.0.2',
-    packages=['ioos_model_comparisons',
-              'data', 
-              'scripts',
-              'scripts.gliders',
-              'scripts.harvest', 
-              'scripts.maps',
-              'scripts.met',
-              'scripts.misc', 
-              'scripts.profiles',
-              'scripts.transects',
-              ],
+    packages=find_packages(),
     url='github.com/rucool/ioos_model_comparisons/',
     license='',
     author='mikesmith',
