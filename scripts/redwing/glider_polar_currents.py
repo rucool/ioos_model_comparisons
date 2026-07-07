@@ -451,12 +451,19 @@ def _fetch_positions(deployment: str) -> pd.DataFrame:
         vx = s.get("m_water_vx")
         vy = s.get("m_water_vy")
 
+        disconnect_epoch = s.get("disconnect_time_epoch")
+        disconnect_ts = (
+            pd.Timestamp(disconnect_epoch, unit="s")
+            if disconnect_epoch is not None else pd.NaT
+        )
+
         rows.append({
-            "ts":         ts,
-            "lat":        lat,
-            "lon":        lon,
-            "m_water_vx": float(vx) if vx is not None else np.nan,
-            "m_water_vy": float(vy) if vy is not None else np.nan,
+            "ts":            ts,
+            "lat":           lat,
+            "lon":           lon,
+            "disconnect_ts": disconnect_ts,
+            "m_water_vx":    float(vx) if vx is not None else np.nan,
+            "m_water_vy":    float(vy) if vy is not None else np.nan,
         })
 
     if skipped:
@@ -480,8 +487,18 @@ def _normalize_range_bound(value: Optional[str], label: str) -> Optional[pd.Time
         raise ValueError(f"Invalid {label} value: {value!r}") from exc
 
 
-def _build_surface_record(latest: pd.Series, previous: pd.Series) -> Dict:
-    """Build a GPS-drift surface record from two adjacent surfacing rows."""
+def _build_surface_record(
+    latest: pd.Series,
+    previous: pd.Series,
+    da_record: Optional[Dict] = None,
+) -> Dict:
+    """Build a GPS-drift surface record from two adjacent surfacing rows.
+
+    When disconnect_ts is available in previous and a depth-averaged current
+    record is supplied, applies the surface/dive time decomposition:
+        surface_drift = (total_displacement - da_current * dive_duration) / surface_duration
+    Falls back to simple GPS-drift over total elapsed time otherwise.
+    """
     t2   = pd.to_datetime(latest["ts"])
     t1   = pd.to_datetime(previous["ts"])
     lat2, lon2 = float(latest["lat"]),   float(latest["lon"])
@@ -492,7 +509,46 @@ def _build_surface_record(latest: pd.Series, previous: pd.Series) -> Dict:
         lat1, lon1, t1, lat2, lon2, t2,
         (t2 - t1).total_seconds() / 3600,
     )
-    u, v = calc_surface_drift_uv(lat1, lon1, t1, lat2, lon2, t2)
+
+    total_dt     = (t2 - t1).total_seconds()
+    mean_lat_rad = np.radians((lat1 + lat2) / 2.0)
+    delta_lat_m  = (lat2 - lat1) * 111_320.0
+    delta_lon_m  = (lon2 - lon1) * 111_320.0 * np.cos(mean_lat_rad)
+
+    disconnect_ts = pd.to_datetime(previous.get("disconnect_ts", pd.NaT))
+    has_timing = pd.notna(disconnect_ts) and total_dt > 0
+    has_da     = (
+        da_record is not None
+        and da_record.get("data_available")
+        and np.isfinite(da_record.get("u", np.nan))
+    )
+
+    if has_timing and has_da:
+        surface_duration = (disconnect_ts - t1).total_seconds()
+        dive_duration    = (t2 - disconnect_ts).total_seconds()
+        if surface_duration > 0 and dive_duration >= 0:
+            u = (delta_lon_m - da_record["u"] * dive_duration) / surface_duration
+            v = (delta_lat_m - da_record["v"] * dive_duration) / surface_duration
+            LOGGER.info(
+                "Improved surface drift: surface=%.0fs dive=%.0fs "
+                "da_u=%.4f da_v=%.4f → u=%.4f v=%.4f m/s",
+                surface_duration, dive_duration, da_record["u"], da_record["v"], u, v,
+            )
+        else:
+            u = delta_lon_m / total_dt if total_dt > 0 else np.nan
+            v = delta_lat_m / total_dt if total_dt > 0 else np.nan
+            LOGGER.warning(
+                "Unexpected timing (surface=%.0fs dive=%.0fs); falling back to GPS-drift.",
+                surface_duration, dive_duration,
+            )
+    else:
+        u = delta_lon_m / total_dt if total_dt > 0 else np.nan
+        v = delta_lat_m / total_dt if total_dt > 0 else np.nan
+        LOGGER.info(
+            "GPS-drift fallback (timing=%s da=%s): u=%.4f v=%.4f m/s",
+            has_timing, has_da, u, v,
+        )
+
     speed, direction = calc_speed_dir(u, v)
     LOGGER.info(
         "Surface drift result: u=%.4f m/s  v=%.4f m/s  speed=%.2f cm/s",
@@ -519,11 +575,24 @@ def _build_surface_record(latest: pd.Series, previous: pd.Series) -> Dict:
 
 
 def get_latest_surface_record(deployment: str) -> Dict:
-    """Return surface drift vector using the most recent GPS fix and the immediately preceding fix."""
+    """Return surface drift vector using the most recent GPS fix and the immediately preceding fix.
+
+    When possible, fetches the ERDDAP depth-averaged current near the latest surfacing time
+    and uses the surface/dive decomposition to isolate the true surface drift velocity.
+    """
     positions = _fetch_positions(deployment)
     if len(positions) < 2:
         raise ValueError(f"Need at least 2 position records; got {len(positions)}")
-    return _build_surface_record(positions.iloc[-1], positions.iloc[-2])
+    latest   = positions.iloc[-1]
+    previous = positions.iloc[-2]
+    try:
+        da_record = fetch_glider_depth_avg_erddap(
+            deployment, target_time=pd.to_datetime(latest["ts"])
+        )
+    except Exception as exc:
+        LOGGER.warning("Could not fetch ERDDAP depth-avg for surface correction: %s", exc)
+        da_record = None
+    return _build_surface_record(latest, previous, da_record=da_record)
 
 
 def get_surface_records_for_range(
@@ -1632,18 +1701,18 @@ def generate_glider_page(
     currents_content = f"""
 <ul class="nav nav-tabs mb-3" id="curTabs" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab"
-      data-bs-target="#sfc-pane" type="button">
-    <i class="fas fa-water me-1"></i>Surface Currents</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab"
       data-bs-target="#da-pane" type="button">
     <i class="fas fa-layer-group me-1"></i>Depth-Averaged</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab"
+      data-bs-target="#sfc-pane" type="button">
+    <i class="fas fa-water me-1"></i>Surface Currents</button></li>
 </ul>
 <div class="tab-content">
-  <div class="tab-pane fade show active" id="sfc-pane">
-    <div class="card"><div class="card-body p-2">{sfc_html}</div></div>
-  </div>
-  <div class="tab-pane fade" id="da-pane">
+  <div class="tab-pane fade show active" id="da-pane">
     <div class="card"><div class="card-body p-2">{da_html}</div></div>
+  </div>
+  <div class="tab-pane fade" id="sfc-pane">
+    <div class="card"><div class="card-body p-2">{sfc_html}</div></div>
   </div>
 </div>
 {'<h6 class="mt-4 fw-bold" style="color:var(--dark)"><i class="fas fa-clock me-1"></i>Archive</h6>' + archive_thumbs if archive_thumbs else ""}

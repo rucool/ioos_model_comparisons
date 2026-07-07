@@ -451,7 +451,22 @@ def fetch_glider_surfacings(
     if waypoint_info is None:
         logger.info("No waypoint data found in surfacings")
 
-    return df[["latitude", "longitude"]], waypoint_info
+    keep_cols = ["latitude", "longitude"]
+    da_u_candidates = ['m_water_vx', 'depth_avg_curr_east', 'da_u_est']
+    da_v_candidates = ['m_water_vy', 'depth_avg_curr_north', 'da_v_est']
+    da_u_col = next((c for c in da_u_candidates if c in df.columns), None)
+    da_v_col = next((c for c in da_v_candidates if c in df.columns), None)
+    if da_u_col:
+        df['da_u'] = pd.to_numeric(df[da_u_col], errors='coerce')
+        keep_cols.append('da_u')
+    if da_v_col:
+        df['da_v'] = pd.to_numeric(df[da_v_col], errors='coerce')
+        keep_cols.append('da_v')
+    if da_u_col and da_v_col:
+        logger.info("DA current columns found: u=%s, v=%s", da_u_col, da_v_col)
+    else:
+        logger.info("DA current columns not found in surfacings API response")
+    return df[keep_cols], waypoint_info
 
 
 def load_bathymetry(extent: list) -> Optional[xr.Dataset]:
@@ -753,6 +768,7 @@ def plot_twa_map(
     region_extent: Optional[list] = None,
     region_name: Optional[str] = None,
     zoom_extent: Optional[list] = None,
+    glider_da_uv: Optional[Tuple[float, float]] = None,
 ):
     if config is None:
         config = CONFIG
@@ -968,6 +984,7 @@ def plot_twa_map(
         plot_extent: Optional[list] = None,
         plot_figsize: Optional[tuple] = None,
         contour_args: Optional[dict] = None,
+        show_glider_arrow: bool = False,
     ):
         actual_generated_time = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%MZ')
         active_extent = list(plot_extent if plot_extent is not None else extent)
@@ -987,6 +1004,35 @@ def plot_twa_map(
         fig = plt.figure(figsize=active_figsize)
         ax = fig.add_subplot(1, 1, 1, projection=MAP_PROJECTION)
         init_axis(ax, active_extent, add_legend=add_legend)
+
+        if (show_glider_arrow and glider_da_uv is not None
+                and gliders is not None and not gliders.empty):
+            g_lon = float(gliders['longitude'].iloc[-1])
+            g_lat = float(gliders['latitude'].iloc[-1])
+            u_ms, v_ms = glider_da_uv
+            speed_cms = np.sqrt(u_ms**2 + v_ms**2) * 100
+            if speed_cms > 0.5:
+                # Normalize to 40 cm/s reference; scale relative to plot width
+                u_norm = (u_ms * 100) / 40.0
+                v_norm = (v_ms * 100) / 40.0
+                ax.quiver(
+                    g_lon, g_lat, u_norm, v_norm,
+                    scale=20, scale_units='width',
+                    transform=DATA_PROJECTION,
+                    color='lime', edgecolor='black', linewidth=0.8,
+                    zorder=10005, width=0.005,
+                    headwidth=5, headlength=6, headaxislength=5.5,
+                )
+                ax.text(
+                    g_lon + u_norm * 0.08,
+                    g_lat + v_norm * 0.08 + 0.15,
+                    f'Glider DA: {speed_cms:.0f} cm/s',
+                    transform=DATA_PROJECTION,
+                    fontsize=7, color='lime', fontweight='bold',
+                    ha='center', zorder=10006,
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='black',
+                              alpha=0.5, edgecolor='none'),
+                )
 
         m = None
         if ds_plot is not None:
@@ -1101,6 +1147,7 @@ def plot_twa_map(
             add_legend=True,
             show_colorbar=True,
             contour_args=qargs_depth_avg,
+            show_glider_arrow=True,
         )
 
     # Zoom maps centered on the glider's recent track
@@ -1146,6 +1193,7 @@ def plot_twa_map(
                 plot_extent=active_zoom_extent,
                 plot_figsize=zoom_figsize,
                 contour_args=qargs_depth_avg,
+                show_glider_arrow=True,
             )
 
 
@@ -1250,6 +1298,7 @@ def process_and_plot_time(
     region_extent: Optional[list] = None,
     region_name: Optional[str] = None,
     zoom_extent: Optional[list] = None,
+    glider_da_uv: Optional[Tuple[float, float]] = None,
 ):
     logger.info(f"Processing time: {reference_time}")
 
@@ -1298,6 +1347,7 @@ def process_and_plot_time(
                 region_extent=extent,
                 region_name=region_name,
                 zoom_extent=zoom_extent,
+                glider_da_uv=glider_da_uv,
             )
         except Exception as error:
             logger.error(f"RTOFS processing failed: {error}")
@@ -1333,6 +1383,7 @@ def process_and_plot_time(
                 region_extent=extent,
                 region_name=region_name,
                 zoom_extent=zoom_extent,
+                glider_da_uv=glider_da_uv,
             )
         except Exception as error:
             logger.error(f"ESPC processing failed: {error}")
@@ -1358,6 +1409,7 @@ def process_and_plot_time(
                 region_extent=extent,
                 region_name=region_name,
                 zoom_extent=zoom_extent,
+                glider_da_uv=glider_da_uv,
             )
         except Exception as error:
             logger.error(f"CMEMS processing failed: {error}")
@@ -1382,6 +1434,7 @@ def process_and_plot_time(
                 region_extent=extent,
                 region_name=region_name,
                 zoom_extent=zoom_extent,
+                glider_da_uv=glider_da_uv,
             )
         except Exception as error:
             logger.error("Doppio processing failed: %s", error)
@@ -1473,12 +1526,27 @@ def main():
                 min_span=zoom_cfg.get('min_span_deg', 4.0),
             )
 
+        glider_da_uv = None
+        if 'da_u' in gdata.columns and 'da_v' in gdata.columns:
+            da_valid = gdata.dropna(subset=['da_u', 'da_v'])
+            if not da_valid.empty:
+                latest_da = da_valid.iloc[-1]
+                u_ms = float(latest_da['da_u'])
+                v_ms = float(latest_da['da_v'])
+                if np.isfinite(u_ms) and np.isfinite(v_ms):
+                    glider_da_uv = (u_ms, v_ms)
+                    logger.info(
+                        "Glider %s DA current: u=%.4f m/s, v=%.4f m/s (%.1f cm/s)",
+                        gname, u_ms, v_ms, np.sqrt(u_ms**2 + v_ms**2) * 100,
+                    )
+
         glider_info.append({
             'name': gname,
             'data': gdata,
             'waypoint': waypoint,
             'region': region,
             'zoom_extent': zoom_ext,
+            'da_uv': glider_da_uv,
         })
         logger.info("Glider %s: region='%s', zoom=%s", gname, region['name'], zoom_ext)
 
@@ -1542,6 +1610,7 @@ def main():
         gdata = g['data']
         waypoint = g['waypoint']
         glider_ref = pd.Timestamp(gdata.index.max())
+        glider_da_uv = g.get('da_uv')
 
         logger.info("Processing glider %s (region: %s)", gname, region['name'])
 
@@ -1571,6 +1640,7 @@ def main():
                     region_extent=region['extent'],
                     region_name=region['name'],
                     zoom_extent=zoom_ext,
+                    glider_da_uv=glider_da_uv,
                 )
             except Exception as exc:
                 logger.error("Failed to process glider %s: %s", gname, exc)

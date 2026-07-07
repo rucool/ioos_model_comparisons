@@ -1094,7 +1094,7 @@ def region_config(regions=None, model=None):
         extent = [134.75-5, 155.25+5, 4.75, 25.25]
 
         sea_water_temperature = [
-            dict(depth=0, limits=[26, 31.5, .5]),
+            dict(depth=0, limits=[26, 31.0, .5]),
             dict(depth=150, limits=[14, 24, 1]),
             ]
         salinity = [

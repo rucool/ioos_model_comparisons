@@ -36,9 +36,19 @@ Usage:
 
     # Custom grid/depth file location
     python3 scripts/harvest/grab_rtofs_archv_aws.py --grid-dir /data/rtofs_static
+
+    # Fetch the last 5 days
+    python3 scripts/harvest/grab_rtofs_archv_aws.py --days 5
+
+    # Delete archive files immediately after processing (default: keep indefinitely)
+    python3 scripts/harvest/grab_rtofs_archv_aws.py --no-keep-binary
+
+    # Prune archives older than 30 days
+    python3 scripts/harvest/grab_rtofs_archv_aws.py --archv-retention-days 30
 """
 import argparse
 import os
+import shutil
 import tarfile
 import time
 from datetime import datetime, timedelta, timezone
@@ -112,6 +122,15 @@ def find_latest_date(max_lookback=5):
     raise RuntimeError(f"No RTOFS archive data found in the last {max_lookback} days")
 
 
+def date_is_available(date_str):
+    test_url = f"{BASE_URL}/rtofs.{date_str}/rtofs_glo.t00z.{FORECAST_HOURS[0]}.archv.b"
+    try:
+        r = requests.head(test_url, timeout=10)
+        return r.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+
 def process_archive(archv_file, grid_file, depth_file, output_dir,
                     do_global, regions, n_jobs):
     valid_time = read_archive_time(archv_file)
@@ -171,16 +190,30 @@ def process_archive(archv_file, grid_file, depth_file, output_dir,
         print(f"  Wrote {out_file.name} in {time.time() - t0:.0f}s")
 
 
+def prune_old_archives(archv_root, retention_days):
+    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=retention_days)
+    if not archv_root.exists():
+        return
+    for day_dir in sorted(archv_root.iterdir()):
+        try:
+            dir_date = datetime.strptime(day_dir.name, "%Y%m%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if dir_date < cutoff:
+            shutil.rmtree(day_dir)
+            print(f"  Pruned old archive: {day_dir.name}")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Download and process RTOFS binary archives from AWS",
     )
     parser.add_argument(
-        "--output-dir", type=Path, default=Path("/Users/mikesmith/Downloads/rtofs_global"),
-        help="Root output directory (default: /Users/mikesmith/Downloads/rtofs_global)",
+        "--output-dir", type=Path, default=Path("/home/hurricaneadm/data/rtofs_archv"),
+        help="Root output directory (default: /home/hurricaneadm/data/rtofs_archv)",
     )
     parser.add_argument(
-        "--grid-dir", type=Path, default=Path("/Users/mikesmith/Downloads/rtofs"),
+        "--grid-dir", type=Path, default=Path("/home/hurricaneadm/data/rtofs_archv"),
         help="Directory containing regional.grid.a/.b and regional.depth.a/.b",
     )
     parser.add_argument(
@@ -192,8 +225,16 @@ def parse_args():
         help="Skip the global file (only produce regional files)",
     )
     parser.add_argument(
-        "--keep-binary", action="store_true",
-        help="Keep the raw .a/.b files after processing (default: delete them)",
+        "--no-keep-binary", action="store_true",
+        help="Delete raw .a/.b files immediately after processing (default: keep indefinitely)",
+    )
+    parser.add_argument(
+        "--archv-retention-days", type=int, default=None,
+        help="Prune raw archive files older than this many days (default: keep indefinitely)",
+    )
+    parser.add_argument(
+        "--days", type=int, default=1,
+        help="Number of days to fetch, counting back from the latest available (default: 1)",
     )
     parser.add_argument(
         "--n-jobs", type=int, default=-1,
@@ -217,50 +258,66 @@ def main():
             "Set --grid-dir to the directory containing regional.grid.a and regional.depth.a"
         )
 
-    date_str = find_latest_date()
-    tmp_dir = output_dir / ".tmp" / date_str
-    os.makedirs(tmp_dir, exist_ok=True)
-    day_url = f"{BASE_URL}/rtofs.{date_str}"
+    latest_date_str = find_latest_date()
+    latest_date = datetime.strptime(latest_date_str, "%Y%m%d").replace(tzinfo=timezone.utc)
 
-    for fhr in FORECAST_HOURS:
-        base = f"rtofs_glo.t00z.{fhr}.archv"
-        print(f"\n{'='*60}")
-        print(f"{base}")
-        print(f"{'='*60}")
+    dates = [
+        (latest_date - timedelta(days=i)).strftime("%Y%m%d")
+        for i in range(args.days)
+    ]
 
-        b_path = tmp_dir / f"{base}.b"
-        a_path = tmp_dir / f"{base}.a"
-        a_tgz_path = tmp_dir / f"{base}.a.tgz"
-
-        # Download .b
-        if not download_file(f"{day_url}/{base}.b", b_path):
-            print(f"  Skipping {fhr} — .b download failed")
+    for date_str in dates:
+        if not date_is_available(date_str):
+            print(f"\nSkipping {date_str} — not available on AWS")
             continue
 
-        # Download and extract .a.tgz
-        if not (a_path.exists() and a_path.stat().st_size > 0):
-            if download_file(f"{day_url}/{base}.a.tgz", a_tgz_path):
-                extract_tgz(a_tgz_path, tmp_dir)
-            else:
-                print(f"  Skipping {fhr} — .a download failed")
+        archv_dir = output_dir / "archv" / date_str
+        os.makedirs(archv_dir, exist_ok=True)
+        day_url = f"{BASE_URL}/rtofs.{date_str}"
+
+        print(f"\n{'#'*60}")
+        print(f"# {date_str}")
+        print(f"{'#'*60}")
+
+        for fhr in FORECAST_HOURS:
+            base = f"rtofs_glo.t00z.{fhr}.archv"
+            print(f"\n{'='*60}")
+            print(f"{base}")
+            print(f"{'='*60}")
+
+            b_path = archv_dir / f"{base}.b"
+            a_path = archv_dir / f"{base}.a"
+            a_tgz_path = archv_dir / f"{base}.a.tgz"
+
+            # Download .b
+            if not download_file(f"{day_url}/{base}.b", b_path):
+                print(f"  Skipping {fhr} — .b download failed")
                 continue
 
-        # Process
-        process_archive(
-            a_path, grid_file, depth_file, output_dir,
-            do_global=do_global, regions=args.regions, n_jobs=args.n_jobs,
-        )
+            # Download and extract .a.tgz
+            if not (a_path.exists() and a_path.stat().st_size > 0):
+                if download_file(f"{day_url}/{base}.a.tgz", a_tgz_path):
+                    extract_tgz(a_tgz_path, archv_dir)
+                else:
+                    print(f"  Skipping {fhr} — .a download failed")
+                    continue
 
-        # Clean up binary files
-        if not args.keep_binary:
-            for f in [a_path, b_path]:
-                if f.exists():
-                    f.unlink()
-                    print(f"  Removed {f.name}")
+            # Process
+            process_archive(
+                a_path, grid_file, depth_file, output_dir,
+                do_global=do_global, regions=args.regions, n_jobs=args.n_jobs,
+            )
 
-    # Clean up tmp dir if empty
-    if tmp_dir.exists() and not list(tmp_dir.iterdir()):
-        tmp_dir.rmdir()
+            # Delete immediately if requested
+            if args.no_keep_binary:
+                for f in [a_path, b_path]:
+                    if f.exists():
+                        f.unlink()
+                        print(f"  Removed {f.name}")
+
+    # Prune archives only if an explicit retention window was requested
+    if not args.no_keep_binary and args.archv_retention_days is not None:
+        prune_old_archives(output_dir / "archv", args.archv_retention_days)
 
     print(f"\nDone. Output in {output_dir}")
 
