@@ -35,8 +35,9 @@ argo_dict = {
 }
 
 RTOFS_DATA_DIR = Path("/home/hurricaneadm/data/rtofs_archv")
+# RTOFS_DATA_DIR = Path("/Users/mikesmith/Downloads/rtofs_global/")
 RTOFS_REGION = 'guam'
-RTOFS_MAX_HOURS = 12
+RTOFS_MAX_HOURS = 24
 
 days_to_check_for_argo_surfacing = 2
 days_pre_surfacing = 1
@@ -113,6 +114,7 @@ for key, value in argo_dict.items():
     time_start = time_end - dt.timedelta(days=days_to_check_for_argo_surfacing)
 
     argo_data = get_argo_floats_by_time(
+        bbox=(129.75, 160.25, 4.75, 25.25),  # Guam region
         time_start=time_start,
         time_end=time_end,
         wmo_id=key,
