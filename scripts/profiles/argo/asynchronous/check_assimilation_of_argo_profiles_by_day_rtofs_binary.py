@@ -174,7 +174,7 @@ for key, value in argo_dict.items():
 
         # ── Plot ─────────────────────────────────────────────────────────────
 
-        fig, ax = plt.subplots(2, 4, figsize=figsize, constrained_layout=True, sharey=True)
+        fig, ax = plt.subplots(2, 4, figsize=figsize, sharey=True)
 
         temp_x = []
         salt_x = []
@@ -236,11 +236,11 @@ for key, value in argo_dict.items():
         ax[0, 3].set_title(f'{date_ranges[3]}\n+2 Day', fontsize=15, fontweight='bold')
 
         plt.suptitle(
-            f'Profile Comparisons\nArgo {key} Surfacing: {ctime}\n',
+            f'Profile Comparisons\nArgo {key} Surfacing: {ctime}',
             fontsize=18,
             fontweight='bold',
-            y=0.98,
         )
+        plt.tight_layout(rect=[0, 0, 1, 0.93])
 
         loc = 'interp' if interp else 'nearest'
         save_str = f'argo_{key}-{ctime}-4day-profile-comparisons-rtofs-binary-{loc}.png'
