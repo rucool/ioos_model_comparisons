@@ -227,7 +227,7 @@ for key, value in argo_dict.items():
             lh = axs.legend(line_handles, labels, loc='lower right', title='Hours', fontsize=8)
             axs.add_artist(lh)
             axs.legend(handles=legend_elements, loc='upper left', fontsize=10)
-            for legobj in lh.legendHandles:
+            for legobj in lh.legend_handles:
                 legobj.set_linewidth(1.0)
 
         ax[0, 0].set_title(f'{date_ranges[0]}\n-1 Day', fontsize=15, fontweight='bold')
