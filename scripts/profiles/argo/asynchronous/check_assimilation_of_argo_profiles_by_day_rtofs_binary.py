@@ -20,7 +20,7 @@ from matplotlib.lines import Line2D
 
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import lon180to360
-from ioos_model_comparisons.models import gofs as g, CMEMS
+from ioos_model_comparisons.models import espc_ts, CMEMS
 from ioos_model_comparisons.platforms import get_argo_floats_by_time
 
 # ── Save dir ──────────────────────────────────────────────────────────────────
@@ -52,16 +52,16 @@ labels = ['+0600', '+1200', '+1800', '+2400']
 alpha = (1, .75, .5, .25)
 
 rtofs_include = True
-gofs_include = True
+espc_include = True
 cmems_include = True
 
 # ── Model connections (non-binary) ────────────────────────────────────────────
 
 legend_elements = [Line2D([0], [0], color='b', lw=2, label='ARGO')]
 
-if gofs_include:
-    gofs_ds = g(rename=True).sel(depth=slice(0, depth))[['temperature', 'salinity']]
-    legend_elements.append(Line2D([0], [0], color='g', lw=2, label='GOFS'))
+if espc_include:
+    espc_ds = espc_ts(rename=True).sel(depth=slice(0, depth))[['temperature', 'salinity']]
+    legend_elements.append(Line2D([0], [0], color='g', lw=2, label='ESPC'))
 
 if cmems_include:
     cobj = CMEMS()
@@ -139,14 +139,14 @@ for key, value in argo_dict.items():
         date_ranges = pd.date_range(pre, post, freq='24H', inclusive='left')
         time_ranges = pd.date_range(pre, post, freq='6H', inclusive='right')
 
-        # GOFS
-        if gofs_include:
-            gsub = gofs_ds.sel(time=time_ranges)
+        # ESPC
+        if espc_include:
+            esub = espc_ds.sel(time=time_ranges)
             if interp:
-                gsub = gsub.interp(lon=lon180to360(lon), lat=lat)
+                esub = esub.interp(lon=lon180to360(lon), lat=lat)
             else:
-                gsub = gsub.sel(lon=lon180to360(lon), lat=lat, method='nearest')
-            gsub.load()
+                esub = esub.sel(lon=lon180to360(lon), lat=lat, method='nearest')
+            esub.load()
 
         # CMEMS — one point profile per day
         cmems_profiles = {}
@@ -186,10 +186,10 @@ for key, value in argo_dict.items():
                 ax[0, i].plot(df['temp (degree_Celsius)'], df['pres (decibar)'], 'b-')
                 ax[1, i].plot(df['psal (PSU)'], df['pres (decibar)'], 'b-')
 
-                if gofs_include:
-                    gp = gsub.sel(time=t, method='nearest')
-                    ax[0, i].plot(gp['temperature'].squeeze(), gp['depth'].squeeze(), f'g{line[n]}', alpha=alpha[n])
-                    ax[1, i].plot(gp['salinity'].squeeze(), gp['depth'].squeeze(), f'g{line[n]}', alpha=alpha[n])
+                if espc_include:
+                    ep = esub.sel(time=t, method='nearest')
+                    ax[0, i].plot(ep['temperature'].squeeze(), ep['depth'].squeeze(), f'g{line[n]}', alpha=alpha[n])
+                    ax[1, i].plot(ep['salinity'].squeeze(), ep['depth'].squeeze(), f'g{line[n]}', alpha=alpha[n])
 
                 if cmems_include and cmems_profiles.get(date_ranges[i]) is not None:
                     cp = cmems_profiles[date_ranges[i]]
