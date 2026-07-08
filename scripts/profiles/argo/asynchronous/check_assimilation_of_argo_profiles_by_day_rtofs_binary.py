@@ -20,7 +20,7 @@ from matplotlib.lines import Line2D
 
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import lon180to360
-from ioos_model_comparisons.models import gofs as g, cmems as c
+from ioos_model_comparisons.models import gofs as g, CMEMS
 from ioos_model_comparisons.platforms import get_argo_floats_by_time
 
 # ── Save dir ──────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ if gofs_include:
     legend_elements.append(Line2D([0], [0], color='g', lw=2, label='GOFS'))
 
 if cmems_include:
-    cmems_ds = c(rename=True).sel(depth=slice(0, depth))[['temperature', 'salinity']]
+    cobj = CMEMS()
     legend_elements.append(Line2D([0], [0], color='m', lw=2, label='CMEMS'))
 
 if rtofs_include:
@@ -146,14 +146,18 @@ for key, value in argo_dict.items():
                 gsub = gsub.sel(lon=lon180to360(lon), lat=lat, method='nearest')
             gsub.load()
 
-        # CMEMS (daily)
+        # CMEMS — one point profile per day
+        cmems_profiles = {}
         if cmems_include:
-            csub = cmems_ds.sel(time=slice(pre, post))
-            if interp:
-                csub = csub.interp(lon=lon, lat=lat)
-            else:
-                csub = csub.sel(lon=lon, lat=lat, method='nearest')
-            csub.load()
+            for d in date_ranges:
+                try:
+                    cp = cobj.get_point(lon, lat, d, vars=['temperature', 'salinity'])
+                    cp = cp.sel(depth=slice(0, depth))
+                    cp.load()
+                    cmems_profiles[d] = cp
+                except Exception as e:
+                    print(f"CMEMS: failed for {d} ({e})")
+                    cmems_profiles[d] = None
 
         # RTOFS binary — load one profile per 6-hour time step
         rtofs_profiles = {}
@@ -174,7 +178,6 @@ for key, value in argo_dict.items():
         salt_x = []
 
         for i, t_array in enumerate(np.split(time_ranges, 4)):
-            day_str = t_array.strftime('%Y-%m-%d')
             n = 0
 
             for t in t_array:
@@ -186,8 +189,8 @@ for key, value in argo_dict.items():
                     ax[0, i].plot(gp['temperature'].squeeze(), gp['depth'].squeeze(), f'g{line[n]}', alpha=alpha[n])
                     ax[1, i].plot(gp['salinity'].squeeze(), gp['depth'].squeeze(), f'g{line[n]}', alpha=alpha[n])
 
-                if cmems_include:
-                    cp = csub.sel(time=day_str[0], method='nearest')
+                if cmems_include and cmems_profiles.get(date_ranges[i]) is not None:
+                    cp = cmems_profiles[date_ranges[i]]
                     ax[0, i].plot(cp['temperature'].squeeze(), cp['depth'].squeeze(), f'm{line[1]}', alpha=alpha[n])
                     ax[1, i].plot(cp['salinity'].squeeze(), cp['depth'].squeeze(), f'm{line[1]}', alpha=alpha[n])
 
