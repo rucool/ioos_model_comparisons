@@ -40,6 +40,9 @@ Usage:
     # Fetch the last 5 days
     python3 scripts/harvest/grab_rtofs_archv_aws.py --days 5
 
+    # Fetch and process one specific day
+    python3 scripts/harvest/grab_rtofs_archv_aws.py --date 20260701
+
     # Delete archive files immediately after processing (default: keep indefinitely)
     python3 scripts/harvest/grab_rtofs_archv_aws.py --no-keep-binary
 
@@ -237,6 +240,10 @@ def parse_args():
         help="Number of days to fetch, counting back from the latest available (default: 1)",
     )
     parser.add_argument(
+        "--date", type=str, default=None,
+        help="Fetch and process one specific day (YYYYMMDD), ignoring --days",
+    )
+    parser.add_argument(
         "--n-jobs", type=int, default=-1,
         help="Number of CPU cores for vertical interpolation (-1 = all, default: -1)",
     )
@@ -258,13 +265,20 @@ def main():
             "Set --grid-dir to the directory containing regional.grid.a and regional.depth.a"
         )
 
-    latest_date_str = find_latest_date()
-    latest_date = datetime.strptime(latest_date_str, "%Y%m%d").replace(tzinfo=timezone.utc)
+    if args.date:
+        try:
+            datetime.strptime(args.date, "%Y%m%d")
+        except ValueError:
+            raise ValueError(f"--date must be in YYYYMMDD format, got {args.date!r}")
+        dates = [args.date]
+    else:
+        latest_date_str = find_latest_date()
+        latest_date = datetime.strptime(latest_date_str, "%Y%m%d").replace(tzinfo=timezone.utc)
 
-    dates = [
-        (latest_date - timedelta(days=i)).strftime("%Y%m%d")
-        for i in range(args.days)
-    ]
+        dates = [
+            (latest_date - timedelta(days=i)).strftime("%Y%m%d")
+            for i in range(args.days)
+        ]
 
     for date_str in dates:
         if not date_is_available(date_str):
