@@ -15,6 +15,7 @@ Plot 2 — Depth-averaged currents:
 
 import functools
 import io
+import json
 import logging
 import os
 import re
@@ -1671,32 +1672,93 @@ def generate_glider_page(
     else:
         meta_line = "Location unavailable"
 
-    # ── Currents section ──────────────────────────────────────────────────────
+    # ── Currents section — time-navigable archive viewer ─────────────────────
     # index.html lives at glider_dir; all image hrefs must be relative to that.
-    def _img_tag(path: Path, thumb: bool = False) -> str:
-        cls = 'class="thumb w-100"' if thumb else 'class="w-100" style="border-radius:4px"'
-        href = "/".join(path.relative_to(glider_dir).parts)
+
+    def _build_entries(latest_path: Path, base_stem: str) -> List[Dict]:
+        """Return [{src, label}, ...] newest-first; index 0 = latest live plot."""
+        entries = []
+        if latest_path.exists():
+            rel = "/".join(latest_path.relative_to(glider_dir).parts)
+            entries.append({"src": rel, "label": "Latest"})
+        if archive_dir.exists():
+            for p in sorted(
+                archive_dir.glob(f"{base_stem}_????????T??????.png"), reverse=True
+            ):
+                rel = "/".join(p.relative_to(glider_dir).parts)
+                suffix = p.stem[len(base_stem) + 1:]
+                try:
+                    ts    = pd.to_datetime(suffix, format="%Y%m%dT%H%M%S")
+                    label = ts.strftime("%Y-%m-%d %H:%MZ")
+                except Exception:
+                    label = suffix
+                entries.append({"src": rel, "label": label})
+        return entries
+
+    def _nav_pane(nav_id: str, entries: List[Dict]) -> str:
+        if not entries:
+            return "<p class='text-muted p-2'>No plots available yet.</p>"
+        first = entries[0]
+        multi = len(entries) > 1
+        older_dis = "" if multi else " disabled"
+        nav_bar = (
+            f'<div class="d-flex align-items-center justify-content-between mt-2 px-1">'
+            f'<button class="btn btn-sm btn-outline-secondary" id="nav-{nav_id}-older"'
+            f' onclick="navStep(\'{nav_id}\',1)"{older_dis}>'
+            f'<i class="fas fa-chevron-left me-1"></i>Older</button>'
+            f'<span id="nav-{nav_id}-label" class="text-muted small"></span>'
+            f'<button class="btn btn-sm btn-outline-secondary" id="nav-{nav_id}-newer"'
+            f' onclick="navStep(\'{nav_id}\',-1)" disabled>'
+            f'Newer<i class="fas fa-chevron-right ms-1"></i></button>'
+            f'</div>'
+        ) if multi else (
+            f'<div class="text-center mt-1">'
+            f'<span id="nav-{nav_id}-label" class="text-muted small"></span>'
+            f'</div>'
+        )
         return (
-            f'<a href="{href}" target="_blank">'
-            f'<img src="{href}" alt="{path.stem}" {cls}></a>'
+            f'<div id="nav-{nav_id}">'
+            f'<a id="nav-{nav_id}-link" href="{first["src"]}" target="_blank">'
+            f'<img id="nav-{nav_id}-img" src="{first["src"]}"'
+            f' class="w-100" style="border-radius:4px" alt="{first["label"]}">'
+            f'</a>'
+            f'{nav_bar}'
+            f'</div>'
         )
 
-    sfc_html = _img_tag(sfc_latest) if sfc_latest.exists() else "<p class='text-muted'>No surface plot yet.</p>"
-    da_html  = _img_tag(da_latest)  if da_latest.exists()  else "<p class='text-muted'>No depth-avg plot yet.</p>"
+    da_stem  = da_filename[:-4]
+    sfc_stem = sfc_filename[:-4]
+    da_entries  = _build_entries(da_latest,  da_stem)
+    sfc_entries = _build_entries(sfc_latest, sfc_stem)
 
-    # Archive thumbnails — all PNGs in currents/archive/, newest first
-    archive_thumbs = ""
-    if archive_dir.exists():
-        pngs = sorted(archive_dir.glob("*.png"), reverse=True)
-        if pngs:
-            items = "\n".join(
-                f'<div class="col-6 col-md-4 col-lg-3 mb-2">'
-                + _img_tag(p, thumb=True)
-                + f'<div class="text-center" style="font-size:.7rem;color:#64748b;">'
-                f'{p.stem.split("_")[-1]}</div></div>'
-                for p in pngs
-            )
-            archive_thumbs = f'<div class="row mt-3">{items}</div>'
+    da_pane_html  = _nav_pane("da",  da_entries)
+    sfc_pane_html = _nav_pane("sfc", sfc_entries)
+    da_js  = json.dumps(da_entries)
+    sfc_js = json.dumps(sfc_entries)
+
+    nav_script = (
+        "<script>\n(function(){\n"
+        f"  var _nd = {{ da: {{ imgs: {da_js}, idx: 0 }}, sfc: {{ imgs: {sfc_js}, idx: 0 }} }};\n"
+        "  function render(k) {\n"
+        "    var d = _nd[k], e = d.imgs[d.idx];\n"
+        "    var img = document.getElementById('nav-'+k+'-img'); if (!img) return;\n"
+        "    img.src = e.src;\n"
+        "    document.getElementById('nav-'+k+'-link').href = e.src;\n"
+        "    document.getElementById('nav-'+k+'-label').textContent =\n"
+        "      e.label + (d.imgs.length > 1 ? ' (' + (d.idx+1) + '/' + d.imgs.length + ')' : '');\n"
+        "    var ol = document.getElementById('nav-'+k+'-older');\n"
+        "    var nw = document.getElementById('nav-'+k+'-newer');\n"
+        "    if (ol) ol.disabled = d.idx >= d.imgs.length - 1;\n"
+        "    if (nw) nw.disabled = d.idx <= 0;\n"
+        "  }\n"
+        "  window.navStep = function(k, dir) {\n"
+        "    var d = _nd[k];\n"
+        "    d.idx = Math.max(0, Math.min(d.imgs.length-1, d.idx+dir));\n"
+        "    render(k);\n"
+        "  };\n"
+        "  ['da','sfc'].forEach(render);\n"
+        "})();\n</script>"
+    )
 
     currents_content = f"""
 <ul class="nav nav-tabs mb-3" id="curTabs" role="tablist">
@@ -1709,13 +1771,19 @@ def generate_glider_page(
 </ul>
 <div class="tab-content">
   <div class="tab-pane fade show active" id="da-pane">
-    <div class="card"><div class="card-body p-2">{da_html}</div></div>
+    <div class="card"><div class="card-body p-2">{da_pane_html}</div></div>
   </div>
   <div class="tab-pane fade" id="sfc-pane">
-    <div class="card"><div class="card-body p-2">{sfc_html}</div></div>
+    <p class="text-muted small px-1 pt-2 mb-1">
+      <i class="fas fa-info-circle me-1"></i>
+      Surface currents are derived from the GPS drift method, corrected for depth-averaged
+      flow during the dive interval. The remaining displacement over the surface window gives
+      a direct Lagrangian estimate of the near-surface current vector.
+    </p>
+    <div class="card"><div class="card-body p-2">{sfc_pane_html}</div></div>
   </div>
 </div>
-{'<h6 class="mt-4 fw-bold" style="color:var(--dark)"><i class="fas fa-clock me-1"></i>Archive</h6>' + archive_thumbs if archive_thumbs else ""}
+{nav_script}
 """
 
     # ── Maps section ──────────────────────────────────────────────────────────

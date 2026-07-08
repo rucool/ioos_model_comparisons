@@ -1758,9 +1758,13 @@ def plot_model_region_comparison(ds1, ds2, region,
             h2 = ax2.contourf(glons, glats, gsub.squeeze(), **vargs)
 
             # Add contour lines for 15°C isotherm in MAB. This identifies the north wall of the Gulf Stream
-            if region['name'] == 'Mid Atlantic Bight' and k == 'temperature' and depth == 200:
+            _iso_leg = None
+            if region['name'] == 'Mid Atlantic Bight' and k == 'temperature':
                 ax1.contour(rlons, rlats, rsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
                 ax2.contour(rlons, rlats, rsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+                _iso_handle = mlines.Line2D([], [], color='red', linewidth=1.5, label='RTOFS 15°C Isotherm (Gulf Stream N. Wall)')
+                _iso_leg = ax3.legend(h + [_iso_handle], l + ['RTOFS 15°C Isotherm (Gulf Stream N. Wall)'], ncol=cols, loc='center', fontsize=8)
+                _iso_leg._legend_box.sep = 1
 
             if colorbar:
                 cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
@@ -1781,28 +1785,40 @@ def plot_model_region_comparison(ds1, ds2, region,
     
             fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
 
+            # Restore ax3 legend after MAB isotherm legend was added
+            if _iso_leg is not None:
+                try:
+                    _iso_leg.remove()
+                except Exception:
+                    pass
+                if (len(h) > 0) & (len(l) > 0):
+                    _restored = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
+                    _restored._legend_box.sep = 1
+                else:
+                    ax3.legend_ = None
+
             # Add currents as overlays over variable plots
             # if currents['bool']:
             #     quiver_dir = save_dir_final / "currents_overlay"
             #     os.makedirs(quiver_dir, exist_ok=True)
-                
+
             #     coarsen = currents['coarsen']
             #     q1 = map_add_currents(ax1, rsub, coarsen=coarsen['rtofs'], **currents['kwargs'])
             #     q2 = map_add_currents(ax2, gsub, coarsen=coarsen["gofs"], **currents['kwargs'])
 
             #     if eez:
-            #         eez1._kwargs['edgecolor']= 'white'                
+            #         eez1._kwargs['edgecolor']= 'white'
             #         eez2._kwargs['edgecolor']= 'white'
-                
+
             #     fig.savefig(quiver_dir / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
-            #     # export_fig(quiver_dir, f"{sname}.png", dpi=dpi)
+            #     # export_fig(quiver_dir, f"{sname}.png", dpi=dpy)
 
             #     # Remove quiver handles from each axes
             #     q1.lines.remove(), q2.lines.remove()
             #     remove_quiver_handles(ax1), remove_quiver_handles(ax2)
 
             # Remove handles so we can reuse figure
-            # Delete contour handles 
+            # Delete contour handles
             try:
                 h1.remove() # axes 1
                 h2.remove() # axes 2
@@ -9122,6 +9138,9 @@ def plot_sst(ds1, ds2, region,
         rtofs_tmp = ds1.sel(depth=200)['temperature']
         ax1.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
         ax2.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+        _iso_handle = mlines.Line2D([], [], color='red', linewidth=1.5)
+        _iso_leg = ax3.legend(h + [_iso_handle], l + ['RTOFS 15°C Isotherm (Gulf Stream N. Wall)'], ncol=cols, loc='center', fontsize=8)
+        _iso_leg._legend_box.sep = 1
 
     # Add EEZ
     # eez1 = map_add_eez(ax1, zorder=10)
