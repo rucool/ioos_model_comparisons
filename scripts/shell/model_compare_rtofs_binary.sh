@@ -13,7 +13,7 @@ source ~/miniconda3/etc/profile.d/conda.sh
 conda activate model_comps
 export PYPROJ_GLOBAL_CONTEXT=ON
 export MPLBACKEND=agg
-python /home/hurricaneadm/scripts/ioos_model_comparisons/scripts/maps/models/synchronous/rtofs_binary_model_comparisons.py \
+python /home/hurricaneadm/scripts/temp/ioos_model_comparisons/scripts/maps/models/synchronous/rtofs_binary_model_comparisons.py \
     --data-dir /home/hurricaneadm/data/rtofs_archv \
     --regions guam hawaii >> $logfile
 conda deactivate

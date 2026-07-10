@@ -13,7 +13,7 @@ source ~/miniconda3/etc/profile.d/conda.sh
 conda activate model_comps
 export PYPROJ_GLOBAL_CONTEXT=ON
 export MPLBACKEND=agg
-python /home/hurricaneadm/scripts/ioos_model_comparisons/scripts/profiles/argo/synchronous/argo_profile_model_comparisons_rtofs_binary.py >> $logfile
+python /home/hurricaneadm/scripts/temp/ioos_model_comparisons/scripts/profiles/argo/synchronous/argo_profile_model_comparisons_rtofs_binary.py >> $logfile
 conda deactivate
 
 echo ---------------- End ------------------------ >> $logfile
