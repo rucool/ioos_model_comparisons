@@ -33,7 +33,14 @@ import xarray as xr
 
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import lon180to360, lon360to180
-from ioos_model_comparisons.models import CMEMS, amseas, espc_ts, espc_uv
+from ioos_model_comparisons.models import (
+    CMEMS,
+    amseas,
+    espc_ts,
+    espc_ts_archive,
+    espc_uv,
+    espc_uv_archive,
+)
 from ioos_model_comparisons.platforms import get_active_gliders, get_argo_floats_by_time, get_goes
 from ioos_model_comparisons.plotting import (
     plot_model_region_comparison,
@@ -52,6 +59,12 @@ path_save = conf.path_plots / "maps"
 plot_espc = True
 plot_cmems = True
 plot_amseas = False
+
+# ESPC only keeps ~1 week of history in the FMRC "best" aggregation; older
+# requests must go through the year-based archive endpoints instead.
+ESPC_ARCHIVE_CUTOFF_DAYS = 7
+_espc_ts_cache = {}
+_espc_uv_cache = {}
 
 kwargs = {
     "transform": conf.projection,
@@ -122,15 +135,45 @@ def load_rtofs_binary(nc_path, extent=None):
     return ds
 
 
-def load_model(model_func, model_name, source=None, rename=True):
+def load_model(model_func, model_name, **kw):
     try:
         logger.info("Loading %s model data.", model_name)
-        data = model_func(rename=rename, source=source) if source else model_func(rename=rename)
+        data = model_func(**kw)
         logger.info("%s loaded successfully.", model_name)
         return data
     except Exception as e:
         logger.error("Failed to load %s: %s", model_name, e)
         return None
+
+
+def get_espc_ts(ctime):
+    """Return the ESPC TS dataset covering ctime, using the FMRC best-forecast
+    for recent times and falling back to the year-based archive otherwise."""
+    cutoff = pd.Timestamp.now() - pd.Timedelta(days=ESPC_ARCHIVE_CUTOFF_DAYS)
+    key = "best" if ctime >= cutoff else ctime.year
+    if key not in _espc_ts_cache:
+        if key == "best":
+            _espc_ts_cache[key] = load_model(espc_ts, "ESPC TS", rename=True)
+        else:
+            _espc_ts_cache[key] = load_model(
+                espc_ts_archive, f"ESPC TS Archive {key}", rename=True, year=key,
+            )
+    return _espc_ts_cache[key]
+
+
+def get_espc_uv(ctime):
+    """Return the ESPC UV dataset covering ctime, using the FMRC best-forecast
+    for recent times and falling back to the year-based archive otherwise."""
+    cutoff = pd.Timestamp.now() - pd.Timedelta(days=ESPC_ARCHIVE_CUTOFF_DAYS)
+    key = "best" if ctime >= cutoff else ctime.year
+    if key not in _espc_uv_cache:
+        if key == "best":
+            _espc_uv_cache[key] = load_model(espc_uv, "ESPC UV", rename=True)
+        else:
+            _espc_uv_cache[key] = load_model(
+                espc_uv_archive, f"ESPC UV Archive {key}", rename=True, year=key,
+            )
+    return _espc_uv_cache[key]
 
 
 def attempt_data_load(model, ctime, model_name):
@@ -249,9 +292,8 @@ def main():
 
     start_time = time.time()
 
-    # Load comparison models
-    gds_ts = load_model(espc_ts, "ESPC TS") if plot_espc else None
-    gds_uv = load_model(espc_uv, "ESPC UV") if plot_espc else None
+    # Load comparison models (ESPC is loaded lazily, per-time, in the loop
+    # below since old requests need the archive rather than the FMRC best).
     cmems_instance = CMEMS() if plot_cmems else None
     am = load_model(amseas, "AMSEAS") if plot_amseas else None
 
@@ -359,6 +401,8 @@ def main():
             )
 
             # Load comparison model data for this time
+            gds_ts = get_espc_ts(ctime) if plot_espc else None
+            gds_uv = get_espc_uv(ctime) if plot_espc else None
             gdt_flag, gdt_ts_sub = attempt_data_load(gds_ts, ctime, "ESPC TS")
             _, gdt_uv_sub = attempt_data_load(gds_uv, ctime, "ESPC UV")
             cdt_flag, cdt = attempt_cmems_load(cmems_instance, ctime, extended)

@@ -36,7 +36,7 @@ from ioos_model_comparisons.calc import (
     lon360to180,
     ocean_heat_content,
 )
-from ioos_model_comparisons.models import CMEMS, espc_ts
+from ioos_model_comparisons.models import CMEMS, espc_ts, espc_ts_archive
 from ioos_model_comparisons.platforms import get_active_gliders, get_argo_floats_by_time
 from ioos_model_comparisons.plotting import plot_ohc
 from ioos_model_comparisons.regions import region_config
@@ -50,6 +50,11 @@ path_save = conf.path_plots / "maps"
 plot_espc = True
 plot_cmems = True
 plot_hurricanes = True
+
+# ESPC only keeps ~1 week of history in the FMRC "best" aggregation; older
+# requests must go through the year-based archive endpoints instead.
+ESPC_ARCHIVE_CUTOFF_DAYS = 7
+_espc_ts_cache = {}
 
 _REALTIME_WINDOW_HOURS = 48
 _rt_obj = None
@@ -244,6 +249,21 @@ def load_model(model_func, model_name, **kw):
         return None
 
 
+def get_espc_ts(ctime):
+    """Return the ESPC TS dataset covering ctime, using the FMRC best-forecast
+    for recent times and falling back to the year-based archive otherwise."""
+    cutoff = pd.Timestamp.now() - pd.Timedelta(days=ESPC_ARCHIVE_CUTOFF_DAYS)
+    key = "best" if ctime >= cutoff else ctime.year
+    if key not in _espc_ts_cache:
+        if key == "best":
+            _espc_ts_cache[key] = load_model(espc_ts, "ESPC TS", rename=True)
+        else:
+            _espc_ts_cache[key] = load_model(
+                espc_ts_archive, f"ESPC TS Archive {key}", rename=True, year=key,
+            )
+    return _espc_ts_cache[key]
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Compare OHC from RTOFS binary NetCDFs against other models",
@@ -307,8 +327,8 @@ def main():
 
     start_time = time.time()
 
-    # Load comparison models
-    gds = load_model(espc_ts, "ESPC", rename=True) if plot_espc else None
+    # Comparison models: ESPC is loaded lazily, per-time, in the loop below
+    # since old requests need the archive rather than the FMRC best.
 
     # CMEMS: load full global, subset per-region later
     cmems_instance = None
@@ -437,6 +457,7 @@ def main():
                 kw["gliders"] = glider_region
 
             # RTOFS vs ESPC
+            gds = get_espc_ts(ctime) if plot_espc else None
             if gds is not None:
                 try:
                     gds_time = gds.sel(time=ctime)

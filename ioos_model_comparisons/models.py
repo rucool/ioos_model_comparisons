@@ -179,9 +179,11 @@ def gofs(rename=False):
             )
     return ds
 
-def espc_uv_archive(rename=False):
-    url_u = "https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/u3z/2025"
-    url_v = "https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/2025"
+def espc_uv_archive(rename=False, year=None):
+    if year is None:
+        year = pd.Timestamp.now().year
+    url_u = f"https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/u3z/{year}"
+    url_v = f"https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/{year}"
 
     # Open only selected variables
     ds_u = xr.open_dataset(url_u, drop_variables="tau")
