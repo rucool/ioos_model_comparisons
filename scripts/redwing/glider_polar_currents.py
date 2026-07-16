@@ -4,9 +4,12 @@ Polar visualization of surface and depth-averaged currents for all active
 Slocum gliders compared against RTOFS, ESPC, and CMEMS model estimates.
 
 Plot 1 — Surface currents (GPS drift):
-  Glider u/v derived from consecutive GPS surfacing positions. The displacement
-  between the current and previous surfacing divided by elapsed time gives the
-  surface drift velocity. Model currents are sampled at depth ≈ 0 m.
+  Glider u/v derived from consecutive raw GPS fixes (m_gps_lat/m_gps_lon) pulled
+  from the ERDDAP trajectory dataset, using only fixes that fall within the same
+  surfacing event (Iridium call). The displacement between the first and last fix
+  of that event divided by the elapsed time gives a clean surface-only drift
+  estimate, with no contribution from the dive phase. Model currents are sampled
+  at depth ≈ 0 m.
 
 Plot 2 — Depth-averaged currents:
   Glider u/v from m_water_vx/vy (dead-reckoning depth-averaged current sensors).
@@ -94,6 +97,18 @@ DEPTH_AVG_CONFIG = {
     "max_depth":  1000.0,
     "depth_step": 1.0,
 }
+
+# Surface-drift GPS-fix clustering (used for Plot 1).  Consecutive m_gps_lat/
+# m_gps_lon fixes from the ERDDAP trajectory dataset less than this many
+# minutes apart are treated as belonging to the same surfacing event (i.e.
+# the glider stayed on the surface between them); a larger gap means a dive
+# happened in between.  Surface drift is computed strictly from the first-to-
+# last fix *within* one event so it is never contaminated by dive current.
+SURFACE_EVENT_GAP_MINUTES = 20.0
+
+# How far back to search (from "now", or from the range end) for a complete
+# (>=2-fix) surfacing event.
+SURFACE_FIX_LOOKBACK_HOURS = 96.0
 
 # save_path = '/Users/mikesmith/Documents/gliders/depth-average/'   # local dev
 save_path = '/web/www/rucool_static/www/gliders/depth-average'
@@ -404,78 +419,75 @@ def _dm_to_dd(dm_coord: float) -> float:
     return sign * (degrees + minutes / 60)
 
 
-def _fetch_positions(deployment: str) -> pd.DataFrame:
+def _fetch_gps_fixes_erddap(
+    deployment_id: str,
+    start_time: Optional[pd.Timestamp] = None,
+    end_time: Optional[pd.Timestamp] = None,
+) -> pd.DataFrame:
     """
-    Download surfacing records from the Rutgers COOL glider surfacings API.
+    Download raw GPS fixes (m_gps_lat/m_gps_lon) from the ERDDAP trajectory
+    dataset. Unlike the surfacings API, this returns *every* GPS fix logged
+    while the glider is on the surface — typically several per surfacing —
+    which is what lets us compute drift from fixes that are all guaranteed
+    to be surface-only.
 
-    Returns DataFrame with columns: ts, lat, lon, m_water_vx, m_water_vy
-    sorted ascending by ts. m_water_vx/vy are NaN when not reported.
+    Returns DataFrame with columns: ts, lat, lon, sorted ascending by ts.
     """
-    url = f"{GLIDER_API_BASE}/surfacings/?deployment={deployment}"
-    LOGGER.debug("Requesting surfacing positions for %s", deployment)
+    dataset_id = f"{deployment_id}{ERDDAP_DATASET_SUFFIX}"
+    variables  = "time,m_gps_lat,m_gps_lon"
+    constraints = "&m_gps_lat!=NaN&m_gps_lon!=NaN"
+    if start_time is not None:
+        constraints += f"&time%3E={pd.Timestamp(start_time).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    if end_time is not None:
+        constraints += f"&time%3C={pd.Timestamp(end_time).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    constraints += "&orderBy(%22time%22)"
+
+    url = f"{ERDDAP_BASE}/{dataset_id}.csv?{variables}{constraints}"
+    LOGGER.debug("Requesting GPS fixes for %s: %s", deployment_id, url)
 
     try:
-        response = requests.get(url, timeout=GLIDER_API_TIMEOUT)
+        response = requests.get(url, timeout=ERDDAP_TIMEOUT)
         response.raise_for_status()
     except requests.RequestException:
-        LOGGER.exception("Failed to fetch surfacings for deployment %s", deployment)
+        LOGGER.exception("Failed to fetch GPS fixes for deployment %s", deployment_id)
         raise
 
-    payload = response.json()
-    records = payload.get("data", [])
+    # ERDDAP CSV: row 0 = variable names, row 1 = units — skip the units row
+    df = pd.read_csv(io.StringIO(response.text), skiprows=[1], parse_dates=["time"])
+    df = df.dropna(subset=["m_gps_lat", "m_gps_lon"])
 
-    if not records:
-        raise ValueError(f"No surfacing data found for deployment '{deployment}'")
+    if df.empty:
+        raise ValueError(f"No GPS fixes found for deployment '{deployment_id}'")
 
-    # API returns newest-first; reverse for chronological order
-    records = records[::-1]
-
-    rows = []
-    skipped = 0
-    for s in records:
-        epoch = s.get("gps_timestamp_epoch")
-        if epoch is None:
-            skipped += 1
-            continue
-        ts = pd.Timestamp(epoch, unit="s")
-
-        if s.get("gps_lat_degrees") is not None:
-            lat = float(s["gps_lat_degrees"])
-            lon = float(s["gps_lon_degrees"])
-        elif s.get("gps_lat") is not None:
-            lat = _dm_to_dd(s["gps_lat"])
-            lon = _dm_to_dd(s["gps_lon"])
-        else:
-            skipped += 1
-            continue
-
-        vx = s.get("m_water_vx")
-        vy = s.get("m_water_vy")
-
-        disconnect_epoch = s.get("disconnect_time_epoch")
-        disconnect_ts = (
-            pd.Timestamp(disconnect_epoch, unit="s")
-            if disconnect_epoch is not None else pd.NaT
-        )
-
-        rows.append({
-            "ts":            ts,
-            "lat":           lat,
-            "lon":           lon,
-            "disconnect_ts": disconnect_ts,
-            "m_water_vx":    float(vx) if vx is not None else np.nan,
-            "m_water_vy":    float(vy) if vy is not None else np.nan,
-        })
-
-    if skipped:
-        LOGGER.info("Skipped %d surfacing records with no GPS fix or timestamp", skipped)
-
-    if not rows:
-        raise ValueError(f"No valid position records parsed for deployment '{deployment}'")
-
-    data = pd.DataFrame(rows).sort_values("ts").reset_index(drop=True)
-    LOGGER.info("Retrieved %d surfacing positions for deployment %s", len(data), deployment)
+    df["time"] = pd.to_datetime(df["time"], utc=True).dt.tz_localize(None)
+    df["lat"]  = df["m_gps_lat"].apply(_dm_to_dd)
+    df["lon"]  = df["m_gps_lon"].apply(_dm_to_dd)
+    data = (
+        df.rename(columns={"time": "ts"})[["ts", "lat", "lon"]]
+        .sort_values("ts")
+        .reset_index(drop=True)
+    )
+    LOGGER.info("Retrieved %d GPS fixes for deployment %s", len(data), deployment_id)
     return data
+
+
+def _cluster_surfacing_events(
+    fixes: pd.DataFrame,
+    gap_minutes: float = SURFACE_EVENT_GAP_MINUTES,
+) -> List[pd.DataFrame]:
+    """
+    Split a chronologically-sorted DataFrame of GPS fixes into surfacing
+    events: consecutive fixes less than gap_minutes apart belong to the same
+    event; a larger gap indicates a dive happened in between.
+
+    Returns a list of DataFrames, oldest event first.
+    """
+    if fixes.empty:
+        return []
+
+    gap = pd.Timedelta(minutes=gap_minutes)
+    event_id = (fixes["ts"].diff() > gap).cumsum()
+    return [group.reset_index(drop=True) for _, group in fixes.groupby(event_id)]
 
 
 def _normalize_range_bound(value: Optional[str], label: str) -> Optional[pd.Timestamp]:
@@ -488,71 +500,26 @@ def _normalize_range_bound(value: Optional[str], label: str) -> Optional[pd.Time
         raise ValueError(f"Invalid {label} value: {value!r}") from exc
 
 
-def _build_surface_record(
-    latest: pd.Series,
-    previous: pd.Series,
-    da_record: Optional[Dict] = None,
-) -> Dict:
-    """Build a GPS-drift surface record from two adjacent surfacing rows.
+def _build_surface_record_from_event(event: pd.DataFrame) -> Dict:
+    """Build a GPS-drift surface record from the first and last fix of a
+    single surfacing event. Because both fixes are guaranteed to have been
+    taken while the glider was on the surface, the resulting drift is a
+    clean surface-only estimate — no dive-time correction is needed."""
+    first = event.iloc[0]
+    last  = event.iloc[-1]
 
-    When disconnect_ts is available in previous and a depth-averaged current
-    record is supplied, applies the surface/dive time decomposition:
-        surface_drift = (total_displacement - da_current * dive_duration) / surface_duration
-    Falls back to simple GPS-drift over total elapsed time otherwise.
-    """
-    t2   = pd.to_datetime(latest["ts"])
-    t1   = pd.to_datetime(previous["ts"])
-    lat2, lon2 = float(latest["lat"]),   float(latest["lon"])
-    lat1, lon1 = float(previous["lat"]), float(previous["lon"])
-
-    LOGGER.info(
-        "Surface drift: prev=(%.4f, %.4f) @ %s  →  curr=(%.4f, %.4f) @ %s  (Δt=%.1f h)",
-        lat1, lon1, t1, lat2, lon2, t2,
-        (t2 - t1).total_seconds() / 3600,
+    u, v = calc_surface_drift_uv(
+        float(first["lat"]), float(first["lon"]), pd.Timestamp(first["ts"]),
+        float(last["lat"]),  float(last["lon"]),  pd.Timestamp(last["ts"]),
     )
-
-    total_dt     = (t2 - t1).total_seconds()
-    mean_lat_rad = np.radians((lat1 + lat2) / 2.0)
-    delta_lat_m  = (lat2 - lat1) * 111_320.0
-    delta_lon_m  = (lon2 - lon1) * 111_320.0 * np.cos(mean_lat_rad)
-
-    disconnect_ts = pd.to_datetime(previous.get("disconnect_ts", pd.NaT))
-    has_timing = pd.notna(disconnect_ts) and total_dt > 0
-    has_da     = (
-        da_record is not None
-        and da_record.get("data_available")
-        and np.isfinite(da_record.get("u", np.nan))
-    )
-
-    if has_timing and has_da:
-        surface_duration = (disconnect_ts - t1).total_seconds()
-        dive_duration    = (t2 - disconnect_ts).total_seconds()
-        if surface_duration > 0 and dive_duration >= 0:
-            u = (delta_lon_m - da_record["u"] * dive_duration) / surface_duration
-            v = (delta_lat_m - da_record["v"] * dive_duration) / surface_duration
-            LOGGER.info(
-                "Improved surface drift: surface=%.0fs dive=%.0fs "
-                "da_u=%.4f da_v=%.4f → u=%.4f v=%.4f m/s",
-                surface_duration, dive_duration, da_record["u"], da_record["v"], u, v,
-            )
-        else:
-            u = delta_lon_m / total_dt if total_dt > 0 else np.nan
-            v = delta_lat_m / total_dt if total_dt > 0 else np.nan
-            LOGGER.warning(
-                "Unexpected timing (surface=%.0fs dive=%.0fs); falling back to GPS-drift.",
-                surface_duration, dive_duration,
-            )
-    else:
-        u = delta_lon_m / total_dt if total_dt > 0 else np.nan
-        v = delta_lat_m / total_dt if total_dt > 0 else np.nan
-        LOGGER.info(
-            "GPS-drift fallback (timing=%s da=%s): u=%.4f v=%.4f m/s",
-            has_timing, has_da, u, v,
-        )
-
     speed, direction = calc_speed_dir(u, v)
+
     LOGGER.info(
-        "Surface drift result: u=%.4f m/s  v=%.4f m/s  speed=%.2f cm/s",
+        "Surface drift (%d fixes over %.0fs): (%.4f, %.4f) @ %s → (%.4f, %.4f) @ %s  "
+        "=> u=%.4f v=%.4f speed=%.2f cm/s",
+        len(event), (last["ts"] - first["ts"]).total_seconds(),
+        first["lat"], first["lon"], first["ts"],
+        last["lat"], last["lon"], last["ts"],
         u, v, speed * 100 if np.isfinite(speed) else float("nan"),
     )
 
@@ -562,38 +529,34 @@ def _build_surface_record(
         "v":             v,
         "speed":         speed,
         "direction":     direction,
-        "lat":           lat2,
-        "lon":           lon2,
-        "time":          t2,
-        "previous_lat":  lat1,
-        "previous_lon":  lon1,
-        "previous_time": t1,
-        # Depth-averaged current from dead-reckoning at this surfacing (may be NaN)
-        "m_water_vx":    float(latest.get("m_water_vx", np.nan)),
-        "m_water_vy":    float(latest.get("m_water_vy", np.nan)),
+        "lat":           float(last["lat"]),
+        "lon":           float(last["lon"]),
+        "time":          pd.Timestamp(last["ts"]),
+        "previous_lat":  float(first["lat"]),
+        "previous_lon":  float(first["lon"]),
+        "previous_time": pd.Timestamp(first["ts"]),
         "data_available": True,
     }
 
 
 def get_latest_surface_record(deployment: str) -> Dict:
-    """Return surface drift vector using the most recent GPS fix and the immediately preceding fix.
+    """Return surface drift computed from the most recent complete (>=2-fix)
+    surfacing event, using raw GPS fixes from the ERDDAP trajectory dataset."""
+    now = pd.Timestamp.utcnow().tz_localize(None)
+    fixes = _fetch_gps_fixes_erddap(
+        deployment,
+        start_time=now - pd.Timedelta(hours=SURFACE_FIX_LOOKBACK_HOURS),
+        end_time=now,
+    )
+    events = _cluster_surfacing_events(fixes)
+    for event in reversed(events):
+        if len(event) >= 2:
+            return _build_surface_record_from_event(event)
 
-    When possible, fetches the ERDDAP depth-averaged current near the latest surfacing time
-    and uses the surface/dive decomposition to isolate the true surface drift velocity.
-    """
-    positions = _fetch_positions(deployment)
-    if len(positions) < 2:
-        raise ValueError(f"Need at least 2 position records; got {len(positions)}")
-    latest   = positions.iloc[-1]
-    previous = positions.iloc[-2]
-    try:
-        da_record = fetch_glider_depth_avg_erddap(
-            deployment, target_time=pd.to_datetime(latest["ts"])
-        )
-    except Exception as exc:
-        LOGGER.warning("Could not fetch ERDDAP depth-avg for surface correction: %s", exc)
-        da_record = None
-    return _build_surface_record(latest, previous, da_record=da_record)
+    raise ValueError(
+        f"No surfacing event with >=2 GPS fixes found for '{deployment}' in the "
+        f"last {SURFACE_FIX_LOOKBACK_HOURS:.0f}h; cannot compute surface drift."
+    )
 
 
 def get_surface_records_for_range(
@@ -601,36 +564,25 @@ def get_surface_records_for_range(
     start_time: str,
     end_time: str,
 ) -> List[Dict]:
-    """Return surface drift vectors for all surfacings in a time range."""
-    positions = _fetch_positions(deployment)
-    if len(positions) < 2:
-        LOGGER.warning("Not enough position records to build surface drift.")
-        return []
-
-    times_utc = pd.to_datetime(positions["ts"], utc=True, errors="coerce")
-    start_ts  = _normalize_range_bound(start_time, "start_time")
-    end_ts    = _normalize_range_bound(end_time,   "end_time")
+    """Return surface drift vectors for every complete surfacing event in a time range."""
+    start_ts = _normalize_range_bound(start_time, "start_time")
+    end_ts   = _normalize_range_bound(end_time,   "end_time")
 
     if start_ts and end_ts and start_ts > end_ts:
         raise ValueError("start_time must be earlier than end_time.")
 
-    mask = pd.Series(True, index=positions.index)
-    if start_ts is not None:
-        mask &= times_utc >= start_ts
-    if end_ts is not None:
-        mask &= times_utc <= end_ts
-
-    indices = positions.index[mask].tolist()
-    if not indices:
-        LOGGER.warning("No surfacings found between %s and %s.", start_time, end_time)
-        return []
+    fixes = _fetch_gps_fixes_erddap(deployment, start_time=start_ts, end_time=end_ts)
+    events = _cluster_surfacing_events(fixes)
 
     records: List[Dict] = []
-    for idx in indices:
-        if idx == 0:
-            LOGGER.debug("Skipping first position — no preceding fix available.")
+    for event in events:
+        if len(event) < 2:
+            LOGGER.debug(
+                "Skipping surfacing event with only %d fix(es) at %s.",
+                len(event), event.iloc[0]["ts"],
+            )
             continue
-        records.append(_build_surface_record(positions.iloc[idx], positions.iloc[idx - 1]))
+        records.append(_build_surface_record_from_event(event))
 
     LOGGER.info(
         "Built %d surface drift records between %s and %s",
@@ -1776,9 +1728,9 @@ def generate_glider_page(
   <div class="tab-pane fade" id="sfc-pane">
     <p class="text-muted small px-1 pt-2 mb-1">
       <i class="fas fa-info-circle me-1"></i>
-      Surface currents are derived from the GPS drift method, corrected for depth-averaged
-      flow during the dive interval. The remaining displacement over the surface window gives
-      a direct Lagrangian estimate of the near-surface current vector.
+      Surface currents are derived from GPS drift between consecutive fixes taken within a
+      single surfacing event (ERDDAP trajectory data), giving a direct Lagrangian estimate of
+      the near-surface current vector with no contribution from dive-phase currents.
     </p>
     <div class="card"><div class="card-body p-2">{sfc_pane_html}</div></div>
   </div>

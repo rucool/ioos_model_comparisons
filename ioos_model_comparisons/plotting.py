@@ -2380,11 +2380,12 @@ def plot_model_region_comparison_idalia(ds1, ds2, region,
     plt.close()
     
 
-def plot_hurricane_track(ax, basin, center_time=None, hurricane_name=None, storm_id=None, year=None, 
-                        linecolor='red', markersize=None, plot_datetime=False, lookback_days=None):
+def plot_hurricane_track(ax, basin, center_time=None, hurricane_name=None, storm_id=None, year=None,
+                        linecolor='red', markersize=None, plot_datetime=False, lookback_days=None,
+                        boost_categories=None, boost_factor=1.5):
     """
     Plot a hurricane track on a cartopy axes.
-    
+
     Parameters:
     -----------
     ax : matplotlib axes with cartopy projection
@@ -2405,6 +2406,12 @@ def plot_hurricane_track(ax, basin, center_time=None, hurricane_name=None, storm
         Whether to plot datetime labels
     lookback_days : int, optional
         Number of days to look back from center_time
+    boost_categories : iterable of str, optional
+        Storm categories (e.g. ["C4", "C5"]) whose markers should be drawn
+        larger than `markersize` by `boost_factor`. Only has an effect when
+        `markersize` is set.
+    boost_factor : float
+        Multiplier applied to `markersize` for categories in `boost_categories`
     """
     
     # Fetch storm data by ID or name
@@ -2477,7 +2484,9 @@ def plot_hurricane_track(ax, basin, center_time=None, hurricane_name=None, storm
         
         if markersize:
             size = markersize
-        
+            if boost_categories and storm_type in boost_categories:
+                size = markersize * boost_factor
+
         color = type_colors.get(storm_type, 'gray')
         
         # Highlight ONLY the closest point to center_time
@@ -9473,11 +9482,12 @@ def get_active_storms(time, extent, basin, lookback_days=5, lookahead_days=1):
     return active_storms
 
 
-def plot_active_hurricanes(ax, time, extent, basin, linecolor='red', markersize=None, 
-                           lookback_days=5, lookahead_days=1, storm_ids=None):
+def plot_active_hurricanes(ax, time, extent, basin, linecolor='red', markersize=None,
+                           lookback_days=5, lookahead_days=1, storm_ids=None,
+                           boost_categories=None, boost_factor=1.5):
     """
     Automatically detect and plot all active hurricanes for a given time and map extent.
-    
+
     Parameters:
     -----------
     ax : matplotlib axes
@@ -9498,6 +9508,10 @@ def plot_active_hurricanes(ax, time, extent, basin, linecolor='red', markersize=
         How many days after 'time' to consider a storm active
     storm_ids : iterable, optional
         Restrict plotting to these specific storm IDs if provided
+    boost_categories : iterable of str, optional
+        Storm categories (e.g. ["C4", "C5"]) to draw larger than `markersize`
+    boost_factor : float
+        Multiplier applied to `markersize` for categories in `boost_categories`
     """
     # Import your existing function - adjust the import path as needed
     # from your_module import plot_hurricane_track
@@ -9527,10 +9541,12 @@ def plot_active_hurricanes(ax, time, extent, basin, linecolor='red', markersize=
                 ax,
                 basin=basin,  # Important: pass the basin object
                 center_time=time,
-                lookback_days=lookback_days, 
-                storm_id=storm_id, 
-                linecolor=color, 
-                markersize=markersize
+                lookback_days=lookback_days,
+                storm_id=storm_id,
+                linecolor=color,
+                markersize=markersize,
+                boost_categories=boost_categories,
+                boost_factor=boost_factor,
             )
         except Exception as e:
             print(f"Error plotting storm {storm_id}: {e}")
