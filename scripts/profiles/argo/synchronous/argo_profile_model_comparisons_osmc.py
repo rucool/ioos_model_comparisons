@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Argo profile vs model comparisons for floats 4903137 and 4903138 (Puerto Rico
-area, "Caribbean: Leeward Islands" region) that are not yet mirrored to the
+area, "Caribbean" region) that are not yet mirrored to the
 IFREMER Argo GDAC and are therefore fetched from the OSMC ERDDAP instead:
 
     https://osmc.noaa.gov/erddap/tabledap/OSMC_flattened.html
@@ -14,8 +14,8 @@ ztmp, zsal) instead of the IFREMER ArgoFloats dataset.
 OSMC_flattened has no per-point QC flags, so there is no QC-flag overlay here.
 
 RTOFS is read live from the Rutgers thredds "us_east" scraped dataset, which
-covers the Leeward Islands / Puerto Rico region directly — no pre-processed
-regional binary NetCDFs needed here (unlike the Pacific regions in
+covers the Caribbean region directly — no pre-processed regional binary
+NetCDFs needed here (unlike the Pacific regions in
 argo_profile_model_comparisons_rtofs_binary.py, which fall outside that
 thredds domain).
 """
@@ -54,7 +54,7 @@ plot_rtofs = True
 
 # These two floats only appear on OSMC, not IFREMER, so fetch by platform code.
 OSMC_PLATFORM_IDS = ['4903137', '4903138']
-region_key = 'leeward'
+region_key = 'caribbean'
 
 DATA_PROJECTION = ccrs.PlateCarree()
 MAP_PROJECTION = ccrs.Mercator()
