@@ -25,6 +25,7 @@ from ioos_model_comparisons.db import (
     ensure_plot_index,
     fetch_completed_plot_keys,
     log_plots,
+    needs_replot,
 )
 from cool_maps.plot import get_bathymetry
 
@@ -202,12 +203,15 @@ def _sst_record(region, ts_dt, satellite_tag):
             "variable": "temperature", "depth": 0, "model1": "rtofs", "model2": satellite_tag}
 
 
-def pre_check_date_list(date_list) -> pd.DatetimeIndex:
-    """Return a filtered DatetimeIndex with only timestamps that still need processing.
+def pre_check_date_list(date_list, current_has_argo=False, current_has_gliders=False) -> pd.DatetimeIndex:
+    """Return a filtered DatetimeIndex with only timestamps that need processing.
 
-    Tries MongoDB first (one round-trip); falls back to a no-op pass-through
-    (all timestamps queued) if the database is unavailable, since this script
-    has no file-existence check to fall back on.
+    Tries MongoDB first (one round-trip); falls back to processing all
+    timestamps if the database is unavailable.
+
+    A timestamp is requeued when:
+      - any expected plot record is missing from MongoDB, OR
+      - a record exists but was plotted without Argo/glider data that is now available.
     """
     expected_by_ts = {}
     for ctime in date_list:
@@ -224,10 +228,11 @@ def pre_check_date_list(date_list) -> pd.DatetimeIndex:
     skipped = 0
     if done_keys is not None:
         for ctime in date_list:
-            if expected_by_ts[ctime].issubset(done_keys):
-                skipped += 1
-            else:
+            if any(needs_replot(k, done_keys, current_has_argo, current_has_gliders)
+                   for k in expected_by_ts[ctime]):
                 needed_dates.append(ctime)
+            else:
+                skipped += 1
         logger.info(f"Pre-check (MongoDB): {skipped}/{len(date_list)} timestamp(s) fully done — skipping.")
     else:
         logger.warning("MongoDB unavailable — processing all timestamps.")
@@ -238,8 +243,11 @@ def pre_check_date_list(date_list) -> pd.DatetimeIndex:
 
 
 def main():
+    has_argo    = isinstance(argo_data,   pd.DataFrame) and not argo_data.empty
+    has_gliders = isinstance(glider_data, pd.DataFrame) and not glider_data.empty
+
     ensure_plot_index()
-    date_list_pending = pre_check_date_list(date_list)
+    date_list_pending = pre_check_date_list(date_list, current_has_argo=has_argo, current_has_gliders=has_gliders)
 
     if len(date_list_pending) == 0:
         logger.info("All outputs already exist. Nothing to do.")
@@ -263,8 +271,9 @@ def main():
 
             cdt_flag, cdt = attempt_cmems_data_load(cmems_instance, ctime, region['extent']) if plot_cmems else (False, None)
             logger.info(f"Processing region: {region['name']} at time: {ctime}")
-            process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
+            pending_logs = process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
                            amt_flag, amt, cnt_flag, cnt, region)
+            log_plots(SCRIPT_ID, pending_logs, has_argo=has_argo, has_gliders=has_gliders)
 
     logger.info(f'All processing complete. Total execution time: {time.time() - start_time} seconds.')
 
@@ -426,10 +435,11 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             pending_logs.append(_sst_record(region, ts_dt, 'GOES16'))
             logger.info(f"Successfully plotted SST for region {region['name']} at time {ctime}")
 
-        log_plots(SCRIPT_ID, pending_logs)
+        return pending_logs
 
     except Exception as e:
         logger.error(f"Failed to process region {region['name']} at time {ctime}: {e}")
+        return []
 
 def subset_data(data, extent, grid_lons, grid_lats, grid_x, grid_y):
     """Subset data based on the region extent."""

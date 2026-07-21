@@ -142,11 +142,15 @@ def ensure_plot_index(db_name=_PLOTS_DB, coll_name=_PLOTS_COLL):
         logger.warning(f"ensure_plot_index failed: {exc}")
 
 
-def log_plots(script, records, db_name=_PLOTS_DB, coll_name=_PLOTS_COLL):
+def log_plots(script, records, has_argo=False, has_gliders=False,
+              db_name=_PLOTS_DB, coll_name=_PLOTS_COLL):
     """Batch-upsert a list of plot records into MongoDB.
 
     Each record is a dict with keys: region, timestamp, plot_type, variable,
-    depth, model1, model2.  Silently skips if MongoDB is unavailable.
+    depth, model1, model2.  has_argo / has_gliders reflect whether those
+    platform data sources were available during this script run — used by the
+    pre-check to decide whether to replot when a previously-missing source
+    comes back online.  Silently skips if MongoDB is unavailable.
     """
     if not records:
         return
@@ -162,18 +166,24 @@ def log_plots(script, records, db_name=_PLOTS_DB, coll_name=_PLOTS_COLL):
             filt["script"] = script
             filt["timestamp"] = rec["timestamp"]
             ops.append(
-                pymongo.UpdateOne(filt, {"$set": {"plotted_at": now}}, upsert=True)
+                pymongo.UpdateOne(
+                    filt,
+                    {"$set": {"plotted_at": now, "has_argo": has_argo, "has_gliders": has_gliders}},
+                    upsert=True,
+                )
             )
         client[db_name][coll_name].bulk_write(ops, ordered=False)
-        logger.debug(f"Logged {len(ops)} plot record(s) to MongoDB")
+        logger.debug(f"Logged {len(ops)} plot record(s) to MongoDB (argo={has_argo}, gliders={has_gliders})")
     except Exception as exc:
         logger.warning(f"log_plots failed: {exc}")
 
 
 def fetch_completed_plot_keys(script, timestamps, db_name=_PLOTS_DB, coll_name=_PLOTS_COLL):
-    """Return a frozenset of completed-plot key tuples for the given timestamps.
+    """Return a dict mapping completed-plot key tuples to their platform flags.
 
-    Each tuple is (region, iso_ts, plot_type, variable, depth, model1, model2).
+    Key tuple: (region, iso_ts, plot_type, variable, depth, model1, model2).
+    Value:      {"has_argo": bool, "has_gliders": bool}
+
     Returns None if MongoDB is unavailable, signalling the caller to fall back
     to file-existence checks.
     """
@@ -185,10 +195,12 @@ def fetch_completed_plot_keys(script, timestamps, db_name=_PLOTS_DB, coll_name=_
         cursor = client[db_name][coll_name].find(
             {"script": script, "timestamp": {"$in": ts_list}},
             {"_id": 0, "region": 1, "timestamp": 1, "plot_type": 1,
-             "variable": 1, "depth": 1, "model1": 1, "model2": 1},
+             "variable": 1, "depth": 1, "model1": 1, "model2": 1,
+             "has_argo": 1, "has_gliders": 1},
         )
-        keys = frozenset(
-            (
+        completed = {}
+        for doc in cursor:
+            key = (
                 doc["region"],
                 doc["timestamp"].strftime("%Y-%m-%dT%H%M%SZ") if hasattr(doc["timestamp"], "strftime") else doc["timestamp"],
                 doc["plot_type"],
@@ -197,10 +209,33 @@ def fetch_completed_plot_keys(script, timestamps, db_name=_PLOTS_DB, coll_name=_
                 doc["model1"],
                 doc["model2"],
             )
-            for doc in cursor
-        )
-        logger.debug(f"fetch_completed_plot_keys: {len(keys)} done records found")
-        return keys
+            completed[key] = {
+                "has_argo":    doc.get("has_argo",    True),
+                "has_gliders": doc.get("has_gliders", True),
+            }
+        logger.debug(f"fetch_completed_plot_keys: {len(completed)} done records found")
+        return completed
     except Exception as exc:
         logger.warning(f"fetch_completed_plot_keys failed ({exc}) — will fall back to file check")
         return None
+
+
+def needs_replot(key, completed, current_has_argo, current_has_gliders):
+    """Return True if the plot identified by *key* should be generated this run.
+
+    A plot needs (re)generation when:
+      - It has never been recorded in MongoDB, OR
+      - It was previously plotted without Argo data and Argo is now available, OR
+      - It was previously plotted without glider data and gliders are now available.
+
+    Records that pre-date the has_argo / has_gliders fields default to True
+    (assume data was present) to avoid spurious replotting of old records.
+    """
+    if key not in completed:
+        return True
+    rec = completed[key]
+    if current_has_argo and not rec.get("has_argo", True):
+        return True
+    if current_has_gliders and not rec.get("has_gliders", True):
+        return True
+    return False

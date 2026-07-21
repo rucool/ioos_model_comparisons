@@ -1,5 +1,6 @@
 import datetime as dt
 import time
+import traceback
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -26,6 +27,7 @@ from ioos_model_comparisons.db import (
     ensure_plot_index,
     fetch_completed_plot_keys,
     log_plots,
+    needs_replot,
 )
 from cool_maps.plot import get_bathymetry
 
@@ -50,6 +52,7 @@ plot_espc   = True
 plot_cmems  = True
 plot_amseas = False
 plot_cnaps  = False
+plot_doppio = False
 
 # ── Parallelization ───────────────────────────────────────────────────────────
 parallel    = True
@@ -67,18 +70,20 @@ kwargs = {
 # ── Date / region configuration ───────────────────────────────────────────────
 conf.days    = 1
 conf.regions = [
-    'caribbean',
-    'gom', 
-    'tropical_western_atlantic', 
+    # 'caribbean',
+    # 'gom', 
+    # 'tropical_western_atlantic', 
     'mab', 
-    'sab', 
-    'west_florida_shelf',
-    'windward',
+    # 'sab', 
+    # 'west_florida_shelf',
+    # 'windward',
     ]
 # conf.regions = ['mab']
 today       = dt.date.today()
-date_start  = today - dt.timedelta(days=conf.days)
-date_end    = today + dt.timedelta(days=1)
+# date_start  = today - dt.timedelta(days=conf.days)
+# date_end    = today + dt.timedelta(days=1)
+date_start = pd.Timestamp(2026,7, 4, 18, 0, 0)
+date_end = pd.Timestamp(2026,7, 4, 18, 0, 0)
 freq        = '6H'
 date_list   = pd.date_range(date_start, date_end, freq=freq)
 date_list_2 = pd.date_range(date_start - dt.timedelta(days=1), date_end, freq=freq)
@@ -99,6 +104,7 @@ _worker_gds_uv = None   # ESPC UV dataset
 _worker_cmems  = None   # CMEMS instance (one per worker)
 _worker_am     = None   # AMSEAS dataset
 _worker_cn     = None   # CNAPS dataset
+_doppio_cache  = {}     # {ctime: xr.Dataset} pre-fetched in main, read-only in workers
 
 # Platform data defaults (overwritten by worker_initializer)
 argo_data     = pd.DataFrame()
@@ -125,24 +131,25 @@ def load_model(model_func, model_name, source=None, rename=True):
 
 
 # ── Worker initializer ────────────────────────────────────────────────────────
-def worker_initializer(argo_df, glider_df, sst_data_16, sst_data_19, bathy, region_cfgs, kw, path_sv):
+def worker_initializer(argo_df, glider_df, sst_data_16, sst_data_19, bathy, region_cfgs, kw, path_sv, doppio_cache):
     """Called once per worker process by ProcessPoolExecutor.
 
     Re-opens OPeNDAP model connections (not picklable) and assigns pre-loaded
     platform data (pandas/numpy, picklable) from the main process.
     """
     global _worker_rds, _worker_rdsp, _worker_gds_ts, _worker_gds_uv
-    global _worker_cmems, _worker_am, _worker_cn
+    global _worker_cmems, _worker_am, _worker_cn, _doppio_cache
     global argo_data, glider_data, sst_sorted_16, sst_sorted_19, bathy_data
     global grid_lons, grid_lats, grid_x, grid_y
 
-    _worker_rds    = load_model(rtofs,   'RTOFS')                          if plot_rtofs  else None
+    _worker_rds    = load_model(rtofs,   'RTOFS')                             if plot_rtofs  else None
     _worker_rdsp   = load_model(rtofs,   'RTOFS Parallel', source='parallel') if plot_para   else None
-    _worker_gds_ts = load_model(espc_ts, 'ESPC TS')                        if plot_espc   else None
-    _worker_gds_uv = load_model(espc_uv, 'ESPC UV')                        if plot_espc   else None
-    _worker_am     = load_model(amseas,  'AMSEAS')                          if plot_amseas else None
-    _worker_cn     = load_model(cnaps,   'CNAPS')                           if plot_cnaps  else None
-    _worker_cmems  = CMEMS()                                                if plot_cmems  else None
+    _worker_gds_ts = load_model(espc_ts, 'ESPC TS')                           if plot_espc   else None
+    _worker_gds_uv = load_model(espc_uv, 'ESPC UV')                           if plot_espc   else None
+    _worker_am     = load_model(amseas,  'AMSEAS')                             if plot_amseas else None
+    _worker_cn     = load_model(cnaps,   'CNAPS')                              if plot_cnaps  else None
+    _doppio_cache  = doppio_cache  # pre-fetched in main; no OPeNDAP in workers
+    _worker_cmems  = CMEMS()                                                   if plot_cmems  else None
 
     argo_data     = argo_df
     glider_data   = glider_df
@@ -164,6 +171,11 @@ def process_time(ctime):
     rdtp_flag, rdtp   = attempt_data_load(_worker_rdsp,   ctime, "RTOFS Parallel") if plot_para   else (False, None)
     amt_flag,  amt    = attempt_data_load(_worker_am,     ctime, "AMSEAS")          if plot_amseas else (False, None)
     cnt_flag,  cnt    = attempt_data_load(_worker_cn,     ctime, "CNAPS")           if plot_cnaps  else (False, None)
+    if plot_doppio:
+        dpt = _doppio_cache.get(ctime)
+        dpt_flag = dpt is not None
+    else:
+        dpt_flag, dpt = False, None
     gdt_flag,  gdt_ts = attempt_data_load(_worker_gds_ts, ctime, "ESPC TS")         if plot_espc   else (False, None)
     _,         gdt_uv = attempt_data_load(_worker_gds_uv, ctime, "ESPC UV")         if plot_espc   else (False, None)
 
@@ -178,7 +190,7 @@ def process_time(ctime):
         plots, pending_logs = process_region(
             ctime, rdt_flag, rdt, rdtp_flag, rdtp,
             gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
-            amt_flag, amt, cnt_flag, cnt, region
+            amt_flag, amt, cnt_flag, cnt, dpt_flag, dpt, region
         )
         plots_generated.extend(plots)
         all_pending_logs.extend(pending_logs)
@@ -205,6 +217,17 @@ def main():
         try:
             glider_data = get_active_gliders(global_extent, search_start, date_end, parallel=False, timeout=60)
             logger.info(f"Glider data loaded ({len(glider_data)} records).")
+            # When a glider has multiple active deployments, keep only the most
+            # recent one — the deployment suffix is a sortable timestamp string.
+            dep_ids = glider_data.index.get_level_values('glider').unique()
+            short_to_latest = {}
+            for dep_id in dep_ids:
+                short = dep_id.rsplit("-", 1)[0]
+                if short not in short_to_latest or dep_id > short_to_latest[short]:
+                    short_to_latest[short] = dep_id
+            keep = set(short_to_latest.values())
+            glider_data = glider_data[glider_data.index.get_level_values('glider').isin(keep)]
+            glider_data.index = glider_data.index.remove_unused_levels()
             glider_data.index = glider_data.index.set_levels(
                 glider_data.index.levels[0].str.rsplit("-", n=1).str[0], level="glider"
             )
@@ -233,17 +256,34 @@ def main():
         logger.error(f"Failed to load GOES-19 SST data: {e}")
         sst_sorted_19 = None
 
+    has_argo    = isinstance(argo_data,   pd.DataFrame) and not argo_data.empty
+    has_gliders = isinstance(glider_data, pd.DataFrame) and not glider_data.empty
+
     ensure_plot_index()
 
     # ── Pre-check: skip timestamps whose outputs all already exist ───────────
-    date_list_pending = pre_check_date_list(date_list)
+    date_list_pending = pre_check_date_list(date_list, current_has_argo=has_argo, current_has_gliders=has_gliders)
     if len(date_list_pending) == 0:
         logger.info("All outputs already exist. Nothing to do.")
         return
 
+    # ── Pre-fetch Doppio sequentially (avoids concurrent OPeNDAP connections) ──
+    doppio_cache = {}
+    if plot_doppio:
+        logger.info("Pre-fetching Doppio data for all pending timestamps...")
+        from ioos_model_comparisons.models import Doppio
+        _dop = Doppio()
+        for ctime in date_list_pending:
+            try:
+                doppio_cache[ctime] = _dop.sel(time=ctime)
+                logger.info(f"Doppio pre-fetched: {ctime}")
+            except Exception as e:
+                logger.warning(f"Doppio pre-fetch failed for {ctime}: {e}")
+                doppio_cache[ctime] = None
+
     # ── Dispatch timestamps ───────────────────────────────────────────────────
     all_results = []
-    init_args   = (argo_data, glider_data, sst_sorted_16, sst_sorted_19, bathy_data, conf.regions, kwargs, path_save)
+    init_args   = (argo_data, glider_data, sst_sorted_16, sst_sorted_19, bathy_data, conf.regions, kwargs, path_save, doppio_cache)
 
     if parallel:
         with ProcessPoolExecutor(max_workers=max_workers,
@@ -258,10 +298,10 @@ def main():
                 try:
                     result = future.result()
                     all_results.append(result)
-                    log_plots(SCRIPT_ID, result['pending_logs'])
+                    log_plots(SCRIPT_ID, result['pending_logs'], has_argo=has_argo, has_gliders=has_gliders)
                     logger.info(f"[{completed}/{total}] {ct} done ({len(result['plots'])} plots)")
                 except Exception as exc:
-                    logger.error(f"[{completed}/{total}] {ct} ERROR: {exc}")
+                    logger.error(f"[{completed}/{total}] {ct} ERROR: {exc}\n{traceback.format_exc()}")
     else:
         # Serial fallback: populate worker globals in-process, then loop
         worker_initializer(*init_args)
@@ -306,7 +346,7 @@ def attempt_data_load(model, ctime, model_name):
                     data = data.isel({dim: 0})
         logger.info(f"{model_name}: Data successfully loaded for time {ctime}.")
         return True, data
-    except (KeyError, ValueError) as e:
+    except (KeyError, ValueError, RuntimeError) as e:
         logger.warning(f"{model_name}: Data not available for time {ctime} - {e}")
         return False, None
 
@@ -333,8 +373,32 @@ def attempt_cmems_data_load(cmems_instance, ctime, extent):
         return False, None
 
 
+def subset_data_curvilinear(data, extent):
+    """Subset a curvilinear-grid dataset to a bounding-box extent.
+
+    Expects 2-D ``lon``/``lat`` coordinates and ``y``/``x`` dimensions.
+    Returns the smallest isel rectangle that contains all points within extent.
+    Falls back to the full grid if no points are found.
+    """
+    try:
+        lon = data['lon'].values
+        lat = data['lat'].values
+        lonmin, lonmax, latmin, latmax = extent
+        mask = (lon >= lonmin) & (lon <= lonmax) & (lat >= latmin) & (lat <= latmax)
+        eta_i, xi_i = np.where(mask)
+        if len(eta_i) == 0:
+            return data
+        return data.isel(
+            y=slice(int(eta_i.min()), int(eta_i.max()) + 1),
+            x=slice(int(xi_i.min()),  int(xi_i.max())  + 1),
+        )
+    except Exception as e:
+        logger.error(f"Error during curvilinear data subsetting: {e}")
+        return data
+
+
 def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
-                   amt_flag, amt, cnt_flag, cnt, region):
+                   amt_flag, amt, cnt_flag, cnt, dpt_flag, dpt, region):
     """Process a specific region for the given time."""
     extent = region['extent']
     logger.info(f"Subsetting data for region: {region['name']} with extent {extent} at time {ctime}")
@@ -370,6 +434,7 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             gds_uv_s['lon'] = lon360to180(gds_uv_s['lon'])
         cds_sub  = cdt
         am_sub   = subset_data_lonlat(amt, lon360, extended) if amt_flag else None
+        dop_sub  = subset_data_curvilinear(dpt, extended)    if dpt_flag else None
 
         # Subset platform data to this region and time window
         if not argo_data.empty:
@@ -466,6 +531,24 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
                 logger.info(f"Successfully plotted RTOFS vs AMSEAS for region {region['name']} at time {ctime}")
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs AMSEAS at {ctime} for region {region['name']}: {e}")
+
+        try:
+            if rdt_flag and dpt_flag:
+                plot_model_region_comparison(rds_sub, dop_sub, region, **kwargs)
+                plots.append(f"{region['name']} | RTOFS vs Doppio")
+                pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'doppio'))
+                logger.info(f"Successfully plotted RTOFS vs Doppio for region {region['name']} at time {ctime}")
+        except Exception as e:
+            logger.error(f"Failed to process RTOFS vs Doppio at {ctime} for region {region['name']}: {e}", exc_info=True)
+
+        try:
+            if rdt_flag and dpt_flag:
+                plot_model_region_comparison_streamplot(rds_sub, dop_sub, region, **kwargs)
+                plots.append(f"{region['name']} | RTOFS vs Doppio (currents)")
+                pending_logs.extend(_sp_records(region, ts_dt, 'rtofs', 'doppio'))
+                logger.info(f"Successfully plotted RTOFS vs Doppio currents for region {region['name']} at time {ctime}")
+        except Exception as e:
+            logger.error(f"Failed to process RTOFS vs Doppio currents at {ctime} for region {region['name']}: {e}", exc_info=True)
 
         if sst16 is not None:
             plot_sst(rds_sub, sst16, region, satellite='GOES-16', **remove_kwargs(['eez', 'currents', 'legend']))
@@ -588,6 +671,8 @@ def _expected_outputs(ctime, region) -> set:
         model_pairs.append(('rtofs', 'amseas'))
     if plot_rtofs and plot_cnaps:
         model_pairs.append(('rtofs', 'cnaps'))
+    if plot_rtofs and plot_doppio:
+        model_pairs.append(('rtofs', 'doppio'))
 
     for m1, m2 in model_pairs:
         for k, depth_list in region['variables'].items():
@@ -607,6 +692,8 @@ def _expected_outputs(ctime, region) -> set:
             stream_pairs.append(('rtofs', 'cmems'))
         if plot_rtofs and plot_amseas:
             stream_pairs.append(('rtofs', 'amseas'))
+        if plot_rtofs and plot_doppio:
+            stream_pairs.append(('rtofs', 'doppio'))
 
         for m1, m2 in stream_pairs:
             for depth in region['currents']['depths']:
@@ -646,6 +733,8 @@ def _expected_plot_keys(ctime, region) -> set:
         model_pairs.append(('rtofs', 'amseas'))
     if plot_rtofs and plot_cnaps:
         model_pairs.append(('rtofs', 'cnaps'))
+    if plot_rtofs and plot_doppio:
+        model_pairs.append(('rtofs', 'doppio'))
 
     for m1, m2 in model_pairs:
         for k, depth_list in region['variables'].items():
@@ -662,6 +751,8 @@ def _expected_plot_keys(ctime, region) -> set:
             stream_pairs.append(('rtofs', 'cmems'))
         if plot_rtofs and plot_amseas:
             stream_pairs.append(('rtofs', 'amseas'))
+        if plot_rtofs and plot_doppio:
+            stream_pairs.append(('rtofs', 'doppio'))
         for m1, m2 in stream_pairs:
             for depth in region['currents']['depths']:
                 keys.add((rname, tstr_k, "streamplot", "currents", depth, m1, m2))
@@ -695,12 +786,15 @@ def _sst_record(region, ts_dt, satellite_tag):
             "variable": "temperature", "depth": 0, "model1": "rtofs", "model2": satellite_tag}
 
 
-def pre_check_date_list(date_list) -> pd.DatetimeIndex:
-    """Return a filtered DatetimeIndex with only timestamps that have at least
-    one output still to generate.
+def pre_check_date_list(date_list, current_has_argo=False, current_has_gliders=False) -> pd.DatetimeIndex:
+    """Return a filtered DatetimeIndex with only timestamps that need processing.
 
     Tries MongoDB first (one round-trip for all timestamps); falls back to
     per-file filesystem checks if the database is unavailable.
+
+    A timestamp is requeued when:
+      - any expected plot record is missing from MongoDB, OR
+      - a record exists but was plotted without Argo/glider data that is now available.
     """
     needed_dates = []
     skipped = 0
@@ -719,10 +813,11 @@ def pre_check_date_list(date_list) -> pd.DatetimeIndex:
 
     if done_keys is not None:
         for ctime in date_list:
-            if expected_by_ts[ctime].issubset(done_keys):
-                skipped += 1
-            else:
+            if any(needs_replot(k, done_keys, current_has_argo, current_has_gliders)
+                   for k in expected_by_ts[ctime]):
                 needed_dates.append(ctime)
+            else:
+                skipped += 1
         logger.info(f"Pre-check (MongoDB): {skipped}/{len(date_list)} timestamp(s) fully done — skipping.")
     else:
         logger.warning("MongoDB unavailable — falling back to file-existence pre-check.")
