@@ -38,6 +38,23 @@ def _get_client():
     return _client
 
 
+def _intify_currents_depth_keys(doc):
+    """Convert doc['currents']['limits_by_depth'] string keys back to int.
+
+    MongoDB/BSON documents only allow string keys, so depths are stored as
+    strings (e.g. "1500"). regions.py and plotting.py both key/lookup
+    limits_by_depth by int depth, so convert back on the way out.
+    """
+    if doc is None:
+        return None
+    cur = doc.get("currents")
+    if isinstance(cur, dict) and isinstance(cur.get("limits_by_depth"), dict):
+        cur["limits_by_depth"] = {
+            int(k): v for k, v in cur["limits_by_depth"].items()
+        }
+    return doc
+
+
 def fetch_colorbar_config(region_name):
     """Return the colorbar config document for *region_name*, or None.
 
@@ -48,9 +65,10 @@ def fetch_colorbar_config(region_name):
     if client is None:
         return None
     try:
-        return client["hurricanes"]["colorbar_configs"].find_one(
+        doc = client["hurricanes"]["colorbar_configs"].find_one(
             {"region": region_name}, {"_id": 0}
         )
+        return _intify_currents_depth_keys(doc)
     except Exception as exc:
         logger.warning(f"MongoDB query failed for region '{region_name}': {exc}")
         return None
@@ -70,9 +88,10 @@ def fetch_region_config(region_name):
     if client is None:
         return None
     try:
-        return client["hurricanes"]["region_configs"].find_one(
+        doc = client["hurricanes"]["region_configs"].find_one(
             {"region": region_name}, {"_id": 0}
         )
+        return _intify_currents_depth_keys(doc)
     except Exception as exc:
         logger.warning(f"MongoDB region_configs query failed for region '{region_name}': {exc}")
         return None
@@ -148,12 +167,21 @@ def apply_colorbar_overrides(region_name, region_dict):
             region_dict["salinity_max"]["limits"] = db_sm["limits"]
             logger.debug(f"[{region_name}] overriding salinity_max.limits from MongoDB")
 
-    # currents — only the limits sub-key; leave bool/coarsen/kwargs intact
+    # currents — only limits / limits_by_depth; leave bool/depths/coarsen/kwargs intact
     if "currents" in doc:
         db_cur = doc["currents"]
-        if "limits" in db_cur and isinstance(region_dict.get("currents"), dict):
-            region_dict["currents"]["limits"] = db_cur["limits"]
-            logger.debug(f"[{region_name}] overriding currents.limits from MongoDB")
+        if isinstance(region_dict.get("currents"), dict):
+            if "limits" in db_cur:
+                region_dict["currents"]["limits"] = db_cur["limits"]
+                logger.debug(f"[{region_name}] overriding currents.limits from MongoDB")
+            if "limits_by_depth" in db_cur:
+                # Merge rather than replace, so a colorbar_configs edit for one
+                # depth doesn't drop overrides for other depths set elsewhere
+                # (e.g. in a hurricanes.region_configs document).
+                merged = dict(region_dict["currents"].get("limits_by_depth") or {})
+                merged.update(db_cur["limits_by_depth"])
+                region_dict["currents"]["limits_by_depth"] = merged
+                logger.debug(f"[{region_name}] overriding currents.limits_by_depth from MongoDB")
 
     return region_dict
 

@@ -70,6 +70,14 @@ def _build_doc(region_key):
     cfg = dict(region_config(region_key))
     doc = {"region": region_key}
     doc.update(cfg)
+
+    # BSON only allows string keys — currents.limits_by_depth is keyed by int
+    # depth in regions.py, so stringify it for storage (db.py converts back
+    # to int on read).
+    cur = doc.get("currents")
+    if isinstance(cur, dict) and isinstance(cur.get("limits_by_depth"), dict):
+        cur["limits_by_depth"] = {str(k): v for k, v in cur["limits_by_depth"].items()}
+
     return doc
 
 

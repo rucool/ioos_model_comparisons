@@ -279,6 +279,7 @@ def region_config(regions=None, model=None):
             # depths = [1000],
             depths = [0, 1500],
             limits = [0, 1.5, .1],
+            limits_by_depth = {1500: [0, 0.4, .05]},
             # depths = [0,],
             # limits = [0, 1.5, .1],
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
@@ -294,7 +295,7 @@ def region_config(regions=None, model=None):
             # figsize = (12.125, 7.5)
             figsize = (8,8)
             )
-    
+
     key = "east_coast"
     if key in regions:
         # South Atlantic Bight Limits
@@ -1017,6 +1018,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0, 1500],
             limits = [0, 1.0, .1],
+            limits_by_depth = {1500: [0, 0.4, .05]},
             coarsen=dict(
                 rtofs=14,
                 espc=15,
@@ -1025,7 +1027,7 @@ def region_config(regions=None, model=None):
                 ),
             kwargs=dict(
                 ptype="streamplot",
-                color="black", 
+                color="black",
                 density=2.25,
                 linewidth=.5
                 )
@@ -1069,6 +1071,7 @@ def region_config(regions=None, model=None):
             # depths = [1000],
             depths = [0, 1500],
             limits = [0, 1.5, .1],
+            limits_by_depth = {1500: [0, 0.4, .05]},
             # depths = [0,],
             # limits = [0, 1.5, .1],
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
@@ -1084,7 +1087,7 @@ def region_config(regions=None, model=None):
             # figsize = (12.125, 7.5)
             figsize = (8,8)
             )
-        
+
     key = "guam"
     if key in regions:
         # Gulf of Mexico Limits
@@ -1118,6 +1121,7 @@ def region_config(regions=None, model=None):
             # depths = [1000],
             depths = [0, 125, 250, 500, 1000, 1500],
             limits = [0, 1.5, .1],
+            limits_by_depth = {1000: [0, 0.4, .05], 1500: [0, 0.4, .05]},
             # depths = [0,],
             # limits = [0, 1.5, .1],
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
@@ -1157,6 +1161,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths=[0, 1500],
             limits=[0, 1.5, .1],
+            limits_by_depth={1500: [0, 0.4, .05]},
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
             kwargs=dict(
                 ptype="streamplot",
@@ -1191,6 +1196,7 @@ def region_config(regions=None, model=None):
             bool=True,
             depths=[0, 1500],
             limits=[0, 2.0, .1],
+            limits_by_depth={1500: [0, 0.4, .05]},
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
             kwargs=dict(
                 ptype="streamplot",

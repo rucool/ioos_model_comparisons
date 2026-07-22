@@ -2937,6 +2937,21 @@ def plot_transects(x, y, c, xlabel, cmap=None, title=None, save_file=None, flip_
     plt.close()
 
 
+def currents_colorbar_levels(cdict, depth):
+    """Return contourf levels for a currents magnitude plot at *depth*, or None.
+
+    Looks up a per-depth override in cdict['limits_by_depth'] (keyed by depth
+    in metres) first, falling back to the region-wide cdict['limits']. Returns
+    None if neither is present, in which case the caller should leave levels
+    unset (matplotlib will auto-scale).
+    """
+    by_depth = cdict.get('limits_by_depth') or {}
+    lims = by_depth.get(depth, cdict.get('limits'))
+    if lims is None:
+        return None
+    return np.arange(lims[0], lims[1] + lims[2], lims[2])
+
+
 def plot_model_region_comparison_streamplot(ds1, ds2, region,
                                                 bathy=None,
                                                 argo=None,
@@ -3016,12 +3031,9 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
         qargs['cmap'] = cmocean.cm.speed
         qargs['extend'] = "max"
 
-        if 'limits' in cdict:
-            if depth == 1500:
-                qargs['levels'] = np.arange(0, 0.4, 0.05)
-            else:
-                lims = cdict['limits']
-                qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+        levels = currents_colorbar_levels(cdict, depth)
+        if levels is not None:
+            qargs['levels'] = levels
 
         # Initialize figure
         fig, _ = plt.subplot_mosaic(
@@ -3347,9 +3359,9 @@ def plot_model_region_comparison_streamplot_idalia(ds1, ds2, region,
         qargs['cmap'] = cmocean.cm.speed
         qargs['extend'] = "max"
 
-        if 'limits' in cdict:
-            lims = cdict['limits']
-            qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+        levels = currents_colorbar_levels(cdict, depth)
+        if levels is not None:
+            qargs['levels'] = levels
 
         # Initialize figure
         fig, _ = plt.subplot_mosaic(
@@ -7666,15 +7678,9 @@ def plot_model_region_single_streamplot(ds1, region,
         qargs['cmap'] = cmocean.cm.speed
         qargs['extend'] = "max"
 
-        if 'limits' in cdict:
-            lims = cdict['limits']
-
-            if depth == 1500:
-                # qargs['vmin'] = lims[0]
-                # qargs['vmax'] = lims[1]
-                qargs['levels'] = np.arange(0, 0.4, 0.05)
-            else:
-                qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+        levels = currents_colorbar_levels(cdict, depth)
+        if levels is not None:
+            qargs['levels'] = levels
 
 
         # Initialize figure
@@ -7940,14 +7946,9 @@ def plot_model_region_single_streamplot_grase(ds1, region,
         qargs['cmap'] = cmocean.cm.speed
         qargs['extend'] = "max"
 
-        if 'limits' in cdict:
-            lims = cdict['limits']
-            if depth == 1500:
-                qargs['levels'] = np.arange(0, 0.4, 0.05)
-            elif depth == 1000:
-                qargs['levels'] = np.arange(0, 0.4, 0.05)
-            else:
-                qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+        levels = currents_colorbar_levels(cdict, depth)
+        if levels is not None:
+            qargs['levels'] = levels
 
 
         # Initialize figure
@@ -8267,12 +8268,9 @@ def plot_model_region_single_streamplot_grase_movie(ds1, region,
         qargs['cmap'] = cmocean.cm.speed
         qargs['extend'] = "max"
 
-        if 'limits' in cdict:
-            lims = cdict['limits']
-            if depth == 1500:
-                qargs['levels'] = np.arange(0, 0.4, 0.05)
-            else:
-                qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+        levels = currents_colorbar_levels(cdict, depth)
+        if levels is not None:
+            qargs['levels'] = levels
 
 
         # Initialize figure
@@ -8661,14 +8659,9 @@ def plot_model_region_single_streamplot_grase_cnaps(ds1, region,
         qargs['cmap'] = cmocean.cm.speed
         qargs['extend'] = "max"
 
-        if 'limits' in cdict:
-            lims = cdict['limits']
-            if depth == 1500:
-                qargs['levels'] = np.arange(0, 0.4, 0.05)
-            elif depth == -1500:
-                qargs['levels'] = np.arange(0, 0.4, 0.05)
-            else:
-                qargs['levels'] = np.arange(lims[0], lims[1]+lims[2], lims[2])
+        levels = currents_colorbar_levels(cdict, depth)
+        if levels is not None:
+            qargs['levels'] = levels
 
 
         # Initialize figure

@@ -375,8 +375,14 @@ def process_region(
 
     # ── Currents — keep existing limits ──────────────────────────────────────
     cur = cfg.get("currents")
-    if isinstance(cur, dict) and "limits" in cur:
-        doc["currents"] = {"limits": cur["limits"]}
+    if isinstance(cur, dict) and ("limits" in cur or "limits_by_depth" in cur):
+        cur_doc = {}
+        if "limits" in cur:
+            cur_doc["limits"] = cur["limits"]
+        if "limits_by_depth" in cur:
+            # BSON only allows string keys; db.py converts back to int on read.
+            cur_doc["limits_by_depth"] = {str(k): v for k, v in cur["limits_by_depth"].items()}
+        doc["currents"] = cur_doc
 
     return doc
 
