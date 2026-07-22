@@ -455,9 +455,16 @@ def main():
         logger.info("Found %d files for %s", len(nc_files), region_name)
 
         # ── Pre-check: skip files whose expected plots are already logged ────
+        # (bypassed entirely by --overwrite, since MongoDB tracking doesn't
+        # otherwise know a re-run should force reprocessing)
         file_ctimes = [(f, parse_valid_time(f)) for f in nc_files]
-        done_keys = fetch_completed_plot_keys(SCRIPT_ID, [ct for _, ct in file_ctimes])
-        if done_keys is not None:
+        done_keys = None if kwargs.get("overwrite") else fetch_completed_plot_keys(
+            SCRIPT_ID, [ct for _, ct in file_ctimes]
+        )
+        if kwargs.get("overwrite"):
+            logger.info("Pre-check: overwrite=True — reprocessing all %d file(s) for %s.",
+                        len(nc_files), region_name)
+        elif done_keys is not None:
             pending_files = [
                 f for f, ctime in file_ctimes
                 if any(

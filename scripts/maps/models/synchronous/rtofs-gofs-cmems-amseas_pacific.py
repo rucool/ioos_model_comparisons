@@ -203,7 +203,7 @@ def _sst_record(region, ts_dt, satellite_tag):
             "variable": "temperature", "depth": 0, "model1": "rtofs", "model2": satellite_tag}
 
 
-def pre_check_date_list(date_list, current_has_argo=False, current_has_gliders=False) -> pd.DatetimeIndex:
+def pre_check_date_list(date_list, current_has_argo=False, current_has_gliders=False, overwrite=False) -> pd.DatetimeIndex:
     """Return a filtered DatetimeIndex with only timestamps that need processing.
 
     Tries MongoDB first (one round-trip); falls back to processing all
@@ -212,7 +212,16 @@ def pre_check_date_list(date_list, current_has_argo=False, current_has_gliders=F
     A timestamp is requeued when:
       - any expected plot record is missing from MongoDB, OR
       - a record exists but was plotted without Argo/glider data that is now available.
+
+    overwrite=True bypasses this check entirely and returns date_list unchanged —
+    otherwise a timestamp already logged as done in MongoDB is skipped even with
+    overwrite set, since the per-file overwrite check inside plot_* never runs
+    for timestamps dropped at this stage.
     """
+    if overwrite:
+        logger.info(f"Pre-check: overwrite=True — reprocessing all {len(date_list)} timestamp(s).")
+        return pd.DatetimeIndex(date_list)
+
     expected_by_ts = {}
     for ctime in date_list:
         keys = set()
@@ -247,7 +256,8 @@ def main():
     has_gliders = isinstance(glider_data, pd.DataFrame) and not glider_data.empty
 
     ensure_plot_index()
-    date_list_pending = pre_check_date_list(date_list, current_has_argo=has_argo, current_has_gliders=has_gliders)
+    date_list_pending = pre_check_date_list(date_list, current_has_argo=has_argo, current_has_gliders=has_gliders,
+                                             overwrite=kwargs.get('overwrite', False))
 
     if len(date_list_pending) == 0:
         logger.info("All outputs already exist. Nothing to do.")

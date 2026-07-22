@@ -15,6 +15,12 @@ from ioos_model_comparisons.platforms import (get_active_gliders,
                                   )
 from ioos_model_comparisons.plotting import plot_ohc
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import (
+    apply_colorbar_overrides,
+    ensure_plot_index,
+    fetch_completed_plot_keys,
+    log_plots,
+)
 from shapely.errors import TopologicalError
 from cool_maps.plot import get_bathymetry
 import concurrent.futures
@@ -23,6 +29,8 @@ import xarray as xr
 
 startTime = time.time()
 matplotlib.use('agg')
+
+SCRIPT_ID = "ohc_pacific"
 
 parallel = True # utilize parallel processing?
 
@@ -189,10 +197,88 @@ if plot_cmems:
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
 
+
+def _ohc_record(region, ts_dt, m1, m2):
+    return {"region": region['name'], "timestamp": ts_dt, "plot_type": "ocean_heat_content",
+            "variable": "ohc", "depth": 0, "model1": m1, "model2": m2}
+
+
+def _expected_plot_keys(ctime, region) -> set:
+    """Return the set of (region, iso_ts, plot_type, variable, depth, m1, m2) tuples
+    expected for this (ctime, region) — no file I/O.
+
+    OHC produces one plot per model pair per region (no variable/depth breakdown).
+    """
+    if 'ocean_heat_content' not in region:
+        return set()
+
+    t      = pd.to_datetime(ctime)
+    tstr_k = t.strftime("%Y-%m-%dT%H%M%SZ")
+    rname  = region['name']
+    keys   = set()
+
+    model_pairs = []
+    if plot_rtofs and plot_espc:
+        model_pairs.append(('rtofs', 'espc'))
+    if plot_rtofs and plot_cmems:
+        model_pairs.append(('rtofs', 'cmems'))
+    if plot_rtofs and plot_para:
+        model_pairs.append(('rtofs', 'rtofs'))
+
+    for m1, m2 in model_pairs:
+        keys.add((rname, tstr_k, "ocean_heat_content", "ohc", 0, m1, m2))
+
+    return keys
+
+
+def pre_check_date_list(date_list, overwrite=False) -> pd.DatetimeIndex:
+    """Return a filtered DatetimeIndex with only timestamps that still need processing.
+
+    Tries MongoDB first (one round-trip); falls back to processing all
+    timestamps if the database is unavailable.
+
+    overwrite=True bypasses this check entirely and returns date_list unchanged —
+    otherwise a timestamp already logged as done in MongoDB is skipped even with
+    overwrite set, since the per-file overwrite check inside plot_* never runs
+    for timestamps dropped at this stage.
+    """
+    if overwrite:
+        print(f"Pre-check: overwrite=True — reprocessing all {len(date_list)} timestamp(s).")
+        return pd.DatetimeIndex(date_list)
+
+    expected_by_ts = {}
+    for ctime in date_list:
+        keys = set()
+        for item in conf.regions:
+            region = apply_colorbar_overrides(item, region_config(item))
+            keys |= _expected_plot_keys(ctime, region)
+        expected_by_ts[ctime] = keys
+
+    done_keys = fetch_completed_plot_keys(SCRIPT_ID, list(date_list))
+
+    needed_dates = []
+    skipped = 0
+    if done_keys is not None:
+        for ctime in date_list:
+            if expected_by_ts[ctime].issubset(done_keys):
+                skipped += 1
+            else:
+                needed_dates.append(ctime)
+        print(f"Pre-check (MongoDB): {skipped}/{len(date_list)} timestamp(s) fully done — skipping.")
+    else:
+        print("MongoDB unavailable — processing all timestamps.")
+        needed_dates = list(date_list)
+
+    print(f"Pre-check: {len(needed_dates)}/{len(date_list)} timestamp(s) queued.")
+    return pd.DatetimeIndex(needed_dates)
+
+
 # for ctime in date_list:
 def plot_ctime(ctime):
     print(f"Checking if {ctime} exists for each model.")
-    
+    pending_logs = []
+    ts_dt = pd.to_datetime(ctime).to_pydatetime()
+
     if plot_rtofs:
         try:
             rds_time = rds.sel(time=ctime)
@@ -250,7 +336,7 @@ def plot_ctime(ctime):
     search_window_t1 = ctime.strftime(tstr)
     
     for r in conf.regions:
-        configs = region_config(r)
+        configs = apply_colorbar_overrides(r, region_config(r))
 
         # Save the extent of the region being plotted to a variable.
         extent = configs['extent']
@@ -446,12 +532,15 @@ def plot_ctime(ctime):
         try:
             if rdt_flag and gdt_flag:
                 plot_ohc(rds_slice, gds_slice, extent, configs['name'], **kwargs)
-                
+                pending_logs.append(_ohc_record(configs, ts_dt, 'rtofs', 'espc'))
+
             if rdt_flag and cdt_flag:
                 plot_ohc(rds_slice, cds_slice, extent, configs['name'], **kwargs)
+                pending_logs.append(_ohc_record(configs, ts_dt, 'rtofs', 'cmems'))
 
             if rdt_flag and rdtp_flag:
                 plot_ohc(rds_slice, rdsp_slice, extent, configs['name'], **kwargs)
+                pending_logs.append(_ohc_record(configs, ts_dt, 'rtofs', 'rtofs'))
 
             # Delete some keyword arguments that may not be defined in all
             # regions. We don't want to plot the regions with wrong inputs 
@@ -474,15 +563,30 @@ def plot_ctime(ctime):
             print("Error: {error}")
             continue
 
-def main():
-    if parallel:
-        import concurrent.futures
+    return pending_logs
 
+def main():
+    ensure_plot_index()
+    date_list_pending = pre_check_date_list(date_list, overwrite=kwargs.get('overwrite', False))
+
+    if len(date_list_pending) == 0:
+        print("All outputs already exist. Nothing to do.")
+        return
+
+    if parallel:
         with concurrent.futures.ProcessPoolExecutor(max_workers=8) as executor:
-            executor.map(plot_ctime, date_list)
+            futures = {executor.submit(plot_ctime, ct): ct for ct in date_list_pending}
+            for future in concurrent.futures.as_completed(futures):
+                ct = futures[future]
+                try:
+                    pending_logs = future.result()
+                    log_plots(SCRIPT_ID, pending_logs)
+                except Exception as exc:
+                    print(f"{ct} ERROR: {exc}")
     else:
-        for ctime in date_list:
-            plot_ctime(ctime)           
+        for ctime in date_list_pending:
+            pending_logs = plot_ctime(ctime)
+            log_plots(SCRIPT_ID, pending_logs)
 
     print('Execution time in seconds: ' + str(time.time() - startTime))
 
