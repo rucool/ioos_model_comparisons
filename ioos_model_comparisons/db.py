@@ -56,25 +56,64 @@ def fetch_colorbar_config(region_name):
         return None
 
 
-def apply_colorbar_overrides(region_name, region_dict):
-    """Overlay MongoDB colorbar limits onto a region config dict.
+def fetch_region_config(region_name):
+    """Return the full region-config document for *region_name*, or None.
 
-    Keys overridden when present in the DB document:
-      - variables.temperature, variables.salinity  — replace full depth list
-      - sea_surface_height                          — replace full depth list
-      - ocean_heat_content.limits                   — replace limits only
-      - salinity_max.limits                         — replace limits only
-      - currents.limits                             — replace limits only
-                                                      (bool/coarsen/kwargs kept
-                                                      from regions.py)
-
-    Returns region_dict unchanged if no DB document exists for this region.
+    Queries hurricanes.region_configs for {region: region_name}. This
+    collection mirrors the complete output of regions.region_config() —
+    extent, folder, name, eez, figure, variables, sea_surface_height,
+    currents, salinity_max, ocean_heat_content — seeded/updated via
+    scripts/tools/seed_region_configs.py. Returns the document dict
+    (without _id) or None if unavailable / not yet seeded for this region.
     """
+    client = _get_client()
+    if client is None:
+        return None
+    try:
+        return client["hurricanes"]["region_configs"].find_one(
+            {"region": region_name}, {"_id": 0}
+        )
+    except Exception as exc:
+        logger.warning(f"MongoDB region_configs query failed for region '{region_name}': {exc}")
+        return None
+
+
+def apply_colorbar_overrides(region_name, region_dict):
+    """Overlay MongoDB region config onto a regions.py config dict.
+
+    Two layers are applied on top of *region_dict*, in order:
+
+    1. hurricanes.region_configs — the full region definition (extent,
+       folder, name, eez, figure, variables, sea_surface_height, currents,
+       salinity_max, ocean_heat_content). Any top-level key present in the
+       document fully replaces the corresponding key from regions.py.
+
+    2. hurricanes.colorbar_configs — narrower, faster-moving colorbar-limit
+       overrides written by the weekly update_colorbar_limits.py cron /
+       colorbar_tuner.py. Applied last so tuned limits always win over the
+       (possibly stale) values baked into a region_configs document:
+         - variables.temperature, variables.salinity  — replace full depth list
+         - sea_surface_height                          — replace full depth list
+         - ocean_heat_content.limits                   — replace limits only
+         - salinity_max.limits                         — replace limits only
+         - currents.limits                             — replace limits only
+                                                         (bool/coarsen/kwargs kept)
+
+    Returns region_dict unchanged if MongoDB has no documents for this region.
+    """
+    region_dict = copy.deepcopy(region_dict)
+
+    full_doc = fetch_region_config(region_name)
+    if full_doc is not None:
+        for key, value in full_doc.items():
+            if key == "region":
+                continue
+            region_dict[key] = value
+            logger.debug(f"[{region_name}] overriding {key} from MongoDB region_configs")
+
     doc = fetch_colorbar_config(region_name)
     if doc is None:
         return region_dict
-
-    region_dict = copy.deepcopy(region_dict)
 
     # variables (temperature / salinity depth lists)
     if "variables" in doc:

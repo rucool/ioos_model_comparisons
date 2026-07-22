@@ -25,6 +25,7 @@ def region_config(regions=None, model=None):
     ocean_heat_content = False
     salinity_max = False
     currents = False
+    sea_surface_height = []
 
     key = "mastr"
     if key in regions:
@@ -1115,7 +1116,7 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             # depths = [1000],
-            depths = [0, 1500],
+            depths = [0, 125, 250, 500, 1000, 1500],
             limits = [0, 1.5, .1],
             # depths = [0,],
             # limits = [0, 1.5, .1],
