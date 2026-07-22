@@ -2,15 +2,21 @@
 """
 Seed MongoDB region_configs collection from regions.py defaults.
 
-Unlike seed_colorbar_configs.py (which extracts only the colorbar-limit
-sub-fields), this writes the *entire* region_config() output — extent,
-folder, name, eez, figure, variables, sea_surface_height, currents,
-salinity_max, ocean_heat_content — so scripts can read the full region
-definition from MongoDB via apply_colorbar_overrides() / fetch_region_config()
-without redeploying code to change it.
+This writes most of the region_config() output — extent, folder, name, eez,
+figure, currents, salinity_max, ocean_heat_content — so scripts can read the
+full region definition from MongoDB via apply_colorbar_overrides() /
+fetch_region_config() without redeploying code to change it.
 
-hurricanes.colorbar_configs (the weekly-tuned color limits) is untouched and
-continues to be applied on top of this, so tuned limits still win.
+region_configs is the single source of truth, with different fields owned by
+different writers: update_colorbar_limits.py (weekly live-data tuning) and
+colorbar_tuner.py (manual tuning) both write variables.temperature/salinity
+and sea_surface_height directly into this same collection/document. This
+script deliberately EXCLUDES those two fields from what it writes (and uses
+a partial $set, not a full replace) so re-running it to pick up an unrelated
+regions.py edit — a new region, a currents.limits_by_depth tweak, whatever —
+never clobbers live-tuned colorbar limits back to regions.py's static
+defaults. A brand-new, never-tuned region simply falls back to regions.py's
+values for those two fields until a tuning run sets them.
 
 Usage:
     python scripts/tools/seed_region_configs.py
@@ -65,11 +71,16 @@ ALL_REGIONS = [
 ]
 
 
+# Fields owned by update_colorbar_limits.py / colorbar_tuner.py — never
+# overwritten by this script once a region has been tuned.
+_TUNED_FIELDS = {"variables", "sea_surface_height"}
+
+
 def _build_doc(region_key):
-    """Build a full MongoDB document for *region_key* from its regions.py config."""
+    """Build a partial MongoDB $set payload for *region_key* from regions.py,
+    excluding the fields owned by the live/manual colorbar tuning tools."""
     cfg = dict(region_config(region_key))
-    doc = {"region": region_key}
-    doc.update(cfg)
+    doc = {k: v for k, v in cfg.items() if k not in _TUNED_FIELDS}
 
     # BSON only allows string keys — currents.limits_by_depth is keyed by int
     # depth in regions.py, so stringify it for storage (db.py converts back
@@ -101,7 +112,7 @@ def main():
             logger.warning(f"Skipping '{key}': {exc}")
             continue
 
-        result = collection.replace_one({"region": key}, doc, upsert=True)
+        result = collection.update_one({"region": key}, {"$set": doc}, upsert=True)
         action = "inserted" if result.upserted_id else "updated"
         logger.info(f"{action}: {key}")
         seeded += 1

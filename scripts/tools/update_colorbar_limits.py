@@ -4,8 +4,9 @@ update_colorbar_limits.py
 ─────────────────────────
 Weekly cron script that samples live RTOFS data for every active region
 defined in regions.py and updates the colorbar limits stored in MongoDB
-(hurricanes.colorbar_configs) so that map plots rendered with contourf
-show enough color gradations without flooding the colorbar.
+(hurricanes.region_configs — variables.temperature/salinity and
+sea_surface_height only, via a partial $set) so that map plots rendered
+with contourf show enough color gradations without flooding the colorbar.
 
 Algorithm per region / depth layer
 ───────────────────────────────────
@@ -249,7 +250,7 @@ def get_depth_slice(ds: xr.Dataset, var_name: str, target_depth: float) -> np.nd
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_mongo_collection():
-    """Return the hurricanes.colorbar_configs collection, or None on failure."""
+    """Return the hurricanes.region_configs collection, or None on failure."""
     uri = os.getenv("MONGODB_URI")
     if not uri:
         logger.error("MONGODB_URI environment variable is not set — cannot write limits")
@@ -258,17 +259,28 @@ def _get_mongo_collection():
         import pymongo
         client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=5000)
         client.admin.command("ping")
-        return client["hurricanes"]["colorbar_configs"]
+        return client["hurricanes"]["region_configs"]
     except Exception as exc:
         logger.error(f"MongoDB connection failed: {exc}")
         return None
 
 
 def upsert_colorbar_doc(collection, region_key: str, doc: dict):
-    """Upsert *doc* into the collection keyed by *region*."""
-    result = collection.replace_one({"region": region_key}, doc, upsert=True)
+    """Partially update the region_configs document for *region_key*.
+
+    $set's only the top-level keys present in *doc* (excluding "region") —
+    e.g. variables, sea_surface_height — so everything else already on the
+    document (extent, folder, currents, ocean_heat_content, salinity_max, ...,
+    seeded by seed_region_configs.py / edited via colorbar_tuner.py) is left
+    untouched.
+    """
+    set_fields = {k: v for k, v in doc.items() if k != "region"}
+    if not set_fields:
+        logger.info(f"  [{region_key}] nothing to update")
+        return
+    result = collection.update_one({"region": region_key}, {"$set": set_fields}, upsert=True)
     action = "inserted" if result.upserted_id else "updated"
-    logger.info(f"  [{region_key}] MongoDB document {action}")
+    logger.info(f"  [{region_key}] MongoDB document {action} ({', '.join(set_fields)})")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -364,25 +376,10 @@ def process_region(
     if ssh_entries:
         doc["sea_surface_height"] = ssh_entries
 
-    # ── ocean_heat_content / salinity_max — keep existing limits ─────────────
-    # These are derived / integrated quantities that RTOFS surface snapshots
-    # cannot estimate directly.  Carry the regions.py defaults forward so that
-    # the MongoDB document remains complete.
-    for top_key in ("ocean_heat_content", "salinity_max"):
-        val = cfg.get(top_key)
-        if isinstance(val, dict) and "limits" in val:
-            doc[top_key] = {"limits": val["limits"]}
-
-    # ── Currents — keep existing limits ──────────────────────────────────────
-    cur = cfg.get("currents")
-    if isinstance(cur, dict) and ("limits" in cur or "limits_by_depth" in cur):
-        cur_doc = {}
-        if "limits" in cur:
-            cur_doc["limits"] = cur["limits"]
-        if "limits_by_depth" in cur:
-            # BSON only allows string keys; db.py converts back to int on read.
-            cur_doc["limits_by_depth"] = {str(k): v for k, v in cur["limits_by_depth"].items()}
-        doc["currents"] = cur_doc
+    # ocean_heat_content / salinity_max / currents are not computed from this
+    # RTOFS surface snapshot, so this script no longer touches them at all —
+    # upsert_colorbar_doc() only $sets the keys present in doc, leaving those
+    # fields on the existing region_configs document exactly as they are.
 
     return doc
 

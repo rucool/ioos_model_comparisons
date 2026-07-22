@@ -202,36 +202,45 @@ def load_data(region_key, var_name, depth, model="rtofs", model_ds=None):
 
 
 def _save_to_mongo(region_key, var_name, depth, limits, model="rtofs"):
+    """Save a tuned [min, max, stride] into hurricanes.region_configs.
+
+    region_configs is the single source of truth for MongoDB-driven region
+    config (see db.apply_colorbar_overrides) — this reads the existing depth
+    list for *var_name*, updates just the matching depth entry, and $sets
+    that one field back, leaving the rest of the document (extent, folder,
+    currents, ...) untouched. *model* is only used for the print/log message;
+    region_configs has no per-model split.
+    """
     uri = os.getenv("MONGODB_URI")
     if not uri:
         print("  MONGODB_URI not set -- NOT saved.")
         return
+    if var_name not in ("temperature", "salinity", "sea_surface_height"):
+        print(f"  Unknown var_name {var_name!r} -- NOT saved.")
+        return
     try:
         import pymongo
         client     = pymongo.MongoClient(uri, serverSelectionTimeoutMS=5000)
-        collection = client["hurricanes"]["colorbar_configs"]
-        query      = {"region": region_key, "model": model}
-        doc        = collection.find_one(query) or {"region": region_key, "model": model}
+        collection = client["hurricanes"]["region_configs"]
+        query      = {"region": region_key}
+        doc        = collection.find_one(query) or {"region": region_key}
 
         if var_name in ("temperature", "salinity"):
             lst = doc.setdefault("variables", {}).setdefault(var_name, [])
-            for entry in lst:
-                if entry.get("depth") == depth:
-                    entry["limits"] = limits
-                    break
-            else:
-                lst.append({"depth": depth, "limits": limits})
-        elif var_name == "sea_surface_height":
+            set_field = f"variables.{var_name}"
+        else:
             lst = doc.setdefault("sea_surface_height", [])
-            for entry in lst:
-                if entry.get("depth", 0) == depth:
-                    entry["limits"] = limits
-                    break
-            else:
-                lst.append({"depth": depth, "limits": limits})
+            set_field = "sea_surface_height"
 
-        collection.replace_one(query, doc, upsert=True)
-        print(f"  Saved -> hurricanes.colorbar_configs[{region_key}][{model}]")
+        for entry in lst:
+            if entry.get("depth", 0) == depth:
+                entry["limits"] = limits
+                break
+        else:
+            lst.append({"depth": depth, "limits": limits})
+
+        collection.update_one(query, {"$set": {set_field: lst}}, upsert=True)
+        print(f"  Saved -> hurricanes.region_configs[{region_key}].{set_field} (model={model})")
     except Exception as exc:
         print(f"  MongoDB save failed: {exc}")
 

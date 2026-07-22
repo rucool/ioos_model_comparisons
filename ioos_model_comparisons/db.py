@@ -55,25 +55,6 @@ def _intify_currents_depth_keys(doc):
     return doc
 
 
-def fetch_colorbar_config(region_name):
-    """Return the colorbar config document for *region_name*, or None.
-
-    Queries hurricanes.colorbar_configs for {region: region_name}.
-    Returns the document dict (without _id) or None if unavailable.
-    """
-    client = _get_client()
-    if client is None:
-        return None
-    try:
-        doc = client["hurricanes"]["colorbar_configs"].find_one(
-            {"region": region_name}, {"_id": 0}
-        )
-        return _intify_currents_depth_keys(doc)
-    except Exception as exc:
-        logger.warning(f"MongoDB query failed for region '{region_name}': {exc}")
-        return None
-
-
 def fetch_region_config(region_name):
     """Return the full region-config document for *region_name*, or None.
 
@@ -98,27 +79,19 @@ def fetch_region_config(region_name):
 
 
 def apply_colorbar_overrides(region_name, region_dict):
-    """Overlay MongoDB region config onto a regions.py config dict.
+    """Overlay the hurricanes.region_configs document onto a regions.py config dict.
 
-    Two layers are applied on top of *region_dict*, in order:
+    region_configs is the single source of truth for MongoDB-driven region
+    config — extent, folder, name, eez, figure, variables, sea_surface_height,
+    currents (incl. limits_by_depth), salinity_max, ocean_heat_content. It's
+    seeded from regions.py via scripts/tools/seed_region_configs.py and kept
+    current by targeted field updates from update_colorbar_limits.py (weekly
+    live-data tuning) and colorbar_tuner.py (manual tuning) — both update this
+    same document rather than a separate collection.
 
-    1. hurricanes.region_configs — the full region definition (extent,
-       folder, name, eez, figure, variables, sea_surface_height, currents,
-       salinity_max, ocean_heat_content). Any top-level key present in the
-       document fully replaces the corresponding key from regions.py.
-
-    2. hurricanes.colorbar_configs — narrower, faster-moving colorbar-limit
-       overrides written by the weekly update_colorbar_limits.py cron /
-       colorbar_tuner.py. Applied last so tuned limits always win over the
-       (possibly stale) values baked into a region_configs document:
-         - variables.temperature, variables.salinity  — replace full depth list
-         - sea_surface_height                          — replace full depth list
-         - ocean_heat_content.limits                   — replace limits only
-         - salinity_max.limits                         — replace limits only
-         - currents.limits                             — replace limits only
-                                                         (bool/coarsen/kwargs kept)
-
-    Returns region_dict unchanged if MongoDB has no documents for this region.
+    Any top-level key present in the document fully replaces the corresponding
+    key from regions.py. Returns region_dict unchanged if MongoDB has no
+    document for this region.
     """
     region_dict = copy.deepcopy(region_dict)
 
@@ -129,59 +102,6 @@ def apply_colorbar_overrides(region_name, region_dict):
                 continue
             region_dict[key] = value
             logger.debug(f"[{region_name}] overriding {key} from MongoDB region_configs")
-
-    doc = fetch_colorbar_config(region_name)
-    if doc is None:
-        return region_dict
-
-    # variables (temperature / salinity depth lists)
-    if "variables" in doc:
-        for var_key, var_list in doc["variables"].items():
-            if "variables" not in region_dict:
-                region_dict["variables"] = {}
-            region_dict["variables"][var_key] = var_list
-            logger.debug(f"[{region_name}] overriding variables.{var_key} from MongoDB")
-
-    # sea_surface_height depth list
-    if "sea_surface_height" in doc:
-        region_dict["sea_surface_height"] = doc["sea_surface_height"]
-        logger.debug(f"[{region_name}] overriding sea_surface_height from MongoDB")
-
-    # ocean_heat_content — only the limits sub-key
-    if "ocean_heat_content" in doc:
-        db_ohc = doc["ocean_heat_content"]
-        if "limits" in db_ohc:
-            if not isinstance(region_dict.get("ocean_heat_content"), dict):
-                region_dict["ocean_heat_content"] = {}
-            region_dict["ocean_heat_content"]["limits"] = db_ohc["limits"]
-            logger.debug(
-                f"[{region_name}] overriding ocean_heat_content.limits from MongoDB"
-            )
-
-    # salinity_max — only the limits sub-key
-    if "salinity_max" in doc:
-        db_sm = doc["salinity_max"]
-        if "limits" in db_sm:
-            if not isinstance(region_dict.get("salinity_max"), dict):
-                region_dict["salinity_max"] = {}
-            region_dict["salinity_max"]["limits"] = db_sm["limits"]
-            logger.debug(f"[{region_name}] overriding salinity_max.limits from MongoDB")
-
-    # currents — only limits / limits_by_depth; leave bool/depths/coarsen/kwargs intact
-    if "currents" in doc:
-        db_cur = doc["currents"]
-        if isinstance(region_dict.get("currents"), dict):
-            if "limits" in db_cur:
-                region_dict["currents"]["limits"] = db_cur["limits"]
-                logger.debug(f"[{region_name}] overriding currents.limits from MongoDB")
-            if "limits_by_depth" in db_cur:
-                # Merge rather than replace, so a colorbar_configs edit for one
-                # depth doesn't drop overrides for other depths set elsewhere
-                # (e.g. in a hurricanes.region_configs document).
-                merged = dict(region_dict["currents"].get("limits_by_depth") or {})
-                merged.update(db_cur["limits_by_depth"])
-                region_dict["currents"]["limits_by_depth"] = merged
-                logger.debug(f"[{region_name}] overriding currents.limits_by_depth from MongoDB")
 
     return region_dict
 
