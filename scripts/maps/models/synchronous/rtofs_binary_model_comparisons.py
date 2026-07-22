@@ -48,12 +48,21 @@ from ioos_model_comparisons.plotting import (
     plot_sst,
 )
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import (
+    apply_colorbar_overrides,
+    ensure_plot_index,
+    fetch_completed_plot_keys,
+    log_plots,
+    needs_replot,
+)
 from cool_maps.plot import get_bathymetry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 path_save = conf.path_plots / "maps"
+
+SCRIPT_ID = "rtofs_binary"
 
 # Model selection
 plot_espc = True
@@ -232,6 +241,60 @@ def process_sst_data(sst_data, extent, ctime):
         return None
 
 
+def _mc_records(region, ts_dt, m2):
+    return [
+        {"region": region["name"], "timestamp": ts_dt, "plot_type": "model_comparison",
+         "variable": k, "depth": de["depth"], "model1": "rtofs", "model2": m2}
+        for k, dl in region["variables"].items() for de in dl
+    ]
+
+
+def _sp_records(region, ts_dt, m2):
+    return [
+        {"region": region["name"], "timestamp": ts_dt, "plot_type": "streamplot",
+         "variable": "currents", "depth": depth, "model1": "rtofs", "model2": m2}
+        for depth in region["currents"]["depths"]
+    ]
+
+
+def _sst_record(region, ts_dt, satellite_tag):
+    return {"region": region["name"], "timestamp": ts_dt, "plot_type": "sst",
+            "variable": "temperature", "depth": 0, "model1": "rtofs", "model2": satellite_tag}
+
+
+def _expected_plot_keys(ctime, region, has_sst16, has_sst19) -> set:
+    """Return the set of (region, iso_ts, plot_type, variable, depth, m1, m2) tuples
+    expected for this (ctime, region) — no I/O. Mirrors the plot calls in main()
+    so the pre-check can decide whether a file is worth (re)processing."""
+    t      = pd.to_datetime(ctime)
+    tstr_k = t.strftime("%Y-%m-%dT%H%M%SZ")
+    rname  = region["name"]
+    keys   = set()
+
+    model_pairs = []
+    if plot_espc:
+        model_pairs.append("espc")
+    if plot_cmems:
+        model_pairs.append("cmems")
+    if plot_amseas:
+        model_pairs.append("amseas")
+
+    for m2 in model_pairs:
+        for k, depth_list in region["variables"].items():
+            for depth_entry in depth_list:
+                keys.add((rname, tstr_k, "model_comparison", k, depth_entry["depth"], "rtofs", m2))
+
+    if region.get("currents", {}).get("bool"):
+        for m2 in model_pairs:
+            for depth in region["currents"]["depths"]:
+                keys.add((rname, tstr_k, "streamplot", "currents", depth, "rtofs", m2))
+
+    for sat in (["GOES16"] if has_sst16 else []) + (["GOES19"] if has_sst19 else []):
+        keys.add((rname, tstr_k, "sst", "temperature", 0, "rtofs", sat))
+
+    return keys
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Compare RTOFS binary NetCDFs against other models",
@@ -353,10 +416,16 @@ def main():
     else:
         logger.info("No time range specified — using latest available day.")
 
+    has_argo    = isinstance(argo_data,   pd.DataFrame) and not argo_data.empty
+    has_gliders = isinstance(glider_data, pd.DataFrame) and not glider_data.empty
+
+    ensure_plot_index()
+
     total_plots = 0
 
     for region_name in args.regions:
         region = region_config(region_name)
+        region = apply_colorbar_overrides(region_name, region)
         extent = region["extent"]
         extended = np.add(extent, [-1, 1, -1, 1]).tolist()
         lon360 = lon180to360(extended[:2])
@@ -391,8 +460,31 @@ def main():
             region = {**region, "variables": filtered}
             logger.info("Variable filter applied: %s", filtered)
 
+        # ── Pre-check: skip files whose expected plots are already logged ────
+        file_ctimes = [(f, parse_valid_time(f)) for f in nc_files]
+        done_keys = fetch_completed_plot_keys(SCRIPT_ID, [ct for _, ct in file_ctimes])
+        if done_keys is not None:
+            pending_files = [
+                f for f, ctime in file_ctimes
+                if any(
+                    needs_replot(k, done_keys, has_argo, has_gliders)
+                    for k in _expected_plot_keys(ctime, region, sst_16 is not None, sst_19 is not None)
+                )
+            ]
+            skipped = len(nc_files) - len(pending_files)
+            if skipped:
+                logger.info("Pre-check (MongoDB): %d/%d file(s) for %s already done — skipping.",
+                            skipped, len(nc_files), region_name)
+            nc_files = pending_files
+            if not nc_files:
+                continue
+        else:
+            logger.warning("MongoDB unavailable — processing all found files for %s.", region_name)
+
         for nc_file in nc_files:
             ctime = parse_valid_time(nc_file)
+            ts_dt = pd.to_datetime(ctime).to_pydatetime()
+            pending_logs = []
             logger.info("Processing %s @ %s", region_name, ctime)
 
             rds = load_rtofs_binary(
@@ -449,6 +541,7 @@ def main():
                 try:
                     plot_model_region_comparison(rds, gdt_ts_sub, region, **kw)
                     total_plots += 1
+                    pending_logs.extend(_mc_records(region, ts_dt, "espc"))
                     logger.info("Plotted RTOFS vs ESPC TS for %s @ %s", region_name, ctime)
                 except Exception as e:
                     logger.error("Failed RTOFS vs ESPC TS: %s", e, exc_info=True)
@@ -457,6 +550,7 @@ def main():
                     if gdt_uv_sub is not None:
                         plot_model_region_comparison_streamplot(rds, gdt_uv_sub, region, **kw)
                         total_plots += 1
+                        pending_logs.extend(_sp_records(region, ts_dt, "espc"))
                         logger.info("Plotted RTOFS vs ESPC currents for %s @ %s", region_name, ctime)
                 except Exception as e:
                     logger.error("Failed RTOFS vs ESPC currents: %s", e, exc_info=True)
@@ -466,6 +560,7 @@ def main():
                 try:
                     plot_model_region_comparison(rds, cdt, region, **kw)
                     total_plots += 1
+                    pending_logs.extend(_mc_records(region, ts_dt, "cmems"))
                     logger.info("Plotted RTOFS vs CMEMS TS for %s @ %s", region_name, ctime)
                 except Exception as e:
                     logger.error("Failed RTOFS vs CMEMS TS: %s", e, exc_info=True)
@@ -473,6 +568,7 @@ def main():
                 try:
                     plot_model_region_comparison_streamplot(rds, cdt, region, **kw)
                     total_plots += 1
+                    pending_logs.extend(_sp_records(region, ts_dt, "cmems"))
                     logger.info("Plotted RTOFS vs CMEMS currents for %s @ %s", region_name, ctime)
                 except Exception as e:
                     logger.error("Failed RTOFS vs CMEMS currents: %s", e, exc_info=True)
@@ -483,6 +579,8 @@ def main():
                     plot_model_region_comparison(rds, amt_sub, region, **kw)
                     plot_model_region_comparison_streamplot(rds, amt_sub, region, **kw)
                     total_plots += 2
+                    pending_logs.extend(_mc_records(region, ts_dt, "amseas"))
+                    pending_logs.extend(_sp_records(region, ts_dt, "amseas"))
                     logger.info("Plotted RTOFS vs AMSEAS for %s @ %s", region_name, ctime)
                 except Exception as e:
                     logger.error("Failed RTOFS vs AMSEAS: %s", e, exc_info=True)
@@ -495,6 +593,7 @@ def main():
                     try:
                         plot_sst(rds, sst, region, satellite="GOES-16", **kw_sst)
                         total_plots += 1
+                        pending_logs.append(_sst_record(region, ts_dt, "GOES16"))
                     except Exception as e:
                         logger.error("Failed GOES-16 SST: %s", e)
 
@@ -504,9 +603,11 @@ def main():
                     try:
                         plot_sst(rds, sst, region, satellite="GOES-19", **kw_sst)
                         total_plots += 1
+                        pending_logs.append(_sst_record(region, ts_dt, "GOES19"))
                     except Exception as e:
                         logger.error("Failed GOES-19 SST: %s", e)
 
+            log_plots(SCRIPT_ID, pending_logs, has_argo=has_argo, has_gliders=has_gliders)
             rds.close()
 
     elapsed = time.time() - start_time

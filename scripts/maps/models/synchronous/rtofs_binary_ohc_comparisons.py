@@ -40,12 +40,21 @@ from ioos_model_comparisons.models import CMEMS, espc_ts, espc_ts_archive
 from ioos_model_comparisons.platforms import get_active_gliders, get_argo_floats_by_time
 from ioos_model_comparisons.plotting import plot_ohc
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import (
+    apply_colorbar_overrides,
+    ensure_plot_index,
+    fetch_completed_plot_keys,
+    log_plots,
+    needs_replot,
+)
 from cool_maps.plot import get_bathymetry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 path_save = conf.path_plots / "maps"
+
+SCRIPT_ID = "ohc_binary"
 
 plot_espc = True
 plot_cmems = True
@@ -264,6 +273,37 @@ def get_espc_ts(ctime):
     return _espc_ts_cache[key]
 
 
+def _ohc_record(region, ts_dt, m1, m2):
+    return {"region": region["name"], "timestamp": ts_dt, "plot_type": "ocean_heat_content",
+            "variable": "ohc", "depth": 0, "model1": m1, "model2": m2}
+
+
+def _expected_plot_keys(ctime, region) -> set:
+    """Return the set of (region, iso_ts, plot_type, variable, depth, m1, m2) tuples
+    expected for this (ctime, region) — no I/O.
+
+    OHC produces one plot per model pair per region (no variable/depth breakdown).
+    """
+    if "ocean_heat_content" not in region or region["ocean_heat_content"] is None:
+        return set()
+
+    t      = pd.to_datetime(ctime)
+    tstr_k = t.strftime("%Y-%m-%dT%H%M%SZ")
+    rname  = region["name"]
+    keys   = set()
+
+    model_pairs = []
+    if plot_espc:
+        model_pairs.append(("rtofs", "espc"))
+    if plot_cmems:
+        model_pairs.append(("rtofs", "cmems"))
+
+    for m1, m2 in model_pairs:
+        keys.add((rname, tstr_k, "ocean_heat_content", "ohc", 0, m1, m2))
+
+    return keys
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Compare OHC from RTOFS binary NetCDFs against other models",
@@ -340,7 +380,7 @@ def main():
             logger.error("Failed to initialize CMEMS: %s", e)
 
     # Platform data
-    region_configs = {r: region_config(r) for r in args.regions}
+    region_configs = {r: apply_colorbar_overrides(r, region_config(r)) for r in args.regions}
     extents = [rc["extent"] for rc in region_configs.values()]
     extent_df = pd.DataFrame(extents, columns=["lonmin", "lonmax", "latmin", "latmax"])
     global_extent = [
@@ -389,6 +429,11 @@ def main():
     else:
         logger.info("No time range specified — using latest available day.")
 
+    has_argo    = isinstance(argo_data,   pd.DataFrame) and not argo_data.empty
+    has_gliders = isinstance(glider_data, pd.DataFrame) and not glider_data.empty
+
+    ensure_plot_index()
+
     total_plots = 0
     errors = 0
 
@@ -409,8 +454,31 @@ def main():
 
         logger.info("Found %d files for %s", len(nc_files), region_name)
 
+        # ── Pre-check: skip files whose expected plots are already logged ────
+        file_ctimes = [(f, parse_valid_time(f)) for f in nc_files]
+        done_keys = fetch_completed_plot_keys(SCRIPT_ID, [ct for _, ct in file_ctimes])
+        if done_keys is not None:
+            pending_files = [
+                f for f, ctime in file_ctimes
+                if any(
+                    needs_replot(k, done_keys, has_argo, has_gliders)
+                    for k in _expected_plot_keys(ctime, rc)
+                )
+            ]
+            skipped = len(nc_files) - len(pending_files)
+            if skipped:
+                logger.info("Pre-check (MongoDB): %d/%d file(s) for %s already done — skipping.",
+                            skipped, len(nc_files), region_name)
+            nc_files = pending_files
+            if not nc_files:
+                continue
+        else:
+            logger.warning("MongoDB unavailable — processing all found files for %s.", region_name)
+
         for nc_file in nc_files:
             ctime = parse_valid_time(nc_file)
+            ts_dt = pd.to_datetime(ctime).to_pydatetime()
+            pending_logs = []
             logger.info("Processing OHC for %s @ %s", region_name, ctime)
             _storms, _forecasts = _get_storms_for_time(ctime, extent)
 
@@ -470,6 +538,7 @@ def main():
                     plot_ohc(rds, gds_slice, extent, rc["name"],
                              storms=_storms, forecasts=_forecasts, **kw)
                     total_plots += 1
+                    pending_logs.append(_ohc_record(rc, ts_dt, "rtofs", "espc"))
                     logger.info("Plotted RTOFS vs ESPC OHC for %s @ %s", region_name, ctime)
                 except Exception as e:
                     logger.error("Failed RTOFS vs ESPC OHC: %s", e, exc_info=True)
@@ -486,11 +555,13 @@ def main():
                         plot_ohc(rds, cds_sub, extent, rc["name"],
                                  storms=_storms, forecasts=_forecasts, **kw)
                         total_plots += 1
+                        pending_logs.append(_ohc_record(rc, ts_dt, "rtofs", "cmems"))
                         logger.info("Plotted RTOFS vs CMEMS OHC for %s @ %s", region_name, ctime)
                 except Exception as e:
                     logger.error("Failed RTOFS vs CMEMS OHC: %s", e, exc_info=True)
                     errors += 1
 
+            log_plots(SCRIPT_ID, pending_logs, has_argo=has_argo, has_gliders=has_gliders)
             rds.close()
 
     elapsed = time.time() - start_time
