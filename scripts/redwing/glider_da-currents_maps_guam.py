@@ -156,7 +156,9 @@ def load_rtofs_binary_file(nc_path: Path) -> xr.Dataset:
         "z": "depth",
     })
     ds = ds.assign_coords(time=valid_time)
-    ds = ds.set_coords(["u", "v"])
+    # NOTE: keep u/v as data variables (not coords via set_coords) — compute_depth_avg_currents()
+    # reduces over the depth dimension with .mean(), which silently drops any coordinate
+    # variable that depends on the reduced dim.
     ds.attrs["model"] = "RTOFS"
     ds["u"].attrs["units"] = "m/s"
     ds["v"].attrs["units"] = "m/s"
@@ -302,6 +304,11 @@ def compute_depth_avg_currents(
     ds_interp = ds_trimmed.interp({depth_dim: target_depths})
 
     depth_avg = ds_interp.mean(dim=depth_dim, skipna=True)
+    if "u" not in depth_avg.data_vars or "v" not in depth_avg.data_vars:
+        # .mean() silently drops non-index coordinate variables that depend on the
+        # reduced dim, so if u/v were ever marked as coords upstream they vanish here.
+        logger.warning("Depth-average skipped: 'u'/'v' lost during depth reduction.")
+        return None
     depth_avg.attrs = dict(ds.attrs)
     depth_avg.attrs["depth_average"] = {
         "min": float(start_depth),
