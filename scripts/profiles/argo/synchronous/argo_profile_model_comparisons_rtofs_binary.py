@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Argo profile vs model comparisons for Pacific regions (Fiji, Guam).
+Argo profile vs model comparisons for Pacific regions (Fiji, Guam, Hawaii).
 
 ESPC + CMEMS + RTOFS binary — where pre-processed RTOFS regional NetCDFs exist.
 
@@ -17,6 +17,12 @@ Fiji notes
 Guam notes
 ----------
 - Region extent: [129.75, 160.25, 4.75, 25.25] — all positive lons, no special handling
+
+Hawaii notes
+------------
+- Region extent: [-167, -138, 10, 27] — standard -180/180 lons, no special handling
+- Fetched with its own Argo API call since it's geographically disjoint from
+  Fiji/Guam; combining it into a single bbox would span nearly the whole globe
 """
 import datetime as dt
 import json
@@ -53,7 +59,7 @@ from ioos_model_comparisons.regions import region_config
 save_dir = conf.path_plots / 'profiles' / 'argo'
 
 # RTOFS binary pre-processed NetCDF directory (created by grab_rtofs_archv_aws.py)
-RTOFS_DATA_DIR = Path("/home/hurricaneadm/data/rtofs_archv")
+RTOFS_DATA_DIR = Path("/Volumes/home/hurricaneadm/data/rtofs_archv")
 
 # Max age difference between an Argo profile and the nearest RTOFS file (hours)
 RTOFS_MAX_HOURS = 12
@@ -67,7 +73,7 @@ plot_espc = True
 plot_cmems = True
 plot_rtofs = True
 
-float_id = None   # Set to a WMO number to plot only that float
+float_id = [2902818]  # Set to a WMO number or list of WMO numbers to plot only those float(s); None to plot all
 sal_xlim = None   # Set to None to auto-scale salinity axis
 temp_xlim = None  # Set to None to auto-scale temperature axis
 density_xlim = None  # Set to None to auto-scale density axis
@@ -82,7 +88,7 @@ REGION_MAP_PROJECTION = {
 
 DATA_PROJECTION = ccrs.PlateCarree()
 
-conf.regions = ['guam', 'fiji']
+conf.regions = ['guam', 'hawaii']
 
 # ── Date range ──────────────────────────────────────────────────────────────
 
@@ -111,8 +117,11 @@ QC_FLAGGED_HANDLE = Line2D(
 )
 
 # ── Global argo fetch extent (covers Fiji platform zone + Guam) ─────────────
+# Hawaii is fetched separately below since it's geographically disjoint from
+# the Fiji/Guam bbox — merging it in would span nearly the whole globe.
 
 guam_extent = region_config('guam')['extent']
+hawaii_extent = region_config('hawaii')['extent']
 global_extent = [
     min(FIJI_PLATFORM_EXTENT[0], guam_extent[0]),
     max(FIJI_PLATFORM_EXTENT[1], guam_extent[1]),
@@ -144,6 +153,17 @@ floats = get_argo_floats_by_time(
     variables=vars,
     include_qc=True,
 )
+
+if 'hawaii' in conf.regions:
+    hawaii_floats = get_argo_floats_by_time(
+        hawaii_extent,
+        date_start,
+        date_end,
+        variables=vars,
+        include_qc=True,
+    )
+    floats = pd.concat([floats, hawaii_floats])
+
 floats['depth'] = -z_from_p(floats['pres (decibar)'], floats['lat'])
 floats = floats[floats['depth'] <= depth]
 
@@ -484,10 +504,42 @@ def process_argo(region_key):
                     dens_arrays.append(rec[key]['density'].values)
         return _bounds(temp_arrays, .5), _bounds(sal_arrays, .25), _bounds(dens_arrays, .5)
 
+    def _merge_bounds(a, b):
+        if a is None:
+            return b
+        if b is None:
+            return a
+        return (min(a[0], b[0]), max(a[1], b[1]))
+
+    # Per-float axis limits are persisted across runs so that every profile
+    # plotted for a given float -- not just the ones rendered in the same
+    # batch -- shares the same temperature/salinity/density axes. Limits are
+    # still data-driven (best fit via _wmo_limits): each run only ever widens
+    # the stored range, never shrinks it.
+    axis_limits_file = temp_save_dir / 'axis_limits.json'
+    stored_limits = {}
+    if axis_limits_file.exists():
+        try:
+            with open(axis_limits_file, 'r') as f:
+                stored_limits = json.load(f)
+        except Exception as e:
+            print(f"Error loading axis_limits.json: {e}")
+
     # Pass 2: render one figure per surfacing, using per-float shared limits
     # (unless the module-level *_xlim overrides are set).
     for wmo, records in records_by_wmo.items():
         wmo_tlim, wmo_slim, wmo_dlim = _wmo_limits(records)
+
+        prev = stored_limits.get(str(wmo), {})
+        wmo_tlim = _merge_bounds(wmo_tlim, tuple(prev['temp']) if prev.get('temp') else None)
+        wmo_slim = _merge_bounds(wmo_slim, tuple(prev['sal']) if prev.get('sal') else None)
+        wmo_dlim = _merge_bounds(wmo_dlim, tuple(prev['density']) if prev.get('density') else None)
+
+        stored_limits[str(wmo)] = {
+            'temp': list(wmo_tlim) if wmo_tlim else None,
+            'sal': list(wmo_slim) if wmo_slim else None,
+            'density': list(wmo_dlim) if wmo_dlim else None,
+        }
 
         for rec in records:
             ctime = rec['ctime']
@@ -637,6 +689,13 @@ def process_argo(region_key):
                         json.dump(locations, f)
                 except Exception as e:
                     print(f"Error saving locations.json: {e}")
+
+    if records_by_wmo:
+        try:
+            with open(axis_limits_file, 'w') as f:
+                json.dump(stored_limits, f)
+        except Exception as e:
+            print(f"Error saving axis_limits.json: {e}")
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
