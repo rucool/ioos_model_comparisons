@@ -1,0 +1,1570 @@
+import datetime as dt
+import re
+import time
+import logging
+from pathlib import Path
+from typing import Optional, Dict, Tuple
+from functools import lru_cache
+from urllib.parse import urlencode
+
+import numpy as np
+import pandas as pd
+import xarray as xr
+import cartopy.crs as ccrs
+import shutil
+import cmocean
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
+from matplotlib.legend_handler import HandlerBase
+from matplotlib.lines import Line2D
+from cool_maps.plot import create, add_bathymetry
+import cartopy.mpl.ticker as cticker
+from oceans.ocfis import uv2spdir
+import cartopy.feature as cfeature
+import requests
+
+try:
+    import geopandas as gpd
+except ImportError:
+    gpd = None
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+CONFIG = {
+    'paths': {
+        # 'save_path': '/Users/mikesmith/Documents/gliders/depth-average/',   # local dev
+        # 'eez_path': '/Users/mikesmith/Downloads/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp'
+        'save_path': '/web/www/rucool_static/www/gliders/depth-average',
+        'eez_path': '/home/hurricaneadm/data/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp',
+        # RTOFS OPeNDAP does not cover Guam; use the pre-processed binary NetCDFs
+        # produced by scripts/maps/models/synchronous/rtofs_binary_model_comparisons.py instead.
+        'rtofs_binary_dir': '/home/hurricaneadm/data/rtofs_archv',
+        # 'rtofs_binary_dir': str(Path.home() / 'Downloads' / 'rtofs_global'),  # local dev
+    },
+    'models': {
+        'plot_model_data': True,
+        'plot_rtofs': True,
+        'plot_espc': True,
+        'plot_cmems': True,
+    },
+    'glider': {
+        # Single-glider fallback (used when RUN_ALL_ACTIVE_GLIDERS = False)
+        'name': "",
+        'deployments_url': "https://marine.rutgers.edu/cool/data/gliders/api/deployments/",
+        'api_url': "https://marine.rutgers.edu/cool/data/gliders/api/surfacings/",
+        'api_timeout': 30,
+    },
+    'currents': {
+        'enabled': True,
+        'limits': [0, 120, 10],
+        'limits_depth_avg': [0, 40, 5],
+        'auto_colorbar': False,
+        'streamplot': {
+            'density': 3,
+            'linewidth': 0.5,
+            'color': 'black',
+        }
+    },
+    'depth_average': {
+        'min_depth': 0,
+        'max_depth': 1000,
+        'depth_step': 1,
+    },
+    'plotting': {
+        'figsize': (12, 8.5),
+        'dpi': 300,
+        'glider_track_linewidth': 4,
+        'glider_marker_size': 10,
+        'waypoint_marker_size': 6,
+        'show_waypoint': False,
+    },
+    'zoom': {
+        'enabled': True,
+        'figsize': (14, 8),
+        'buffer_deg': 2.0,     # padding added around the track bounding box
+        'min_span_deg': 4.0,   # minimum width/height of the zoom window
+        'track_days': 14,      # how many days of recent track to include
+    },
+    'bathymetry': {
+        'enabled': False,
+        'contour_levels': (-1000, -100),
+        'filled_levels': [-8000, -1000, -100, 0],
+        'filled_colors': ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue'],
+    }
+}
+
+# Run for all active gliders (True) or just CONFIG['glider']['name'] (False)
+RUN_ALL_ACTIVE_GLIDERS = True
+
+# Skip a glider whose most recent surfacing is older than this many hours
+STALE_SURFACING_HOURS = 48
+
+# Guam domain [lon_min, lon_max, lat_min, lat_max] — matches
+# ioos_model_comparisons.regions.region_config('guam'). Only active gliders
+# whose latest position falls inside this box are processed, since the RTOFS
+# binary files only cover this local domain (see load_rtofs() below).
+REGION_NAME = "Guam"
+GUAM_EXTENT = [129.75, 160.25, 4.75, 25.25]
+
+# RTOFS binary files are named rtofs_glo_YYYYMMDDTHH_{region}.nc
+RTOFS_BINARY_REGION = "guam"
+
+# Per-glider overrides: force a specific zoom instead of auto-computing from the track.
+# zoom keys: lon_min, lon_max (fixed), lat_buffer, padding (applied around current lat).
+GLIDER_OVERRIDES = {}
+
+# Projections
+MAP_PROJECTION = ccrs.Mercator()
+DATA_PROJECTION = ccrs.PlateCarree()
+
+
+# ============================================================================
+# CUSTOM LEGEND HANDLER FOR TARGET MARKER
+# ============================================================================
+
+class TargetHandler(HandlerBase):
+    def create_artists(self, legend, orig_handle, xdescent, ydescent, width, height, fontsize, trans):
+        x_center = width / 2.0
+        y_center = height / 2.0
+        artists = []
+        for handle in orig_handle:
+            marker = Line2D([x_center], [y_center],
+                          marker=handle.get_marker(),
+                          markersize=handle.get_markersize(),
+                          markerfacecolor=handle.get_markerfacecolor(),
+                          markeredgecolor=handle.get_markeredgecolor(),
+                          markeredgewidth=handle.get_markeredgewidth(),
+                          transform=trans)
+            artists.append(marker)
+        return artists
+
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+def lon180to360(array: np.ndarray) -> np.ndarray:
+    array = np.array(array)
+    return np.mod(array, 360)
+
+
+def lon360to180(array: np.ndarray) -> np.ndarray:
+    array = np.array(array)
+    return np.mod(array + 180, 360) - 180
+
+
+def ddmm_to_degrees(val) -> float:
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return np.nan
+    val_float = float(val)
+    sign = -1 if val_float < 0 else 1
+    v = abs(val_float)
+    degrees = int(v // 100)
+    minutes = v - 100 * degrees
+    return sign * (degrees + minutes / 60.0)
+
+
+def expand_extent(extent: list, buffer: float = 1.0) -> list:
+    return np.add(extent, [-buffer, buffer, -buffer, buffer]).tolist()
+
+
+def compute_zoom_extent(
+    gliders: pd.DataFrame,
+    track_days: float = 14,
+    buffer: float = 2.0,
+    min_span: float = 4.0,
+) -> list:
+    """Compute a zoom extent from the recent portion of the glider track.
+
+    Returns [lon_min, lon_max, lat_min, lat_max].
+    """
+    cutoff = pd.Timestamp.utcnow().tz_localize(None) - pd.Timedelta(days=track_days)
+    recent = gliders[gliders.index >= cutoff]
+    if recent.empty:
+        recent = gliders
+
+    lat_min, lat_max = float(recent['latitude'].min()), float(recent['latitude'].max())
+    lon_min, lon_max = float(recent['longitude'].min()), float(recent['longitude'].max())
+
+    if lat_max - lat_min < min_span:
+        c = (lat_min + lat_max) / 2
+        lat_min, lat_max = c - min_span / 2, c + min_span / 2
+    if lon_max - lon_min < min_span:
+        c = (lon_min + lon_max) / 2
+        lon_min, lon_max = c - min_span / 2, c + min_span / 2
+
+    return [
+        round(lon_min - buffer, 2),
+        round(lon_max + buffer, 2),
+        round(lat_min - buffer, 2),
+        round(lat_max + buffer, 2),
+    ]
+
+
+# ============================================================================
+# DATA LOADING FUNCTIONS
+# ============================================================================
+
+def discover_active_gliders_from_api(
+    deployments_url: str,
+    timeout: int = 30,
+) -> Dict[str, str]:
+    """Return {glider_name: deployment_name} for all currently active deployments.
+
+    Queries the COOL deployments API, filters for non-completed records,
+    and returns the most recent deployment per glider platform.
+    Falls back to all records + staleness check if no explicit active flag found.
+    """
+    try:
+        response = requests.get(deployments_url, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        logger.error("Failed to fetch deployments from %s: %s", deployments_url, exc)
+        return {}
+
+    records = payload.get("data", payload) if isinstance(payload, dict) else payload
+
+    active = [
+        r for r in records
+        if not r.get("completed", False) and not r.get("end_date_epoch")
+    ]
+    if not active:
+        logger.warning(
+            "No explicitly active deployments found; using all records "
+            "and relying on staleness check to filter."
+        )
+        active = records
+
+    by_glider: Dict[str, dict] = {}
+    for r in active:
+        name = r.get("glider_name", "").lower()
+        if not name:
+            continue
+        existing = by_glider.get(name)
+        if existing is None or (r.get("start_date_epoch") or 0) > (existing.get("start_date_epoch") or 0):
+            by_glider[name] = r
+
+    result = {
+        name: rec["deployment_name"]
+        for name, rec in by_glider.items()
+        if rec.get("deployment_name")
+    }
+    logger.info("Discovered %d active gliders: %s", len(result), list(result.keys()))
+    return result
+
+
+def resolve_latest_deployment(
+    glider_name: str,
+    deployments_url: str,
+    timeout: int = 30
+) -> str:
+    """
+    Query the COOL glider deployments API and return the deployment_name of the
+    most recent deployment for the given glider platform.
+
+    Parameters
+    ----------
+    glider_name : str
+        Glider platform name (e.g. 'ru29')
+    deployments_url : str
+        URL for the deployments API endpoint
+    timeout : int, optional
+        Request timeout in seconds
+
+    Returns
+    -------
+    str
+        Most recent deployment name (e.g. 'ru29-20260623T2102')
+    """
+    try:
+        response = requests.get(deployments_url, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Failed to fetch deployments from {deployments_url}: {exc}")
+
+    records = payload.get("data", payload) if isinstance(payload, dict) else payload
+    matches = [
+        r for r in records
+        if r.get("glider_name", "").lower() == glider_name.lower()
+    ]
+
+    if not matches:
+        raise ValueError(f"No deployments found for glider '{glider_name}'")
+
+    latest = max(matches, key=lambda r: r.get("start_date_epoch") or 0)
+    deployment_name = latest["deployment_name"]
+    logger.info(f"Resolved latest deployment for '{glider_name}': {deployment_name}")
+    return deployment_name
+
+def fetch_glider_surfacings(
+    deployment_id: str,
+    base_url: str,
+    timeout: int = 30
+) -> Tuple[pd.DataFrame, Optional[Dict]]:
+    params = {"deployment": deployment_id}
+    try:
+        response = requests.get(base_url, params=params, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        logger.error(f"Unable to retrieve glider surfacings: {exc}")
+        return pd.DataFrame(columns=["latitude", "longitude"]), None
+
+    records = payload["data"] if isinstance(payload, dict) and "data" in payload else payload
+    if not records:
+        logger.warning("No glider surfacings returned from API.")
+        return pd.DataFrame(columns=["latitude", "longitude"]), None
+
+    df = pd.json_normalize(records)
+    df["gps_time"] = pd.to_datetime(df.get("gps_timestamp_epoch"), unit="s", utc=True, errors="coerce")
+
+    if "gps_lat_degrees" in df.columns:
+        lat = pd.to_numeric(df["gps_lat_degrees"], errors="coerce")
+    else:
+        lat_raw = df.get("gps_lat")
+        lat = lat_raw.map(ddmm_to_degrees) if lat_raw is not None else np.nan
+    df["latitude"] = lat
+
+    if "gps_lon_degrees" in df.columns:
+        lon = pd.to_numeric(df["gps_lon_degrees"], errors="coerce")
+    else:
+        lon_raw = df.get("gps_lon")
+        lon = lon_raw.map(ddmm_to_degrees) if lon_raw is not None else np.nan
+    df["longitude"] = lon
+
+    df = df.dropna(subset=["gps_time", "latitude", "longitude"])
+    if df.empty:
+        logger.warning("Glider API response contained no usable position records.")
+        return pd.DataFrame(columns=["latitude", "longitude"]), None
+
+    df["gps_time"] = df["gps_time"].dt.tz_convert(None)
+    df = df.sort_values("gps_time").set_index("gps_time")
+    df.index.name = "time"
+
+    waypoint_info = None
+    waypoint_cols = ["waypoint_lat", "waypoint_lon", "waypoint_bearing_degrees", "waypoint_range_meters"]
+
+    if all(col in df.columns for col in waypoint_cols):
+        for idx in df.index[::-1]:
+            row = df.loc[idx]
+            all_valid = True
+            for col in waypoint_cols:
+                val = row[col]
+                if hasattr(val, '__iter__') and not isinstance(val, str):
+                    all_valid = False
+                    break
+                if pd.isna(val) or val == '' or val is None:
+                    all_valid = False
+                    break
+
+            if all_valid:
+                wp_lat_raw = row["waypoint_lat"]
+                wp_lon_raw = row["waypoint_lon"]
+                try:
+                    if isinstance(wp_lat_raw, str) or (isinstance(wp_lat_raw, float) and abs(wp_lat_raw) > 90):
+                        wp_lat = ddmm_to_degrees(wp_lat_raw)
+                    else:
+                        wp_lat = float(wp_lat_raw)
+                    if isinstance(wp_lon_raw, str) or (isinstance(wp_lon_raw, float) and abs(wp_lon_raw) > 180):
+                        wp_lon = ddmm_to_degrees(wp_lon_raw)
+                    else:
+                        wp_lon = float(wp_lon_raw)
+
+                    waypoint_info = {
+                        'latitude': wp_lat,
+                        'longitude': wp_lon,
+                        'bearing': float(row["waypoint_bearing_degrees"]),
+                        'range': float(row["waypoint_range_meters"]),
+                        'time': idx
+                    }
+                    logger.info(f"Found waypoint: lat={wp_lat:.4f}, lon={wp_lon:.4f}, "
+                               f"bearing={waypoint_info['bearing']:.1f}, "
+                               f"range={waypoint_info['range']:.0f}m")
+                    break
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Failed to parse waypoint at {idx}: {e}")
+                    continue
+
+    if waypoint_info is None:
+        logger.info("No waypoint data found in surfacings")
+
+    keep_cols = ["latitude", "longitude"]
+    da_u_candidates = ['m_water_vx', 'depth_avg_curr_east', 'da_u_est']
+    da_v_candidates = ['m_water_vy', 'depth_avg_curr_north', 'da_v_est']
+    da_u_col = next((c for c in da_u_candidates if c in df.columns), None)
+    da_v_col = next((c for c in da_v_candidates if c in df.columns), None)
+    if da_u_col:
+        df['da_u'] = pd.to_numeric(df[da_u_col], errors='coerce')
+        keep_cols.append('da_u')
+    if da_v_col:
+        df['da_v'] = pd.to_numeric(df[da_v_col], errors='coerce')
+        keep_cols.append('da_v')
+    if da_u_col and da_v_col:
+        logger.info("DA current columns found: u=%s, v=%s", da_u_col, da_v_col)
+    else:
+        logger.info("DA current columns not found in surfacings API response")
+    return df[keep_cols], waypoint_info
+
+
+def load_bathymetry(extent: list) -> Optional[xr.Dataset]:
+    try:
+        from ioos_model_comparisons.platforms import get_bathymetry
+        ds = get_bathymetry(bbox=extent)
+        logger.info("GEBCO bathymetry loaded successfully")
+        return ds
+    except Exception as exc:
+        logger.warning(f"Failed to load GEBCO bathymetry: {exc}")
+        return None
+
+
+def find_rtofs_binary_files(data_dir: Path) -> list:
+    """Return sorted list of pre-processed RTOFS Guam NetCDFs under data_dir.
+
+    Expects the same directory layout produced by
+    scripts/maps/models/synchronous/rtofs_binary_model_comparisons.py:
+        <data_dir>/YYYY/MM/YYYYMMDD/rtofs_glo_YYYYMMDDTHH_guam.nc
+    """
+    return sorted(Path(data_dir).glob(f"*/*/*/rtofs_glo_*_{RTOFS_BINARY_REGION}.nc"))
+
+
+def parse_rtofs_binary_valid_time(nc_path: Path) -> pd.Timestamp:
+    """Extract valid time from filename like rtofs_glo_20260629T06_guam.nc"""
+    time_part = nc_path.stem.split("_")[2]
+    return pd.Timestamp(dt.datetime.strptime(time_part, "%Y%m%dT%H"))
+
+
+def load_rtofs_binary_file(nc_path: Path) -> xr.Dataset:
+    """Load one pre-processed RTOFS NetCDF and rename variables to match the
+    schema (u/v/depth) used by the rest of this script."""
+    ds = xr.open_dataset(nc_path)
+    valid_time = parse_rtofs_binary_valid_time(nc_path)
+    ds = ds.rename({
+        "temp": "temperature",
+        "salin": "salinity",
+        "u-vel.": "u",
+        "v-vel.": "v",
+        "z": "depth",
+    })
+    ds = ds.assign_coords(time=valid_time)
+    ds = ds.set_coords(["u", "v"])
+    ds.attrs["model"] = "RTOFS"
+    ds["u"].attrs["units"] = "m/s"
+    ds["v"].attrs["units"] = "m/s"
+    return ds
+
+
+def load_rtofs(extent: list, lookback_hours: int = 48) -> Tuple[Optional[xr.Dataset], Optional[Dict]]:
+    """Load pre-processed RTOFS binary NetCDFs for Guam.
+
+    RTOFS OPeNDAP does not cover the Guam domain, so unlike the Atlantic
+    version of this script (which reads ioos_model_comparisons.models.rtofs()),
+    this reads the locally pre-processed z-level files that
+    rtofs_binary_model_comparisons.py produces under CONFIG['paths']['rtofs_binary_dir'].
+    No grid_info is returned (lon/lat are already 1-D coords, not a curvilinear
+    x/y grid), so subset_model_data() falls back to its lon/lat masking path.
+    """
+    data_dir = Path(CONFIG['paths']['rtofs_binary_dir'])
+    try:
+        files = find_rtofs_binary_files(data_dir)
+        if not files:
+            logger.error("No RTOFS binary files found for '%s' under %s", RTOFS_BINARY_REGION, data_dir)
+            return None, None
+
+        cutoff = pd.Timestamp.utcnow().tz_localize(None) - pd.Timedelta(hours=lookback_hours)
+        recent = [f for f in files if parse_rtofs_binary_valid_time(f) >= cutoff]
+        if not recent:
+            recent = files[-1:]
+
+        datasets = [load_rtofs_binary_file(f) for f in recent]
+        rds = xr.concat(datasets, dim="time").sortby("time")
+        rds.attrs["model"] = "RTOFS"
+        logger.info("RTOFS binary data loaded: %d file(s) from %s", len(recent), data_dir)
+        return rds, None
+    except Exception as exc:
+        logger.error(f"Failed to load RTOFS binary data: {exc}")
+        return None, None
+
+
+def load_espc(extent: list, reference_date: dt.datetime) -> Tuple[Optional[xr.Dataset], bool]:
+    now_naive = pd.Timestamp.utcnow().to_pydatetime().replace(tzinfo=None)
+    today_naive = pd.to_datetime(reference_date).to_pydatetime().replace(tzinfo=None)
+    archive_espc = (now_naive - today_naive) > dt.timedelta(days=8)
+
+    try:
+        if archive_espc:
+            from ioos_model_comparisons.models import ESPC as g
+            gobj = g(year=reference_date.year)
+            espc_ds = gobj.get_combined_subset(
+                [extent[0], extent[1]],
+                [extent[2], extent[3]]
+            )
+            logger.info("ESPC archive data loaded successfully")
+            return espc_ds, True
+        else:
+            from ioos_model_comparisons.models import espc_uv
+            espc_u = espc_uv(rename=True)
+            logger.info("ESPC operational data loaded successfully")
+            return espc_u, False
+    except Exception as exc:
+        logger.error(f"ESPC data load failed: {exc}")
+        return None, False
+
+
+def load_cmems(extent: list) -> Optional[xr.Dataset]:
+    try:
+        from ioos_model_comparisons.models import CMEMS as c
+        cobj = c()
+        cds = cobj.get_combined_subset(
+            [extent[0], extent[1]],
+            [extent[2], extent[3]]
+        )
+        logger.info("CMEMS data loaded successfully")
+        return cds
+    except Exception as exc:
+        logger.error(f"Failed to load CMEMS data: {exc}")
+        return None
+
+
+# ============================================================================
+# CURRENT PROCESSING FUNCTIONS
+# ============================================================================
+
+def compute_depth_avg_currents(
+    ds: xr.Dataset,
+    min_depth: float = 0,
+    max_depth: float = 1000,
+    depth_step: float = 1,
+    depth_dim_hint: str = "depth",
+) -> Optional[xr.Dataset]:
+    if ds is None:
+        return None
+    if not isinstance(ds, xr.Dataset):
+        logger.warning("Depth-average skipped: dataset expected.")
+        return None
+    missing = [var for var in ("u", "v") if var not in ds]
+    if missing:
+        logger.warning(f"Depth-average skipped: missing variables {missing}.")
+        return None
+
+    candidate_dims = [depth_dim_hint, "depth", "Depth", "depthu", "depthv", "z", "lev", "level"]
+    depth_dim = None
+    for cand in candidate_dims:
+        if cand in ds["u"].dims:
+            depth_dim = cand
+            break
+    if depth_dim is None:
+        for cand in candidate_dims:
+            if cand in ds["v"].dims:
+                depth_dim = cand
+                break
+    if depth_dim is None:
+        logger.warning("Depth-average skipped: unable to determine depth dimension.")
+        return None
+    if depth_dim not in ds.coords:
+        logger.warning(f"Depth-average skipped: coordinate '{depth_dim}' missing from dataset.")
+        return None
+
+    ds_uv = ds[["u", "v"]]
+    depth_coord = ds_uv.coords.get(depth_dim)
+    if depth_coord is None:
+        logger.warning(f"Depth-average skipped: coordinate '{depth_dim}' missing from dataset.")
+        return None
+
+    depth_values = depth_coord.astype(float)
+    finite_depths = depth_values.where(np.isfinite(depth_values), drop=True)
+    if finite_depths.size == 0:
+        logger.warning("Depth-average skipped: no finite depth values found.")
+        return None
+
+    raw_depths = np.asarray(finite_depths.values)
+    if raw_depths.ndim == 0:
+        raw_depths = np.array([float(raw_depths)])
+
+    if np.all(raw_depths <= 0):
+        positive_depths = np.abs(raw_depths)
+        ds_uv = ds_uv.assign_coords({depth_dim: positive_depths})
+        finite_depths = xr.DataArray(
+            positive_depths,
+            coords={depth_dim: positive_depths},
+            dims=depth_dim,
+        )
+    else:
+        positive_depths = raw_depths
+
+    start_depth = max(min_depth, float(np.nanmin(positive_depths)))
+    end_depth = min(max_depth, float(np.nanmax(positive_depths)))
+    if end_depth <= start_depth:
+        logger.warning("Depth-average skipped: depth range outside available data.")
+        return None
+
+    target_depths = np.arange(start_depth, end_depth + depth_step, depth_step)
+    if target_depths.size == 0:
+        logger.warning("Depth-average skipped: no target depths generated.")
+        return None
+
+    ds_uv = ds_uv.sortby(depth_dim)
+    ds_trimmed = ds_uv.sel({depth_dim: slice(start_depth, end_depth)})
+    ds_interp = ds_trimmed.interp({depth_dim: target_depths})
+
+    depth_avg = ds_interp.mean(dim=depth_dim, skipna=True)
+    depth_avg.attrs = dict(ds.attrs)
+    depth_avg.attrs["depth_average"] = {
+        "min": float(start_depth),
+        "max": float(end_depth),
+        "step": float(depth_step),
+    }
+    depth_avg.attrs["product"] = "Depth-averaged currents"
+    for var in ("u", "v"):
+        original_attrs = getattr(ds[var], "attrs", None) or {}
+        depth_avg[var].attrs = dict(original_attrs)
+        depth_avg[var].attrs["vertical_aggregation"] = (
+            f"mean {start_depth}-{end_depth} m"
+        )
+
+    return depth_avg
+
+
+def currents_to_cm_per_s(ds: Optional[xr.Dataset]) -> Optional[xr.Dataset]:
+    if ds is None or not isinstance(ds, xr.Dataset):
+        return ds
+
+    scaled = ds.copy()
+    for comp in ("u", "v"):
+        if comp in scaled:
+            scaled[comp] = scaled[comp] * 100
+            attrs = dict(getattr(ds[comp], "attrs", {}))
+            attrs["units"] = "cm/s"
+            scaled[comp].attrs = attrs
+
+    scaled.attrs = dict(getattr(ds, "attrs", {}))
+    scaled.attrs["velocity_units"] = "cm/s"
+    return scaled
+
+
+def regrid_curvilinear(ds: Optional[xr.Dataset], resolution: float = 0.25) -> Optional[xr.Dataset]:
+    if ds is None:
+        return ds
+    lon = ds['lon'].values
+    lat = ds['lat'].values
+    if lon.ndim == 1:
+        return ds
+
+    from scipy.interpolate import griddata
+
+    lon_reg = np.arange(float(np.nanmin(lon)), float(np.nanmax(lon)) + resolution, resolution)
+    lat_reg = np.arange(float(np.nanmin(lat)), float(np.nanmax(lat)) + resolution, resolution)
+    lon_grid, lat_grid = np.meshgrid(lon_reg, lat_reg)
+    src_pts = np.column_stack([lon.ravel(), lat.ravel()])
+
+    new_vars = {}
+    for var in ds.data_vars:
+        vals = ds[var].values
+        if vals.ndim != 2:
+            continue
+        flat = vals.ravel()
+        mask = np.isfinite(flat) & np.isfinite(src_pts[:, 0]) & np.isfinite(src_pts[:, 1])
+        if mask.sum() < 4:
+            continue
+        new_vars[var] = xr.DataArray(
+            griddata(src_pts[mask], flat[mask], (lon_grid, lat_grid), method='linear'),
+            dims=['lat', 'lon']
+        )
+
+    new_ds = xr.Dataset(new_vars, coords={'lon': lon_reg, 'lat': lat_reg})
+    new_ds.attrs = ds.attrs
+    return new_ds
+
+
+def map_add_currents(
+    ax,
+    ds: xr.Dataset,
+    density: int = 2,
+    linewidth: float = 0.75,
+    color: str = 'black',
+    transform=DATA_PROJECTION
+):
+    angle, speed = uv2spdir(ds['u'], ds['v'])
+
+    lons = ds.lon.squeeze().data
+    lats = ds.lat.squeeze().data
+    u = ds.u.squeeze().data
+    v = ds.v.squeeze().data
+
+    sargs = {
+        "transform": transform,
+        "density": density,
+        "linewidth": linewidth
+    }
+
+    if color:
+        sargs["color"] = color
+    else:
+        sargs["color"] = speed
+        sargs["cmap"] = cmocean.cm.speed
+
+    q = ax.streamplot(lons, lats, u, v, **sargs)
+    return q
+
+
+def map_add_eez(ax, zorder=1, color='white', linewidth=0.75, linestyle='-'):
+    from cartopy.io.shapereader import Reader
+    shape_feature = cfeature.ShapelyFeature(
+        Reader(CONFIG['paths']['eez_path']).geometries(),
+        ccrs.PlateCarree(),
+        linestyle=linestyle,
+        linewidth=linewidth,
+        edgecolor=color,
+        facecolor='none'
+    )
+    h = ax.add_feature(shape_feature, zorder=zorder)
+    return h
+
+
+# ============================================================================
+# PLOTTING FUNCTIONS
+# ============================================================================
+
+def plot_twa_map(
+    model_ds: Optional[xr.Dataset] = None,
+    bathy: Optional[xr.Dataset] = None,
+    gliders: Optional[pd.DataFrame] = None,
+    waypoint: Optional[Dict] = None,
+    config: Dict = None,
+    path_save: str = None,
+    model_name: Optional[str] = None,
+    glider_name: Optional[str] = None,
+    region_extent: Optional[list] = None,
+    region_name: Optional[str] = None,
+    zoom_extent: Optional[list] = None,
+    glider_da_uv: Optional[Tuple[float, float]] = None,
+):
+    if config is None:
+        config = CONFIG
+
+    if path_save is None:
+        path_save = config['paths']['save_path']
+
+    Path(path_save).mkdir(parents=True, exist_ok=True)
+
+    _glider_name = glider_name or config['glider']['name']
+    _region_name = region_name or "Region"
+
+    figsize = config['plotting']['figsize']
+    dpi = config['plotting']['dpi']
+    extent = region_extent if region_extent is not None else GUAM_EXTENT
+    bathy_config = config['bathymetry']
+    bathy_enabled = bathy_config.get('enabled', True) and bathy is not None
+    stream_config = config['currents']['streamplot']
+
+    ds_time = None
+    surface_ds = None
+    depth_avg_ds = None
+    latest_glider_text = None
+    model_label = model_name
+
+    if gliders is not None and hasattr(gliders, "empty") and not gliders.empty:
+        latest_glider_ts = pd.to_datetime(gliders.index.max())
+        latest_glider_text = latest_glider_ts.strftime('%Y-%m-%d %H:%MZ')
+
+    if model_ds is not None:
+        ds_time = pd.to_datetime(model_ds.time.data)
+        logger.info("Plotting currents @ 0m")
+        surface_ds = model_ds.sel(depth=0, method='nearest')
+
+        logger.info(f"model_ds dims: {model_ds.dims}")
+        logger.info(f"model_ds u shape: {model_ds['u'].shape}")
+        logger.info(f"surface_ds dims: {surface_ds.dims}")
+        logger.info(f"surface_ds u shape: {surface_ds['u'].shape}")
+        logger.info(f"surface_ds lon shape: {surface_ds['lon'].shape}")
+        logger.info(f"surface_ds lat shape: {surface_ds['lat'].shape}")
+
+        depth_avg_ds = compute_depth_avg_currents(
+            model_ds,
+            min_depth=config['depth_average']['min_depth'],
+            max_depth=config['depth_average']['max_depth'],
+            depth_step=config['depth_average']['depth_step']
+        )
+        surface_ds = currents_to_cm_per_s(surface_ds)
+        depth_avg_ds = currents_to_cm_per_s(depth_avg_ds)
+        if model_label is None and hasattr(model_ds, "attrs"):
+            model_label = model_ds.attrs.get('model')
+    else:
+        logger.info("Generating map without model currents")
+
+    if model_label is None:
+        model_label = "Track"
+    else:
+        model_label = str(model_label)
+
+    slug = ''.join(ch.lower() if ch.isalnum() else '-' for ch in model_label)
+    slug = '-'.join(filter(None, slug.split('-')))
+    if not slug:
+        slug = 'track'
+
+    auto_colorbar = config['currents'].get('auto_colorbar', False)
+    qargs_surface = {
+        'transform': DATA_PROJECTION,
+        'cmap': cmocean.cm.speed,
+        'extend': "max",
+    }
+    qargs_depth_avg = {
+        'transform': DATA_PROJECTION,
+        'cmap': cmocean.cm.speed,
+        'extend': "max",
+    }
+    if not auto_colorbar:
+        lim = config['currents']['limits']
+        qargs_surface['levels'] = np.arange(lim[0], lim[1], lim[2])
+        lim_da = config['currents'].get('limits_depth_avg', lim)
+        qargs_depth_avg['levels'] = np.arange(lim_da[0], lim_da[1], lim_da[2])
+
+    def init_axis(ax, plot_extent, add_legend: bool = False):
+        create(plot_extent, ax=ax, ticks=False)
+
+        if bathy_enabled and bathy is not None:
+            add_bathymetry(
+                ax,
+                bathy.longitude.values,
+                bathy.latitude.values,
+                bathy.z.values,
+                levels=bathy_config['contour_levels'],
+                zorder=1.5
+            )
+            ax.contourf(
+                bathy['longitude'],
+                bathy['latitude'],
+                bathy['z'],
+                bathy_config['filled_levels'],
+                colors=bathy_config['filled_colors'],
+                transform=DATA_PROJECTION,
+                ticks=False
+            )
+
+        if gliders is not None and not gliders.empty:
+            ax.plot(
+                gliders['longitude'].iloc[-1],
+                gliders['latitude'].iloc[-1],
+                marker='^',
+                color='red',
+                markersize=config['plotting']['glider_marker_size'],
+                markeredgecolor='black',
+                transform=DATA_PROJECTION,
+                zorder=10001,
+                label='Latest Position',
+                linestyle="None"
+            )
+            ax.plot(
+                gliders['longitude'],
+                gliders['latitude'],
+                color='red',
+                linewidth=config['plotting']['glider_track_linewidth'],
+                transform=DATA_PROJECTION,
+                zorder=10000,
+                label=f'{_glider_name.upper()} Track'
+            )
+
+        he = map_add_eez(ax, color='white', linewidth=2)
+        he.set_zorder(10000)
+
+        if config['plotting']['show_waypoint'] and waypoint is not None:
+            wp_lon = waypoint['longitude']
+            wp_lat = waypoint['latitude']
+            base_size = config['plotting']['waypoint_marker_size']
+
+            ax.plot(wp_lon, wp_lat, marker='o', color='black',
+                    markersize=base_size * 1.8, transform=DATA_PROJECTION,
+                    zorder=10002, linestyle="None")
+            ax.plot(wp_lon, wp_lat, marker='o', color='white',
+                    markersize=base_size * 1.3, transform=DATA_PROJECTION,
+                    zorder=10003, linestyle="None")
+            ax.plot(wp_lon, wp_lat, marker='o', color='red',
+                    markersize=base_size * 0.8, transform=DATA_PROJECTION,
+                    zorder=10004, linestyle="None")
+            ax.plot(wp_lon, wp_lat, marker='o', color='white',
+                    markersize=base_size * 0.3, transform=DATA_PROJECTION,
+                    zorder=10005, linestyle="None")
+
+            if add_legend:
+                handles, labels = ax.get_legend_handles_labels()
+                target_handles = [
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='black',
+                           markersize=base_size * 1.2, linestyle='None', markeredgecolor='none'),
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white',
+                           markersize=base_size * 0.9, linestyle='None', markeredgecolor='none'),
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='red',
+                           markersize=base_size * 0.6, linestyle='None', markeredgecolor='none'),
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white',
+                           markersize=base_size * 0.2, linestyle='None', markeredgecolor='none'),
+                ]
+                handles.append(tuple(target_handles))
+                labels.append('Waypoint')
+                handles.append(plt.Line2D([], [], color='white', linewidth=2))
+                labels.append('EEZ')
+                ax.legend(handles, labels, loc='upper left', fontsize=10,
+                         handler_map={tuple: TargetHandler()}).set_zorder(100000)
+        else:
+            if add_legend:
+                handles, labels = ax.get_legend_handles_labels()
+                handles.append(plt.Line2D([], [], color='white', linewidth=2))
+                labels.append('EEZ')
+                ax.legend(handles, labels, loc='upper left', fontsize=10).set_zorder(100000)
+
+        # Compute tick intervals based on the extent size
+        lon_span = plot_extent[1] - plot_extent[0]
+        lat_span = plot_extent[3] - plot_extent[2]
+        span = max(lon_span, lat_span)
+        if span <= 8:
+            major_step, minor_step = 1, 0.25
+        elif span <= 20:
+            major_step, minor_step = 2, 0.5
+        else:
+            major_step, minor_step = 5, 1
+
+        ax.set_xticks(np.arange(np.floor(plot_extent[0]), plot_extent[1] + 1e-6, major_step), crs=ccrs.PlateCarree())
+        ax.set_yticks(np.arange(np.floor(plot_extent[2]), plot_extent[3] + 1e-6, major_step), crs=ccrs.PlateCarree())
+        ax.set_xticks(np.arange(np.floor(plot_extent[0]), plot_extent[1] + 1e-6, minor_step), minor=True, crs=ccrs.PlateCarree())
+        ax.set_yticks(np.arange(np.floor(plot_extent[2]), plot_extent[3] + 1e-6, minor_step), minor=True, crs=ccrs.PlateCarree())
+        ax.xaxis.set_major_formatter(cticker.LongitudeFormatter())
+        ax.yaxis.set_major_formatter(cticker.LatitudeFormatter())
+
+        for label in ax.get_xticklabels() + ax.get_yticklabels():
+            label.set_fontweight('bold')
+
+        ax.tick_params(
+            axis='both', which='major',
+            labelsize=12, direction='out',
+            length=6, width=1,
+            top=True, right=True
+        )
+        ax.tick_params(
+            axis='both', which='minor',
+            direction='out', length=3, width=1,
+            top=True, right=True
+        )
+
+    def render_and_save_map(
+        ds_plot: Optional[xr.Dataset],
+        title_text: str,
+        slug_suffix: str,
+        add_legend: bool,
+        show_colorbar: bool = True,
+        plot_extent: Optional[list] = None,
+        plot_figsize: Optional[tuple] = None,
+        contour_args: Optional[dict] = None,
+        show_glider_arrow: bool = False,
+    ):
+        actual_generated_time = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%MZ')
+        active_extent = list(plot_extent if plot_extent is not None else extent)
+        active_figsize = plot_figsize if plot_figsize is not None else figsize
+        active_qargs = contour_args if contour_args is not None else qargs_surface
+
+        # Clip plot extent to actual data coverage to avoid blank ocean background
+        if ds_plot is not None:
+            valid_lon = ds_plot['lon'].values[np.isfinite(ds_plot['lon'].values)]
+            valid_lat = ds_plot['lat'].values[np.isfinite(ds_plot['lat'].values)]
+            if valid_lon.size and valid_lat.size:
+                active_extent[0] = max(active_extent[0], float(valid_lon.min()))
+                active_extent[1] = min(active_extent[1], float(valid_lon.max()))
+                active_extent[2] = max(active_extent[2], float(valid_lat.min()))
+                active_extent[3] = min(active_extent[3], float(valid_lat.max()))
+
+        fig = plt.figure(figsize=active_figsize)
+        ax = fig.add_subplot(1, 1, 1, projection=MAP_PROJECTION)
+        init_axis(ax, active_extent, add_legend=add_legend)
+
+        if (show_glider_arrow and glider_da_uv is not None
+                and gliders is not None and not gliders.empty):
+            g_lon = float(gliders['longitude'].iloc[-1])
+            g_lat = float(gliders['latitude'].iloc[-1])
+            u_ms, v_ms = glider_da_uv
+            speed_cms = np.sqrt(u_ms**2 + v_ms**2) * 100
+            if speed_cms > 0.5:
+                # Normalize to 40 cm/s reference; scale relative to plot width
+                u_norm = (u_ms * 100) / 40.0
+                v_norm = (v_ms * 100) / 40.0
+                ax.quiver(
+                    g_lon, g_lat, u_norm, v_norm,
+                    scale=20, scale_units='width',
+                    transform=DATA_PROJECTION,
+                    color='lime', edgecolor='black', linewidth=0.8,
+                    zorder=10005, width=0.005,
+                    headwidth=5, headlength=6, headaxislength=5.5,
+                )
+                ax.text(
+                    g_lon + u_norm * 0.08,
+                    g_lat + v_norm * 0.08 + 0.15,
+                    f'Glider DA: {speed_cms:.0f} cm/s',
+                    transform=DATA_PROJECTION,
+                    fontsize=7, color='lime', fontweight='bold',
+                    ha='center', zorder=10006,
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='black',
+                              alpha=0.5, edgecolor='none'),
+                )
+
+        m = None
+        if ds_plot is not None:
+            ds_plot = regrid_curvilinear(ds_plot)
+            try:
+                _, mag = uv2spdir(ds_plot['u'], ds_plot['v'])
+                m = ax.contourf(ds_plot["lon"], ds_plot["lat"], mag, **active_qargs)
+            except Exception as error:
+                logger.error(f"Contour failed for {slug_suffix}: {error}")
+
+            map_add_currents(
+                ax, ds_plot,
+                density=stream_config['density'],
+                linewidth=stream_config['linewidth'],
+                color=stream_config['color']
+            )
+
+            if show_colorbar and m is not None:
+                cb = fig.colorbar(m, ax=ax, orientation="vertical", shrink=0.6, aspect=20)
+                cb.ax.tick_params(labelsize=12)
+                cb.set_label('Current Speed (cm/s)', fontsize=12, fontweight='bold')
+                if auto_colorbar:
+                    cb.formatter = FormatStrFormatter('%.2f')
+                else:
+                    cb.formatter = FormatStrFormatter('%.0f')
+                cb.update_ticks()
+
+        ax.set_title(title_text, fontsize=18, fontweight='bold')
+        ax.text(
+            1.0, -0.07,
+            f'Image generated: {actual_generated_time}',
+            transform=ax.transAxes,
+            ha='right', va='top',
+            fontsize=7, fontweight='bold'
+        )
+
+        safe_time_val = (title_time or actual_generated_time).replace(':', '').replace(' ', '_')
+        region_slug   = re.sub(r'[^a-z0-9]+', '-', _region_name.lower()).strip('-')
+        filename = f"{_glider_name}_{region_slug}_{safe_time_val}_{slug_suffix}.png"
+
+        glider_dir = Path(path_save) / _glider_name
+        maps_dir   = glider_dir / "maps"
+        model_dir  = maps_dir
+        if model_ds is not None and hasattr(model_ds, 'attrs') and model_ds.attrs.get('model'):
+            model_dir = maps_dir / str(model_ds.attrs['model'])
+        model_dir.mkdir(parents=True, exist_ok=True)
+        maps_dir.mkdir(parents=True, exist_ok=True)
+
+        save_file  = model_dir / filename
+        alias_file = maps_dir / f"{_glider_name}_{region_slug}_latest_{slug_suffix}.png"
+
+        fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.03)
+        shutil.copyfile(save_file, alias_file)
+
+        plt.close(fig)
+        logger.info(f"Saved map: {save_file}")
+        logger.info(f"Saved alias: {alias_file}")
+
+    if ds_time is not None:
+        title_time = ds_time.strftime("%Y-%m-%dT%HZ")
+    elif latest_glider_text:
+        title_time = latest_glider_text
+    else:
+        title_time = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%d %H:%MZ')
+
+    model_title = model_label
+    if surface_ds is not None:
+        if 'surface' not in model_title.lower():
+            model_title = f'{model_title} Surface Currents'
+        title_str = f"{_region_name} - {_glider_name.upper()} Track\n {model_title} - {title_time}"
+    else:
+        title_str = f"{_region_name} - {_glider_name.upper()} Track\n Latest Update - {title_time}"
+
+    render_and_save_map(
+        surface_ds,
+        title_str,
+        slug,
+        add_legend=True,
+        show_colorbar=(surface_ds is not None)
+    )
+
+    if depth_avg_ds is not None:
+        depth_slug = f"{slug}-depthavg"
+        min_d = config['depth_average']['min_depth']
+        max_d = config['depth_average']['max_depth']
+        depth_title = (
+            f"{_region_name} - {_glider_name.upper()} Track\n"
+            f"{model_label} Depth-Averaged ({min_d}-{max_d} m) - {title_time}"
+        )
+        render_and_save_map(
+            depth_avg_ds,
+            depth_title,
+            depth_slug,
+            add_legend=True,
+            show_colorbar=True,
+            contour_args=qargs_depth_avg,
+            show_glider_arrow=True,
+        )
+
+    # Zoom maps centered on the glider's recent track
+    zoom_config = config.get('zoom', {})
+    if zoom_config.get('enabled', False) and gliders is not None and not gliders.empty:
+        if zoom_extent is not None:
+            active_zoom_extent = zoom_extent
+        else:
+            active_zoom_extent = compute_zoom_extent(
+                gliders,
+                track_days=zoom_config.get('track_days', 14),
+                buffer=zoom_config.get('buffer_deg', 2.0),
+                min_span=zoom_config.get('min_span_deg', 4.0),
+            )
+        zoom_figsize = zoom_config.get('figsize', (14, 8))
+        logger.info("Generating zoom maps: extent=%s", active_zoom_extent)
+
+        if surface_ds is not None:
+            zoom_surface_title = (
+                f"{_glider_name.upper()} - {model_title}\n{title_time}"
+            )
+            render_and_save_map(
+                surface_ds,
+                zoom_surface_title,
+                f"{slug}-zoom",
+                add_legend=True,
+                show_colorbar=True,
+                plot_extent=active_zoom_extent,
+                plot_figsize=zoom_figsize,
+                contour_args=qargs_surface,
+            )
+
+        if depth_avg_ds is not None:
+            zoom_depth_title = (
+                f"{_glider_name.upper()} - {model_label} Depth-Averaged ({min_d}-{max_d} m)\n{title_time}"
+            )
+            render_and_save_map(
+                depth_avg_ds,
+                zoom_depth_title,
+                f"{slug}-depthavg-zoom",
+                add_legend=True,
+                show_colorbar=True,
+                plot_extent=active_zoom_extent,
+                plot_figsize=zoom_figsize,
+                contour_args=qargs_depth_avg,
+                show_glider_arrow=True,
+            )
+
+
+def subset_model_data(
+    model_ds: xr.Dataset,
+    extent: list,
+    grid_info: Optional[Dict] = None,
+    model_name: str = "Model"
+) -> xr.Dataset:
+    extent_data = expand_extent(extent, buffer=1.0)
+
+    if grid_info is not None:
+        lons_ind = np.interp(extent_data[:2], grid_info['lons'], grid_info['x'])
+        lats_ind = np.interp(extent_data[2:], grid_info['lats'], grid_info['y'])
+        extent_ind = [
+            int(np.floor(lons_ind[0])),
+            int(np.ceil(lons_ind[1])),
+            int(np.floor(lats_ind[0])),
+            int(np.ceil(lats_ind[1]))
+        ]
+        subset = model_ds.sel(
+            x=slice(extent_ind[0], extent_ind[1]),
+            y=slice(extent_ind[2], extent_ind[3])
+        )
+    else:
+        lon_coords = ['lon', 'longitude']
+        lat_coords = ['lat', 'latitude']
+        lon_key = next((c for c in lon_coords if c in model_ds.coords), None)
+        lat_key = next((c for c in lat_coords if c in model_ds.coords), None)
+
+        if lon_key and lat_key:
+            lon_max = float(model_ds[lon_key].max())
+            is_360 = lon_max > 180
+
+            if is_360:
+                lon_min_360 = extent_data[0] % 360
+                lon_max_360 = extent_data[1] % 360
+
+                logger.info(f"{model_name} subsetting: lon=[{lon_min_360:.2f}, {lon_max_360:.2f}], lat=[{extent_data[2]:.2f}, {extent_data[3]:.2f}]")
+
+                lat_mask = (
+                    (model_ds[lat_key] >= extent_data[2]) &
+                    (model_ds[lat_key] <= extent_data[3])
+                )
+                if lon_min_360 > lon_max_360:
+                    lon_mask = (
+                        (model_ds[lon_key] >= lon_min_360) |
+                        (model_ds[lon_key] <= lon_max_360)
+                    )
+                else:
+                    lon_mask = (
+                        (model_ds[lon_key] >= lon_min_360) &
+                        (model_ds[lon_key] <= lon_max_360)
+                    )
+                subset = model_ds.where(lon_mask & lat_mask, drop=True)
+
+                logger.info(f"{model_name} after subset: lon size={subset[lon_key].size}, lat size={subset[lat_key].size}")
+
+                new_lon = lon360to180(subset[lon_key].values)
+                subset = subset.assign_coords({lon_key: new_lon})
+                subset = subset.sortby(lon_key)
+            else:
+                logger.info(f"{model_name} subsetting: lon=[{extent_data[0]:.2f}, {extent_data[1]:.2f}], lat=[{extent_data[2]:.2f}, {extent_data[3]:.2f}]")
+                subset = model_ds.where(
+                    (model_ds[lon_key] >= extent_data[0]) &
+                    (model_ds[lon_key] <= extent_data[1]) &
+                    (model_ds[lat_key] >= extent_data[2]) &
+                    (model_ds[lat_key] <= extent_data[3]),
+                    drop=True
+                )
+                logger.info(f"{model_name} after subset: lon size={subset[lon_key].size}, lat size={subset[lat_key].size}")
+
+            if lon_key != 'lon':
+                subset = subset.rename({lon_key: 'lon'})
+            if lat_key != 'lat':
+                subset = subset.rename({lat_key: 'lat'})
+
+            in_bounds = (
+                (subset['lon'] >= extent_data[0]) & (subset['lon'] <= extent_data[1]) &
+                (subset['lat'] >= extent_data[2]) & (subset['lat'] <= extent_data[3])
+            )
+            subset = subset.where(in_bounds)
+        else:
+            logger.warning(f"Could not find standard lat/lon coordinates in {model_name}")
+            subset = model_ds
+
+    subset.attrs['model'] = model_name
+    return subset
+
+
+def process_and_plot_time(
+    reference_time: dt.datetime,
+    config: Dict,
+    bathy_data: Optional[xr.Dataset],
+    glider_data: pd.DataFrame,
+    waypoint_data: Optional[Dict] = None,
+    rtofs_data: Optional[Tuple[xr.Dataset, Dict]] = None,
+    espc_data: Optional[Tuple[xr.Dataset, bool]] = None,
+    cmems_data: Optional[xr.Dataset] = None,
+    glider_name: Optional[str] = None,
+    region_extent: Optional[list] = None,
+    region_name: Optional[str] = None,
+    zoom_extent: Optional[list] = None,
+    glider_da_uv: Optional[Tuple[float, float]] = None,
+):
+    logger.info(f"Processing time: {reference_time}")
+
+    extent = region_extent if region_extent is not None else GUAM_EXTENT
+    extent_data = expand_extent(extent, buffer=1.0)
+
+    bathy = None
+    if bathy_data is not None and config['bathymetry'].get('enabled', True):
+        bathy_lon_max = float(bathy_data.longitude.max())
+        if bathy_lon_max > 180:
+            bathy_lon_slice = slice(
+                (extent_data[0] - 1) % 360,
+                (extent_data[1] + 1) % 360
+            )
+        else:
+            bathy_lon_slice = slice(extent_data[0] - 1, extent_data[1] + 1)
+
+        bathy = bathy_data.sel(
+            longitude=bathy_lon_slice,
+            latitude=slice(extent_data[2] - 1, extent_data[3] + 1)
+        )
+
+        if bathy_lon_max > 180:
+            bathy = bathy.assign_coords(longitude=lon360to180(bathy.longitude.values))
+
+        logger.info(f"Bathymetry subset: lon={bathy.longitude.size}, lat={bathy.latitude.size}")
+    else:
+        logger.info("Bathymetry plotting disabled or data unavailable")
+
+    if rtofs_data is not None:
+        rds, grid_info = rtofs_data
+        try:
+            rds_time = rds.sel(time=reference_time, method="nearest")
+            rds_slice = subset_model_data(
+                rds_time, extent, grid_info=grid_info, model_name='RTOFS'
+            )
+            logger.info("RTOFS: Processing")
+            plot_twa_map(
+                rds_slice,
+                bathy=bathy,
+                gliders=glider_data,
+                waypoint=waypoint_data,
+                config=config,
+                model_name='RTOFS',
+                glider_name=glider_name,
+                region_extent=extent,
+                region_name=region_name,
+                zoom_extent=zoom_extent,
+                glider_da_uv=glider_da_uv,
+            )
+        except Exception as error:
+            logger.error(f"RTOFS processing failed: {error}")
+
+    if espc_data is not None:
+        espc_ds, is_archive = espc_data
+        try:
+            espc_time = espc_ds.sel(time=reference_time, method="nearest")
+            if 'time1' in espc_time.dims:
+                espc_time = espc_time.sel(time1=reference_time, method="nearest")
+
+            logger.info(f"ESPC dims: {espc_time.dims}")
+            logger.info(f"ESPC coords: {list(espc_time.coords)}")
+            for coord in espc_time.coords:
+                c = espc_time[coord]
+                if c.ndim == 1 and c.size > 1:
+                    logger.info(f"  {coord}: min={float(c.min()):.2f}, max={float(c.max()):.2f}, size={c.size}")
+            logger.info(f"Target extent: {extent}")
+            logger.info(f"Target lon360: {lon180to360(extent[:2])}")
+
+            espc_slice = subset_model_data(
+                espc_time, extent, model_name='ESPC'
+            )
+            logger.info("ESPC: Processing")
+            plot_twa_map(
+                espc_slice,
+                bathy=bathy,
+                gliders=glider_data,
+                waypoint=waypoint_data,
+                config=config,
+                model_name='ESPC',
+                glider_name=glider_name,
+                region_extent=extent,
+                region_name=region_name,
+                zoom_extent=zoom_extent,
+                glider_da_uv=glider_da_uv,
+            )
+        except Exception as error:
+            logger.error(f"ESPC processing failed: {error}")
+
+    if cmems_data is not None:
+        try:
+            u = cmems_data['u'].sel(time=reference_time, method="nearest")
+            v = cmems_data['v'].sel(time=reference_time, method="nearest")
+
+            cds_time = xr.Dataset({'u': u, 'v': v})
+            cds_slice = subset_model_data(
+                cds_time, extent, model_name='Copernicus'
+            )
+            logger.info("CMEMS: Processing")
+            plot_twa_map(
+                cds_slice,
+                bathy=bathy,
+                gliders=glider_data,
+                waypoint=waypoint_data,
+                config=config,
+                model_name='Copernicus',
+                glider_name=glider_name,
+                region_extent=extent,
+                region_name=region_name,
+                zoom_extent=zoom_extent,
+                glider_da_uv=glider_da_uv,
+            )
+        except Exception as error:
+            logger.error(f"CMEMS processing failed: {error}")
+
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+def main():
+    start_time = time.time()
+
+    logger.info("Starting Guam TWA map plotting script")
+    logger.info("Configuration: %s", CONFIG['models'])
+
+    models_enabled = dict(CONFIG['models'])
+    if not models_enabled['plot_model_data']:
+        models_enabled.update(plot_rtofs=False, plot_espc=False, plot_cmems=False)
+
+    deployments_url = CONFIG['glider']['deployments_url']
+    api_url = CONFIG['glider']['api_url']
+    api_timeout = CONFIG['glider']['api_timeout']
+    zoom_cfg = CONFIG.get('zoom', {})
+
+    # ---- Discover gliders ----
+    if RUN_ALL_ACTIVE_GLIDERS:
+        glider_deployments = discover_active_gliders_from_api(deployments_url, api_timeout)
+        if not glider_deployments:
+            logger.error("No active gliders found; exiting.")
+            return
+    else:
+        single_name = CONFIG['glider']['name']
+        deployment_id = resolve_latest_deployment(single_name, deployments_url, api_timeout)
+        glider_deployments = {single_name: deployment_id}
+
+    # ---- Fetch surfacings, check staleness, filter to the Guam domain ----
+    glider_info = []
+    for gname, dep_id in glider_deployments.items():
+        try:
+            gdata, waypoint = fetch_glider_surfacings(dep_id, api_url, api_timeout)
+        except Exception as exc:
+            logger.error("Failed to fetch surfacings for %s: %s", gname, exc)
+            continue
+
+        if gdata.empty:
+            logger.warning("No surfacing data for %s; skipping.", gname)
+            continue
+
+        latest_ts = pd.Timestamp(gdata.index.max())
+        age_hours = (pd.Timestamp.utcnow().tz_localize(None) - latest_ts).total_seconds() / 3600
+        if age_hours > STALE_SURFACING_HOURS:
+            logger.warning(
+                "Skipping %s: last surfacing %.1f h old (threshold %d h).",
+                gname, age_hours, STALE_SURFACING_HOURS
+            )
+            continue
+
+        latest_pos = gdata.iloc[-1]
+        lat0, lon0 = float(latest_pos['latitude']), float(latest_pos['longitude'])
+        if not (GUAM_EXTENT[0] <= lon0 <= GUAM_EXTENT[1] and GUAM_EXTENT[2] <= lat0 <= GUAM_EXTENT[3]):
+            logger.info(
+                "Skipping %s: position (%.2f, %.2f) outside Guam domain %s.",
+                gname, lat0, lon0, GUAM_EXTENT
+            )
+            continue
+
+        region = {'name': REGION_NAME, 'extent': GUAM_EXTENT}
+        override = GLIDER_OVERRIDES.get(gname, {})
+
+        # Zoom: use override (fixed lon, lat centered on current position) or dynamic
+        if "zoom" in override:
+            oz     = override["zoom"]
+            pad    = oz.get("padding", 0.25)
+            lbuf   = oz.get("lat_buffer", 3.0)
+            zoom_ext = [
+                oz["lon_min"] - pad,
+                oz["lon_max"] + pad,
+                lat0 - lbuf - pad,
+                lat0 + lbuf + pad,
+            ]
+            logger.info("Glider %s: using overridden zoom %s.", gname, zoom_ext)
+        else:
+            zoom_ext = compute_zoom_extent(
+                gdata,
+                track_days=zoom_cfg.get('track_days', 14),
+                buffer=zoom_cfg.get('buffer_deg', 2.0),
+                min_span=zoom_cfg.get('min_span_deg', 4.0),
+            )
+
+        glider_da_uv = None
+        if 'da_u' in gdata.columns and 'da_v' in gdata.columns:
+            da_valid = gdata.dropna(subset=['da_u', 'da_v'])
+            if not da_valid.empty:
+                latest_da = da_valid.iloc[-1]
+                u_ms = float(latest_da['da_u'])
+                v_ms = float(latest_da['da_v'])
+                if np.isfinite(u_ms) and np.isfinite(v_ms):
+                    glider_da_uv = (u_ms, v_ms)
+                    logger.info(
+                        "Glider %s DA current: u=%.4f m/s, v=%.4f m/s (%.1f cm/s)",
+                        gname, u_ms, v_ms, np.sqrt(u_ms**2 + v_ms**2) * 100,
+                    )
+
+        glider_info.append({
+            'name': gname,
+            'data': gdata,
+            'waypoint': waypoint,
+            'region': region,
+            'zoom_extent': zoom_ext,
+            'da_uv': glider_da_uv,
+        })
+        logger.info("Glider %s: region='%s', zoom=%s", gname, region['name'], zoom_ext)
+
+    if not glider_info:
+        logger.error("No active non-stale gliders inside the Guam domain; exiting.")
+        return
+
+    # ---- Reference date from most recently active glider ----
+    reference_date = max(pd.Timestamp(g['data'].index.max()) for g in glider_info)
+
+    # ---- Load extent: fixed to the Guam domain (single region) ----
+    load_extent = expand_extent(GUAM_EXTENT, buffer=1.0)
+    logger.info("Guam load extent: %s", load_extent)
+
+    # ---- Load models once ----
+    bathy_data = None
+    if CONFIG['bathymetry'].get('enabled', True):
+        bathy_data = load_bathymetry(load_extent)
+        if bathy_data is None:
+            logger.warning("Bathymetry load failed; continuing without it.")
+
+    rtofs_data = espc_data = cmems_data = None
+    if models_enabled.get('plot_rtofs', True):
+        rtofs_data = load_rtofs(load_extent)
+    if models_enabled.get('plot_espc', True):
+        espc_data = load_espc(load_extent, reference_date)
+    if models_enabled.get('plot_cmems', True):
+        cmems_data = load_cmems(load_extent)
+
+    models_available = any([
+        rtofs_data is not None and rtofs_data[0] is not None,
+        espc_data is not None and espc_data[0] is not None,
+        cmems_data is not None,
+    ])
+
+    # ---- Process each glider ----
+    for g in glider_info:
+        gname = g['name']
+        region = g['region']
+        zoom_ext = g['zoom_extent']
+        gdata = g['data']
+        waypoint = g['waypoint']
+        glider_ref = pd.Timestamp(gdata.index.max())
+        glider_da_uv = g.get('da_uv')
+
+        logger.info("Processing glider %s (region: %s)", gname, region['name'])
+
+        if models_enabled['plot_model_data'] and models_available:
+            try:
+                process_and_plot_time(
+                    glider_ref,
+                    CONFIG,
+                    bathy_data,
+                    gdata,
+                    waypoint_data=waypoint,
+                    rtofs_data=rtofs_data,
+                    espc_data=espc_data,
+                    cmems_data=cmems_data,
+                    glider_name=gname,
+                    region_extent=region['extent'],
+                    region_name=region['name'],
+                    zoom_extent=zoom_ext,
+                    glider_da_uv=glider_da_uv,
+                )
+            except Exception as exc:
+                logger.error("Failed to process glider %s: %s", gname, exc)
+        else:
+            logger.info("Generating track-only map for %s", gname)
+            try:
+                plot_twa_map(
+                    model_ds=None,
+                    bathy=None,
+                    gliders=gdata,
+                    waypoint=waypoint,
+                    config=CONFIG,
+                    model_name=None,
+                    glider_name=gname,
+                    region_extent=region['extent'],
+                    region_name=region['name'],
+                    zoom_extent=zoom_ext,
+                )
+            except Exception as exc:
+                logger.error("Track-only map failed for %s: %s", gname, exc)
+
+    elapsed = time.time() - start_time
+    logger.info("Execution completed in %.2f seconds", elapsed)
+
+
+if __name__ == "__main__":
+    main()
