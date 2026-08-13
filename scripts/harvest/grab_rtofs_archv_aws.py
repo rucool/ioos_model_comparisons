@@ -7,13 +7,16 @@ f18, f24), then processes each forecast hour into either a global NetCDF
 or per-region NetCDFs (or both).
 
 Output directory structure:
-    rtofs_global/
+    rtofs_archv/
+        archv/
+            YYYYMMDD/           raw .a/.b downloads
         YYYY/
-            YYYYMMDD/
-                rtofs_glo_YYYYMMDDTHH_global.nc
-                rtofs_glo_YYYYMMDDTHH_hawaii.nc
-                rtofs_glo_YYYYMMDDTHH_guam.nc
-                ...
+            MM/
+                YYYYMMDD/
+                    rtofs_glo_YYYYMMDDTHH_global.nc
+                    rtofs_glo_YYYYMMDDTHH_hawaii.nc
+                    rtofs_glo_YYYYMMDDTHH_guam.nc
+                    ...
 
 Files are named by their valid time (parsed from the .b header), not by
 the forecast hour label, so they sort chronologically.
@@ -66,10 +69,12 @@ from ioos_model_comparisons.hycom.rtofs_binary import (
 )
 
 BASE_URL = "https://noaa-nws-rtofs-pds.s3.amazonaws.com"
-# AWS is the preferred source, but it occasionally lags or is missing files.
-# NOMADS mirrors the same rtofs.YYYYMMDD/<file> layout and is used as a
-# fallback. Note NOMADS serves the .a binary raw (uncompressed), while AWS
-# packages it as a gzipped tarball (.a.tgz) - handled in main() below.
+# AWS is the preferred source, but it lags by days at a time and is
+# sometimes missing files entirely. NOMADS mirrors the same
+# rtofs.YYYYMMDD/<file> layout and is used as a fallback. Both serve the .a
+# as a gzipped tarball, but NOMADS names it .a rather than .a.tgz and sends
+# no Content-Encoding header, so the packaging is detected by magic number
+# in unpack_if_gzipped() rather than by extension.
 NOMADS_URL = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod"
 FORECAST_HOURS = ["f06", "f12", "f18", "f24"]
 
@@ -98,11 +103,19 @@ def download_file(url, destination, retries=3):
                     attempt += 1
                     continue
                 return True
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status is not None and 400 <= status < 500:
+                print(f"  Not available ({status}): {url}")
+                break
+            print(f"  Error: {e}, retrying... ({attempt + 1}/{retries})")
+            attempt += 1
         except requests.exceptions.RequestException as e:
             print(f"  Error: {e}, retrying... ({attempt + 1}/{retries})")
             attempt += 1
 
-    print(f"  Failed after {retries} attempts: {url}")
+    if attempt >= retries:
+        print(f"  Failed after {retries} attempts: {url}")
     if destination.exists():
         destination.unlink()
     return False
@@ -113,6 +126,53 @@ def extract_tgz(tgz_path, output_dir):
     with tarfile.open(tgz_path, "r:gz") as tar:
         tar.extractall(path=output_dir, filter="data")
     tgz_path.unlink()
+
+
+def is_gzip(path):
+    with open(path, "rb") as f:
+        return f.read(2) == b"\x1f\x8b"
+
+
+def unpack_if_gzipped(a_path, a_tgz_path, archv_dir):
+    """
+    Unwrap `a_path` if it is really a gzipped tarball rather than a raw
+    archive. NOMADS serves the .a under its bare name with no .tgz suffix
+    and no Content-Encoding header, so neither the extension nor the source
+    host identifies the packaging -- only the magic number does.
+    """
+    if not a_path.exists() or not is_gzip(a_path):
+        return
+    print(f"  {a_path.name} is a gzipped tarball, extracting...")
+    a_path.replace(a_tgz_path)
+    extract_tgz(a_tgz_path, archv_dir)
+
+
+def expected_archive_size(b_path):
+    """
+    Size a complete .a archive should be, derived from its .b header.
+
+    HYCOM pads every record out to a whole multiple of 4096 single-precision
+    values, and the .b lists exactly one line per record after its 10-line
+    header, so the two together pin the byte count precisely.
+    """
+    lines = open(b_path).readlines()
+    idm = int(lines[7].split()[0])
+    jdm = int(lines[8].split()[0])
+    layer_size = idm * jdm
+    npad = 4096 - (layer_size % 4096)
+    n_records = len([line for line in lines[10:] if line.strip()])
+    return n_records * (layer_size + npad) * 4
+
+
+def archive_is_complete(a_path, b_path):
+    if not a_path.exists():
+        return False
+    expected = expected_archive_size(b_path)
+    actual = a_path.stat().st_size
+    if actual != expected:
+        print(f"  {a_path.name} is {actual} bytes, expected {expected}. Treating as corrupt.")
+        return False
+    return True
 
 
 def url_exists(url, timeout=10):
@@ -320,9 +380,21 @@ def main():
                     print(f"  Skipping {fhr} — .b download failed on AWS and NOMADS")
                     continue
 
-            # Download .a - AWS packages it as a gzipped tarball; NOMADS
-            # serves the raw binary directly (no extraction needed).
-            if not (a_path.exists() and a_path.stat().st_size > 0):
+            # Download .a - both sources package it as a gzipped tarball,
+            # AWS under a .a.tgz suffix and NOMADS under a bare .a. Unwrap
+            # whatever arrives based on its magic number, then check it
+            # against the record count in the .b before processing: a
+            # tarball fed to the archive reader yields empty records and
+            # fails much later with a confusing reshape error.
+            if archive_is_complete(a_path, b_path):
+                print(f"  {a_path.name} already complete. Skipping download.")
+            else:
+                # A tarball only survives here if a previous run died
+                # partway through, in which case it is truncated and would
+                # blow up in extract_tgz. extract_tgz removes it on success.
+                for stale in (a_path, a_tgz_path):
+                    if stale.exists():
+                        stale.unlink()
                 if download_file(f"{aws_day_url}/{base}.a.tgz", a_tgz_path):
                     extract_tgz(a_tgz_path, archv_dir)
                 else:
@@ -330,6 +402,12 @@ def main():
                     if not download_file(f"{nomads_day_url}/{base}.a", a_path):
                         print(f"  Skipping {fhr} — .a download failed on AWS and NOMADS")
                         continue
+
+                unpack_if_gzipped(a_path, a_tgz_path, archv_dir)
+
+                if not archive_is_complete(a_path, b_path):
+                    print(f"  Skipping {fhr} — .a did not validate against {b_path.name}")
+                    continue
 
             # Process
             process_archive(
