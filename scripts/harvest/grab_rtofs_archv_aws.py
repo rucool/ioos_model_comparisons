@@ -66,6 +66,11 @@ from ioos_model_comparisons.hycom.rtofs_binary import (
 )
 
 BASE_URL = "https://noaa-nws-rtofs-pds.s3.amazonaws.com"
+# AWS is the preferred source, but it occasionally lags or is missing files.
+# NOMADS mirrors the same rtofs.YYYYMMDD/<file> layout and is used as a
+# fallback. Note NOMADS serves the .a binary raw (uncompressed), while AWS
+# packages it as a gzipped tarball (.a.tgz) - handled in main() below.
+NOMADS_URL = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod"
 FORECAST_HOURS = ["f06", "f12", "f18", "f24"]
 
 
@@ -110,28 +115,32 @@ def extract_tgz(tgz_path, output_dir):
     tgz_path.unlink()
 
 
+def url_exists(url, timeout=10):
+    try:
+        r = requests.head(url, timeout=timeout)
+        return r.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+
 def find_latest_date(max_lookback=5):
     for days_ago in range(max_lookback):
         date = datetime.now(tz=timezone.utc) - timedelta(days=days_ago)
         date_str = date.strftime("%Y%m%d")
-        test_url = f"{BASE_URL}/rtofs.{date_str}/rtofs_glo.t00z.{FORECAST_HOURS[0]}.archv.b"
-        try:
-            r = requests.head(test_url, timeout=10)
-            if r.status_code == 200:
-                print(f"Latest available date: {date_str}")
-                return date_str
-        except requests.exceptions.RequestException:
-            continue
-    raise RuntimeError(f"No RTOFS archive data found in the last {max_lookback} days")
+        if date_is_available(date_str):
+            print(f"Latest available date: {date_str}")
+            return date_str
+    raise RuntimeError(
+        f"No RTOFS archive data found on AWS or NOMADS in the last {max_lookback} days"
+    )
 
 
 def date_is_available(date_str):
-    test_url = f"{BASE_URL}/rtofs.{date_str}/rtofs_glo.t00z.{FORECAST_HOURS[0]}.archv.b"
-    try:
-        r = requests.head(test_url, timeout=10)
-        return r.status_code == 200
-    except requests.exceptions.RequestException:
-        return False
+    b_name = f"rtofs_glo.t00z.{FORECAST_HOURS[0]}.archv.b"
+    return (
+        url_exists(f"{BASE_URL}/rtofs.{date_str}/{b_name}")
+        or url_exists(f"{NOMADS_URL}/rtofs.{date_str}/{b_name}")
+    )
 
 
 def process_archive(archv_file, grid_file, depth_file, output_dir,
@@ -282,12 +291,13 @@ def main():
 
     for date_str in dates:
         if not date_is_available(date_str):
-            print(f"\nSkipping {date_str} — not available on AWS")
+            print(f"\nSkipping {date_str} — not available on AWS or NOMADS")
             continue
 
         archv_dir = output_dir / "archv" / date_str
         os.makedirs(archv_dir, exist_ok=True)
-        day_url = f"{BASE_URL}/rtofs.{date_str}"
+        aws_day_url = f"{BASE_URL}/rtofs.{date_str}"
+        nomads_day_url = f"{NOMADS_URL}/rtofs.{date_str}"
 
         print(f"\n{'#'*60}")
         print(f"# {date_str}")
@@ -303,18 +313,23 @@ def main():
             a_path = archv_dir / f"{base}.a"
             a_tgz_path = archv_dir / f"{base}.a.tgz"
 
-            # Download .b
-            if not download_file(f"{day_url}/{base}.b", b_path):
-                print(f"  Skipping {fhr} — .b download failed")
-                continue
+            # Download .b - AWS is preferred, fall back to NOMADS
+            if not download_file(f"{aws_day_url}/{base}.b", b_path):
+                print(f"  AWS .b download failed, trying NOMADS...")
+                if not download_file(f"{nomads_day_url}/{base}.b", b_path):
+                    print(f"  Skipping {fhr} — .b download failed on AWS and NOMADS")
+                    continue
 
-            # Download and extract .a.tgz
+            # Download .a - AWS packages it as a gzipped tarball; NOMADS
+            # serves the raw binary directly (no extraction needed).
             if not (a_path.exists() and a_path.stat().st_size > 0):
-                if download_file(f"{day_url}/{base}.a.tgz", a_tgz_path):
+                if download_file(f"{aws_day_url}/{base}.a.tgz", a_tgz_path):
                     extract_tgz(a_tgz_path, archv_dir)
                 else:
-                    print(f"  Skipping {fhr} — .a download failed")
-                    continue
+                    print(f"  AWS .a download failed, trying NOMADS...")
+                    if not download_file(f"{nomads_day_url}/{base}.a", a_path):
+                        print(f"  Skipping {fhr} — .a download failed on AWS and NOMADS")
+                        continue
 
             # Process
             process_archive(
