@@ -9,8 +9,19 @@ _client = None
 _client_tried = False
 
 
-def _get_client():
-    """Lazy-init a MongoDB client from MONGODB_URI. Returns None on failure."""
+def get_client():
+    """Lazy-init a MongoDB client from MONGODB_URI. Returns None on failure.
+
+    Public because more than one module needs it now (see
+    ioos_model_comparisons/fronts/store.py). Everything shares this single
+    lazy singleton so there is one connection pool and one "Mongo is
+    unavailable" warning per process.
+
+    NOTE on the contract: this returns None rather than raising, and callers
+    are expected to degrade. That is right for plotting and config, but it is
+    NOT right for authentication — ioos_model_comparisons/users.py documents
+    why it treats None as "deny" instead.
+    """
     global _client, _client_tried
     if _client_tried:
         return _client
@@ -36,6 +47,11 @@ def _get_client():
         _client = None
 
     return _client
+
+
+# Back-compat: the private name predates get_client() and may be imported
+# elsewhere. Keep it as an alias rather than churning every call site.
+_get_client = get_client
 
 
 def _intify_currents_depth_keys(doc):
