@@ -17,10 +17,23 @@ para_url = 'https://noaa-nws-rtofs-pds.s3.amazonaws.com/rtofs.parallel.v2.3'
 nomads_url = 'https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod'
 
 # Local directory adjustments
+#
+# East and West files are kept in separate directory trees (as they were
+# before East/West were merged into this one script). The THREDDS scraped
+# aggregation that builds rtofs_us_east_scraped globs everything sitting in
+# rtofs_ddir/rtofs.YYYYMMDD/ that looks like an hvr file - it isn't strict
+# about US_east vs US_west in the name - so if West files land in the same
+# folder as East, the aggregation picks up both and every timestep gets
+# double-counted (a nearest-neighbor .sel() then breaks on the non-unique
+# time index). Keeping West in its own tree is what avoids that.
 prod_ddir = Path('/home/hurricaneadm/data/rtofs/')
+prod_ddir_west = Path('/home/hurricaneadm/data/rtofs_west/')
 para_ddir = Path('/home/hurricaneadm/data/rtofs.parallel.v2.3/')
+para_ddir_west = Path('/home/hurricaneadm/data/rtofs_west.parallel.v2.3/')
 # prod_ddir = Path('/Users/mikesmith/data/rtofs')
+# prod_ddir_west = Path('/Users/mikesmith/data/rtofs_west')
 # para_ddir = Path('/Users/mikesmith/data/rtofs.parallel.v2.3/')
+# para_ddir_west = Path('/Users/mikesmith/data/rtofs_west.parallel.v2.3/')
 
 # File names to download
 fnames2grab = [
@@ -91,9 +104,13 @@ def download_rtofs_data(date_str, prod=True):
     fstr = date.strftime('%Y%m%d')
 
     base_url = prod_url if prod else para_url.rstrip('/')
-    ddir = prod_ddir if prod else para_ddir
 
     for fname in fnames2grab:
+        if 'US_west' in fname:
+            ddir = prod_ddir_west if prod else para_ddir_west
+        else:
+            ddir = prod_ddir if prod else para_ddir
+
         sdir = ddir / f"rtofs.{fstr}"
         os.makedirs(sdir, exist_ok=True)
         file_path = sdir / fname
