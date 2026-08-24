@@ -204,10 +204,44 @@ def attempt_data_load(model, ctime, model_name):
 
 
 def attempt_cmems_load(cmems_instance, ctime, extent):
+    """Attempt to load CMEMS data for a given time and region extent.
+
+    CMEMS uses -180/180 longitude. For a region whose extent crosses the
+    antimeridian (lonmax > 180, e.g. Fiji), a single .sel(longitude=slice(...))
+    silently truncates at 180 instead of wrapping, cutting off everything
+    east of it. Split into a west (lonmin-180) and east (-180 to lonmax-360)
+    subset, shift the east half by +360, and concatenate so lons stay
+    monotonically increasing in 0-360 space — matching the ESPC data and the
+    Mercator(central_longitude=180) map projection (see region_transform()).
+    """
     try:
         if cmems_instance is None:
             return False, None
-        data = cmems_instance.get_combined_subset(extent[:2], extent[2:], time=ctime)
+
+        lat_extent = extent[2:]
+
+        if extent[1] > 180:
+            lon_west = [float(extent[0]), 180.0]
+            lon_east = [-180.0, float(lon360to180([extent[1]])[0])]
+
+            west = cmems_instance.get_combined_subset(lon_west, lat_extent, time=ctime)
+            east = cmems_instance.get_combined_subset(lon_east, lat_extent, time=ctime)
+
+            if west is None and east is None:
+                return False, None
+
+            parts = []
+            if west is not None:
+                parts.append(west)
+            if east is not None:
+                # Shift -180:lonmax-360 -> 180:lonmax so lons are contiguous with the west part
+                east = east.assign_coords(lon=(east['lon'] + 360))
+                parts.append(east)
+
+            data = xr.concat(parts, dim='lon') if len(parts) > 1 else parts[0]
+        else:
+            data = cmems_instance.get_combined_subset(extent[:2], lat_extent, time=ctime)
+
         if data is None:
             return False, None
         return True, data

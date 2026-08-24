@@ -382,6 +382,39 @@ def get_espc_ts(ctime):
     return _espc_ts_cache[key]
 
 
+def load_cmems_subset(cmems_instance, ctime, lon_extent, lat_extent):
+    """Load a CMEMS subset for a given time/extent, handling the antimeridian.
+
+    CMEMS uses -180/180 longitude. For an extent that crosses the antimeridian
+    (lonmax > 180, e.g. Fiji), a single .sel(longitude=slice(...)) silently
+    truncates at 180 instead of wrapping, cutting off everything east of it.
+    Split into a west (lonmin-180) and east (-180 to lonmax-360) subset, shift
+    the east half by +360, and concatenate so lons stay monotonically
+    increasing in 0-360 space — matching the ESPC data and the
+    Mercator(central_longitude=180) map projection (see region_transform()).
+    """
+    if lon_extent[1] <= 180:
+        return cmems_instance.get_combined_subset(lon_extent, lat_extent, time=ctime)
+
+    lon_west = [float(lon_extent[0]), 180.0]
+    lon_east = [-180.0, float(lon360to180([lon_extent[1]])[0])]
+
+    west = cmems_instance.get_combined_subset(lon_west, lat_extent, time=ctime)
+    east = cmems_instance.get_combined_subset(lon_east, lat_extent, time=ctime)
+
+    parts = []
+    if west is not None:
+        parts.append(west)
+    if east is not None:
+        # Shift -180:lonmax-360 -> 180:lonmax so lons are contiguous with the west part
+        east = east.assign_coords(lon=(east['lon'] + 360))
+        parts.append(east)
+
+    if not parts:
+        return None
+    return xr.concat(parts, dim='lon') if len(parts) > 1 else parts[0]
+
+
 def _ohc_record(region, ts_dt, m1, m2):
     return {"region": region["name"], "timestamp": ts_dt, "plot_type": "ocean_heat_content",
             "variable": "ohc", "depth": 0, "model1": m1, "model2": m2}
@@ -664,8 +697,8 @@ def main():
             # RTOFS vs CMEMS
             if cmems_instance is not None:
                 try:
-                    cds_sub = cmems_instance.get_combined_subset(
-                        extent_data[:2], extent_data[2:], time=ctime,
+                    cds_sub = load_cmems_subset(
+                        cmems_instance, ctime, extent_data[:2], extent_data[2:],
                     )
                     if cds_sub is not None:
                         cds_sub = compute_ohc(cds_sub)
