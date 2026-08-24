@@ -343,7 +343,7 @@ def region_config(regions=None, model=None):
         # South Atlantic Bight Limits
         name = "South Atlantic Bight"
         folder = "south_atlantic_bight"
-        extent = [-82.25, -63.75, 24.75, 42.25]
+        extent = [-82.25, -63.75, 24.75, 36.25]
         sea_water_temperature = [
             dict(depth=0, limits=[20.0, 29.0, 0.5]),
             dict(depth=150, limits=[15, 22.5, 0.5]),
@@ -1121,7 +1121,7 @@ def region_config(regions=None, model=None):
             # depths = [1000],
             depths = [0, 125, 250, 500, 1000, 1500],
             limits = [0, 1.5, .1],
-            limits_by_depth = {1000: [0, 0.4, .05], 1500: [0, 0.4, .05]},
+            limits_by_depth = {0: [0, 1.2, 0.1], 125: [0, 1.0, 0.1], 250: [0, 0.6, 0.05], 500: [0, 0.6, 0.05], 1000: [0, 0.3, 0.025], 1500: [0, 0.25, 0.025]},
             # depths = [0,],
             # limits = [0, 1.5, .1],
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
@@ -1207,6 +1207,28 @@ def region_config(regions=None, model=None):
         eez = True
         figure = dict(
             legend=dict(columns=10),
+            figsize=(14, 8)
+        )
+
+    key = "gulf_stream"
+    if key in regions:
+        # Gulf Stream, from the Mid Atlantic Bight shelf break out into the
+        # open mid-Atlantic — wide enough to show the whole warm-core path,
+        # not just its origin near the coast.
+        name = "Gulf Stream"
+        folder = "gulf_stream"
+        extent = [-77.25, -49.75, 31.75, 45.25]
+        sea_water_temperature = [
+            dict(depth=0, limits=[14, 30, 0.5]),
+        ]
+        salinity = []
+        sea_surface_height = []
+        salinity_max = None
+        ocean_heat_content = None
+        currents = dict(bool=False)
+        eez = False
+        figure = dict(
+            legend=dict(columns=5),
             figsize=(14, 8)
         )
 
