@@ -41,7 +41,29 @@ warnings.simplefilter("ignore")
 
 proj = dict(
     map=ccrs.Mercator(), # the projection that you want the map to be in
-    data=ccrs.PlateCarree() # the projection that the data is. 
+    data=ccrs.PlateCarree() # the projection that the data is.
+    )
+
+
+def region_transform(extent):
+    """
+    Build a map/data transform dict for a region, recentering the map
+    projection on the antimeridian when the region's extent crosses it.
+
+    Regions that cross the antimeridian (e.g. Fiji) store their extent in
+    extended 0-360 longitude, with lonmax > 180 (see regions.py), so that
+    model subsetting works directly against 0-360 grids. Handing that
+    straight to the default central_longitude=0 Mercator/PlateCarree blows
+    ax.set_extent() out to the whole globe, since its implicit Geodetic
+    domain can't reconcile a longitude past 180 with a projection centered
+    on 0. Recentering on 180 puts the antimeridian at the middle of the map
+    and the projection's discontinuity at the prime meridian, which is
+    clear of every such region.
+    """
+    central_longitude = 180 if extent[1] > 180 else 0
+    return dict(
+        map=ccrs.Mercator(central_longitude=central_longitude),
+        data=ccrs.PlateCarree(),
     )
 
 
@@ -2382,7 +2404,7 @@ def plot_model_region_comparison_idalia(ds1, ds2, region,
 
 def plot_hurricane_track(ax, basin, center_time=None, hurricane_name=None, storm_id=None, year=None,
                         linecolor='red', markersize=None, plot_datetime=False, lookback_days=None,
-                        boost_categories=None, boost_factor=1.5):
+                        boost_categories=None, boost_factor=1.5, only_categories=None):
     """
     Plot a hurricane track on a cartopy axes.
 
@@ -2412,6 +2434,10 @@ def plot_hurricane_track(ax, basin, center_time=None, hurricane_name=None, storm
         `markersize` is set.
     boost_factor : float
         Multiplier applied to `markersize` for categories in `boost_categories`
+    only_categories : iterable of str, optional
+        If given, restrict the plotted intensity markers to these storm
+        categories (e.g. ["C4", "C5"]). The connecting track line still
+        spans the full track; only the per-point markers are filtered.
     """
     
     # Fetch storm data by ID or name
@@ -2479,9 +2505,13 @@ def plot_hurricane_track(ax, basin, center_time=None, hurricane_name=None, storm
         closest_idx = track_df.index[time_diffs.argmin()]
 
     # Plot each point along the hurricane track
+    only_categories_set = {c.upper() for c in only_categories} if only_categories else None
     for idx, row in track_df.iterrows():
         storm_type, size = get_category_and_size(row['vmax'])
-        
+
+        if only_categories_set and storm_type not in only_categories_set:
+            continue
+
         if markersize:
             size = markersize
             if boost_categories and storm_type in boost_categories:
@@ -3041,7 +3071,7 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
             figsize=figsize,
             layout="constrained",
             subplot_kw={
-                'projection': proj['map']
+                'projection': transform['map']
                 },
             gridspec_kw={
                 "height_ratios": [4, 1],
@@ -5607,7 +5637,7 @@ def plot_ohc_anomaly(ds1, extent, region_name,
     # leg1.set_zorder(10001)
 
     # Plot hurricane track
-    plot_hurricane_track(ax1, time, storm_id="AL132025", linecolor='cyan', markersize=60)
+    # plot_hurricane_track(ax1, time, basin, storm_id="AL132025", linecolor='cyan', markersize=60)
     
     # Add colorbar
     cb = fig.colorbar(h1, ax=ax1, orientation="vertical", shrink=.95, aspect=20)
@@ -5835,7 +5865,8 @@ def plot_salt_single(ds1, extent, region_name,
              min=35.0,
              max=37.5,
              stride=0.1,
-             gliders_full=None
+             gliders_full=None,
+             map_pad=0.25
              ):
 
     # Convert ds.time value to a normal datetime
@@ -5899,8 +5930,9 @@ def plot_salt_single(ds1, extent, region_name,
     rargs['transform'] = transform['data']
 
     # Plot gliders_full
-    plt.plot(gliders_full['lon'], gliders_full['lat'], '-', color='gray', linewidth=3, zorder=9999, transform=transform['data'])
-    
+    if gliders_full is not None:
+        plt.plot(gliders_full['lon'], gliders_full['lat'], '-', color='gray', linewidth=3, zorder=9999, transform=transform['data'])
+
     # Plot gliders and argo floats
     plot_regional_assets(ax1, **rargs)
 
@@ -5931,20 +5963,38 @@ def plot_salt_single(ds1, extent, region_name,
     # # ax1.set_yticks(np.arange(10, 25, 5), crs=ccrs.PlateCarree())
     # ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
     # ax1.yaxis.set_minor_formatter(cticker.LatitudeFormatter())
-    ax1.set_xticks([-63, -61, -59, -57, -55], crs=ccrs.PlateCarree())
+    # Major ticks every 5 degrees, restricted to the padded map extent (the
+    # same 0.25 degree pad `create()` applies) so we never request a tick
+    # outside the view and drag the axes extent out with it.
+    lon_ticks = [v for v in range(-180, 181, 5) if extent[0] - map_pad <= v <= extent[1] + map_pad]
+    lat_ticks = [v for v in range(-90, 91, 5) if extent[2] - map_pad <= v <= extent[3] + map_pad]
+    ax1.set_xticks(lon_ticks, crs=ccrs.PlateCarree())
 
     ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
     ax1.xaxis.set_minor_formatter(cticker.LongitudeFormatter())
-    
+
     # Latitude (y-axis)
     # ax1.set_yticks(range(int(extent[2]), int(extent[3]) + 1, 5), crs=ccrs.PlateCarree())
     # ax1.set_yticks(np.arange(10, 25, 5), crs=ccrs.PlateCarree())
     # ax1.set_yticks([20, 25, 30], crs=ccrs.PlateCarree())
-    ax1.set_yticks([8, 10, 12, 14], crs=ccrs.PlateCarree())
+    ax1.set_yticks(lat_ticks, crs=ccrs.PlateCarree())
     ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
     ax1.yaxis.set_minor_formatter(cticker.LatitudeFormatter())
 
-    ax1.tick_params(axis='both', which='major', labelsize=12, direction='out', length=6, width=1)
+    # Add ticks to all 4 sides
+    ax1.tick_params(axis='both', which='major', labelsize=12, direction='out',
+                    length=7, width=2, top=True, right=True, labeltop=False, labelright=False)
+    ax1.tick_params(axis='both', which='minor', direction='out',
+                    length=3, width=1, top=True, right=True,
+                    labeltop=False, labelright=False, labelleft=False, labelbottom=False)
+
+    lon_minor = np.arange(np.ceil(extent[0]), np.floor(extent[1]) + 1, 1)
+    lat_minor = np.arange(np.ceil(extent[2]), np.floor(extent[3]) + 1, 1)
+
+    # Set minor ticks using FixedLocator (avoids projection coordinate issues)
+    ax1.set_xticks(lon_minor, minor=True, crs=ccrs.PlateCarree())
+    ax1.set_yticks(lat_minor, minor=True, crs=ccrs.PlateCarree())
+
     for tick in ax1.xaxis.get_majorticklabels():
         tick.set_fontweight('bold')
     for tick in ax1.yaxis.get_majorticklabels():
@@ -6001,7 +6051,7 @@ def plot_salt_single(ds1, extent, region_name,
     # l0.append('60 kJ cm-2')
     # h0.append(mlines.Line2D([], [], linestyle='-', color='white', alpha=1, linewidth=1))
     # l0.append('Past 5 days')
-    leg1 = ax1.legend(h0, l0, loc='upper left', fontsize=9)
+    # leg1 = ax1.legend(h0, l0, loc='upper left', fontsize=9)
 
     # # # Deal with the third axes
     # h, l = ax1.get_legend_handles_labels()  # get labels and handles from ax1
@@ -6030,12 +6080,12 @@ def plot_salt_single(ds1, extent, region_name,
     # ax3.set_axis_off()
 
 
-    leg1.set_zorder(10001)
+    # leg1.set_zorder(10001)
     
     # Add colorbar to first axes
-    cb = fig.colorbar(h1, ax=ax1, orientation="vertical", shrink=.95, aspect=15)#, shrink=0.7, aspect=20*0.7)
+    cb = fig.colorbar(h1, ax=ax1, orientation="vertical", shrink=.95, aspect=20)#, shrink=0.7, aspect=20*0.7)
     cb.ax.tick_params(labelsize=14)
-    # cb.set_label('kJ/cm^2', fontsize=12, fontweight="bold")
+    cb.set_label('PSU', fontsize=12, fontweight="bold")
 
     # Set title for each axes
     # ax1.set_title(f"{ds1.model.upper()}", fontsize=16, fontweight='bold')
@@ -6058,7 +6108,12 @@ def plot_salt_single(ds1, extent, region_name,
 
     fig.tight_layout()
     fig.subplots_adjust(top=0.95, bottom=0.15)
-    
+
+    # Lock the final view back to the padded extent. Adding contourf/scatter
+    # data and setting ticks above can each nudge cartopy into autoscaling
+    # the axes wider than intended, so re-assert it once everything is drawn.
+    ax1.set_extent((extent[0] - map_pad, extent[1] + map_pad, extent[2] - map_pad, extent[3] + map_pad), crs=transform['data'])
+
     export_fig(path_save, fname, dpi=dpi)
     plt.close()
 
@@ -6080,7 +6135,8 @@ def plot_temp_single(ds1, extent, region_name,
              min=27,
              max=31.5,
              stride=.5,
-             gliders_full=None
+             gliders_full=None,
+             map_pad=0.25
              ):
 
     # Convert ds.time value to a normal datetime
@@ -6181,16 +6237,20 @@ def plot_temp_single(ds1, extent, region_name,
     # ax1.yaxis.set_major_formatter(cticker.LatitudeFormatter())
     # ax1.yaxis.set_minor_formatter(cticker.LatitudeFormatter())
     # ax1.set_xticks([-63, -61, -59, -57, -55], crs=ccrs.PlateCarree())
-    ax1.set_xticks([-85, -80, -75, -70, -65, -60], crs=ccrs.PlateCarree())
+    # Major ticks every 5 degrees, restricted to the padded map extent (the
+    # same 0.25 degree pad `create()` applies) so we never request a tick
+    # outside the view and drag the axes extent out with it.
+    lon_ticks = [v for v in range(-180, 181, 5) if extent[0] - map_pad <= v <= extent[1] + map_pad]
+    lat_ticks = [v for v in range(-90, 91, 5) if extent[2] - map_pad <= v <= extent[3] + map_pad]
+    ax1.set_xticks(lon_ticks, crs=ccrs.PlateCarree())
 
     ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
     ax1.xaxis.set_minor_formatter(cticker.LongitudeFormatter())
-    
+
     # Latitude (y-axis)
-    # ax1.set_yticks(range(int(extent[2]), int(extent[3]) + 1, 5), crs=ccrs.PlateCarree())
     # ax1.set_yticks(np.arange(10, 25, 5), crs=ccrs.PlateCarree())
     # ax1.set_yticks([20, 25, 30], crs=ccrs.PlateCarree())
-    ax1.set_yticks([10, 15, 20, 25], crs=ccrs.PlateCarree())
+    ax1.set_yticks(lat_ticks, crs=ccrs.PlateCarree())
 
     ax1.xaxis.set_major_formatter(cticker.LongitudeFormatter())
     ax1.xaxis.set_minor_formatter(cticker.LongitudeFormatter())
@@ -6211,8 +6271,8 @@ def plot_temp_single(ds1, extent, region_name,
                     length=3, width=1, top=True, right=True,
                     labeltop=False, labelright=False, labelleft=False, labelbottom=False)
     
-    lon_minor = np.arange(extent[0], extent[1] + 1, 1)
-    lat_minor = np.arange(extent[2], extent[3] + 1, 1)
+    lon_minor = np.arange(np.ceil(extent[0]), np.floor(extent[1]) + 1, 1)
+    lat_minor = np.arange(np.ceil(extent[2]), np.floor(extent[3]) + 1, 1)
 
     # Set minor ticks using FixedLocator (avoids projection coordinate issues)
     ax1.set_xticks(lon_minor, minor=True, crs=ccrs.PlateCarree())
@@ -6267,7 +6327,7 @@ def plot_temp_single(ds1, extent, region_name,
     #                 alpha=1,
     #                 transform=ccrs.PlateCarree(),
     #                 zorder=101)
-    plot_hurricane_track(ax1, time, storm_id="AL132025", linecolor='white', markersize=60)
+    # plot_hurricane_track(ax1, time, basin, storm_id="AL132025", linecolor='white', markersize=60)
 
 
     h0 = []
@@ -6334,7 +6394,12 @@ def plot_temp_single(ds1, extent, region_name,
 
     fig.tight_layout()
     fig.subplots_adjust(top=0.95, bottom=0.15)
-    
+
+    # Lock the final view back to the padded extent. Adding contourf/scatter
+    # data and setting ticks above can each nudge cartopy into autoscaling
+    # the axes wider than intended, so re-assert it once everything is drawn.
+    ax1.set_extent((extent[0] - map_pad, extent[1] + map_pad, extent[2] - map_pad, extent[3] + map_pad), crs=transform['data'])
+
     export_fig(path_save, fname, dpi=dpi)
     plt.close()
 
@@ -6420,8 +6485,9 @@ def plot_speed_single(ds1, extent, region_name,
     rargs['gliders'] = gliders
     rargs['transform'] = transform['data'] 
 
-    plt.plot(gliders_full['lon'], gliders_full['lat'], '-', color='gray', linewidth=3, zorder=9999, transform=transform['data']) 
-    
+    if gliders_full is not None:
+        plt.plot(gliders_full['lon'], gliders_full['lat'], '-', color='gray', linewidth=3, zorder=9999, transform=transform['data'])
+
     # Plot gliders and argo floats
     # plot_regional_assets(ax1, **rargs)
     plot_regional_assets_single_color(ax1, time=time, **rargs)
@@ -9477,7 +9543,7 @@ def get_active_storms(time, extent, basin, lookback_days=5, lookahead_days=1):
 
 def plot_active_hurricanes(ax, time, extent, basin, linecolor='red', markersize=None,
                            lookback_days=5, lookahead_days=1, storm_ids=None,
-                           boost_categories=None, boost_factor=1.5):
+                           boost_categories=None, boost_factor=1.5, only_categories=None):
     """
     Automatically detect and plot all active hurricanes for a given time and map extent.
 
@@ -9505,6 +9571,9 @@ def plot_active_hurricanes(ax, time, extent, basin, linecolor='red', markersize=
         Storm categories (e.g. ["C4", "C5"]) to draw larger than `markersize`
     boost_factor : float
         Multiplier applied to `markersize` for categories in `boost_categories`
+    only_categories : iterable of str, optional
+        If given, restrict the plotted intensity markers to these storm
+        categories (e.g. ["C4", "C5"]). Passed through to `plot_hurricane_track`.
     """
     # Import your existing function - adjust the import path as needed
     # from your_module import plot_hurricane_track
@@ -9540,6 +9609,7 @@ def plot_active_hurricanes(ax, time, extent, basin, linecolor='red', markersize=
                 markersize=markersize,
                 boost_categories=boost_categories,
                 boost_factor=boost_factor,
+                only_categories=only_categories,
             )
         except Exception as e:
             print(f"Error plotting storm {storm_id}: {e}")
