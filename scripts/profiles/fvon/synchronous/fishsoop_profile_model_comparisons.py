@@ -6,6 +6,7 @@ import glob
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import cartopy.crs as ccrs
 import requests
@@ -23,16 +24,25 @@ save_dir = conf.path_plots / 'profiles' / 'fvon'
 os.makedirs(save_dir, exist_ok=True)
 
 # Configs
-parallel = True
+parallel = False
 replot = False   # set True to overwrite existing plots
 depth = 400
 
 # Which models should we plot?
-plot_rtofs = False
+plot_rtofs = True
 plot_espc = True
 plot_cmems = True
 
-days = 6
+days = 1
+run_date = None # YYYY-MM-DD for one full UTC day; set None for recent days window
+
+# RTOFS binary pre-processed NetCDF directory (created by grab_rtofs_archv_aws.py).
+# Expected structure:
+#   rtofs_archv/YYYY/MM/YYYYMMDD/rtofs_glo_YYYYMMDDTHH_{region}.nc
+RTOFS_DATA_DIR = Path("/home/hurricaneadm/data/rtofs_archv")
+RTOFS_BINARY_REGION = "fiji"
+RTOFS_MAX_HOURS = 12
+RTOFS_MAX_SPATIAL_DELTA = 0.5
 
 # Allowlist of WIGOS IDs to plot — set to None to process all instruments.
 # wigos_ids_filter = [
@@ -288,16 +298,88 @@ def fetch_fishsoop(date_start, date_end, max_workers=12):
 
 
 # ---------------------------------------------------------------------------
+# RTOFS local archive helpers
+# ---------------------------------------------------------------------------
+
+def _parse_rtofs_time(nc_path):
+    """Parse valid time from rtofs_glo_YYYYMMDDTHH_{region}.nc filename."""
+    stem = Path(nc_path).stem
+    time_part = stem.split("_")[2]
+    return pd.Timestamp(datetime.strptime(time_part, "%Y%m%dT%H"))
+
+
+def find_rtofs_file(region_name, target_time, data_dir=RTOFS_DATA_DIR, max_hours=RTOFS_MAX_HOURS):
+    """Return the local RTOFS file closest to target_time within max_hours."""
+    target = pd.Timestamp(target_time)
+    start_day = (target - pd.Timedelta(days=1)).floor("1d")
+    end_day = (target + pd.Timedelta(days=1)).floor("1d")
+
+    candidates = []
+    for day in pd.date_range(start_day, end_day, freq="D"):
+        day_dir = data_dir / day.strftime("%Y") / day.strftime("%m") / day.strftime("%Y%m%d")
+        candidates.extend(sorted(day_dir.glob(f"rtofs_glo_*_{region_name}.nc")))
+
+    if not candidates:
+        return None
+
+    best = min(candidates, key=lambda p: abs((_parse_rtofs_time(p) - target).total_seconds()))
+    diff_h = abs((_parse_rtofs_time(best) - target).total_seconds()) / 3600
+    if diff_h > max_hours:
+        return None
+    return best
+
+
+def _lon_delta(lon_a, lon_b):
+    """Return shortest longitude distance in degrees."""
+    return abs((lon_a - lon_b + 180) % 360 - 180)
+
+
+def load_rtofs_point(nc_path, lon, lat, max_depth=400):
+    """Extract nearest-point profile from a pre-processed local RTOFS NetCDF."""
+    try:
+        valid_time = _parse_rtofs_time(nc_path)
+        with xr.open_dataset(nc_path) as ds:
+            # Regional Pacific files commonly use 0-360 longitude.
+            file_lon_min = float(ds.lon.min())
+            lookup_lon = lon180to360(lon) if file_lon_min > 90 and lon < 0 else lon
+
+            point = ds.sel(lat=lat, lon=lookup_lon, method="nearest")
+            selected_lon = float(point.lon)
+            selected_lat = float(point.lat)
+            if (
+                _lon_delta(selected_lon, lookup_lon) > RTOFS_MAX_SPATIAL_DELTA
+                or abs(selected_lat - lat) > RTOFS_MAX_SPATIAL_DELTA
+            ):
+                raise ValueError(
+                    f"nearest point [{selected_lon:.2f}, {selected_lat:.2f}] "
+                    f"is more than {RTOFS_MAX_SPATIAL_DELTA} deg from "
+                    f"[{lookup_lon:.2f}, {lat:.2f}]"
+                )
+
+            point = point.rename({"temp": "temperature", "salin": "salinity", "z": "depth"})
+            point = point.sel(depth=slice(0, max_depth))
+
+            drop_vars = [v for v in ("u-vel.", "v-vel.") if v in point]
+            if drop_vars:
+                point = point.drop_vars(drop_vars)
+
+            point = point.assign_coords(time=valid_time)
+            point.attrs["model"] = "RTOFS"
+            point["temperature"].attrs["units"] = "degC"
+            point["salinity"].attrs["units"] = "PSU"
+            point.load()
+            return point
+    except Exception as e:
+        print(f"RTOFS local: load failed ({e})")
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Load models
 # ---------------------------------------------------------------------------
 
 if plot_rtofs:
-    from ioos_model_comparisons.models import rtofs
-    rds = rtofs().sel(depth=depths)
-    rlons = rds.lon.data[0, :]
-    rlats = rds.lat.data[:, 0]
-    rx = rds.x.data
-    ry = rds.y.data
+    print(f"RTOFS: using local archive {RTOFS_DATA_DIR} region '{RTOFS_BINARY_REGION}'")
 
 if plot_espc:
     from ioos_model_comparisons.models import espc_ts
@@ -311,8 +393,12 @@ if plot_cmems:
 # Date range
 # ---------------------------------------------------------------------------
 
-date_end   = pd.Timestamp.utcnow().tz_localize(None)
-date_start = (date_end - pd.Timedelta(days=days)).floor("1d")
+if run_date:
+    date_start = pd.Timestamp(run_date)
+    date_end = date_start + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+else:
+    date_end   = pd.Timestamp.utcnow().tz_localize(None)
+    date_start = (date_end - pd.Timedelta(days=days)).floor("1d")
 
 then = pd.Timestamp((pd.Timestamp.today() - pd.Timedelta(days=14)).strftime("%Y-%m-%d"))
 
@@ -473,13 +559,19 @@ def process_fishsoop_region(region):
 
         if plot_rtofs:
             try:
-                rlonI = np.interp(lon, rlons, rx)
-                rlatI = np.interp(lat, rlats, ry)
-                rdsp  = rds.sel(time=ctime, method="nearest")
-                rdsi  = rdsp.sel(x=rlonI, y=rlatI, method="nearest")
-                rdsi.load()
-                rlon     = rdsi.lon.data.round(2)
-                rlat_val = rdsi.lat.data.round(2)
+                rtofs_nc = find_rtofs_file(RTOFS_BINARY_REGION, ctime)
+                if rtofs_nc is None:
+                    raise KeyError(
+                        f"no local file within {RTOFS_MAX_HOURS}h of {ctime} "
+                        f"for region '{RTOFS_BINARY_REGION}'"
+                    )
+
+                rdsi = load_rtofs_point(rtofs_nc, lon, lat, max_depth=depth)
+                if rdsi is None:
+                    raise KeyError(f"could not load local file {rtofs_nc}")
+
+                rlon     = float(rdsi.lon.data.round(2))
+                rlat_val = float(rdsi.lat.data.round(2))
                 rlabel   = f"RTOFS [{rlon:.2f}, {rlat_val:.2f}]"
                 leg_str += f"RTOFS: {pd.to_datetime(rdsi.time.data).strftime(date_fmt)}\n"
                 rtofs_flag = True

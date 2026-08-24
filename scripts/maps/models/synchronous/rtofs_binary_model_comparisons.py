@@ -46,6 +46,7 @@ from ioos_model_comparisons.plotting import (
     plot_model_region_comparison,
     plot_model_region_comparison_streamplot,
     plot_sst,
+    region_transform,
 )
 from ioos_model_comparisons.regions import region_config
 from ioos_model_comparisons.db import (
@@ -429,6 +430,7 @@ def main():
         extent = region["extent"]
         extended = np.add(extent, [-1, 1, -1, 1]).tolist()
         lon360 = lon180to360(extended[:2])
+        kwargs["transform"] = region_transform(extent)
 
         nc_files = find_files_in_range(args.data_dir, args.source, region_name, args.start, args.end, hours=args.hours)
         if not nc_files:

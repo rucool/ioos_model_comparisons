@@ -38,7 +38,7 @@ from ioos_model_comparisons.calc import (
 )
 from ioos_model_comparisons.models import CMEMS, espc_ts, espc_ts_archive
 from ioos_model_comparisons.platforms import get_active_gliders, get_argo_floats_by_time
-from ioos_model_comparisons.plotting import plot_ohc
+from ioos_model_comparisons.plotting import plot_ohc, region_transform
 from ioos_model_comparisons.regions import region_config
 from ioos_model_comparisons.db import (
     apply_colorbar_overrides,
@@ -65,9 +65,9 @@ plot_hurricanes = True
 ESPC_ARCHIVE_CUTOFF_DAYS = 7
 _espc_ts_cache = {}
 
-_REALTIME_WINDOW_HOURS = 48
 _rt_obj = None
 _archive_obj = {}  # keyed by basin string
+_realtime_storm_cache = None  # (storm, forecast) pairs, fetched once per run
 
 
 def _basin_for_extent(extent):
@@ -102,8 +102,105 @@ def _load_archive(basin):
     return _archive_obj[basin]
 
 
+# get_nhc_forecast_dict() only works against source='hurdat' storm objects,
+# which tropycal only provides for the two basins NHC issues forecasts for.
+# The ibtracs+btk dataset above (position/track data, all basins) is a
+# separate object from this one — HURDAT storm IDs match the same sid format.
+_HURDAT_BASINS = {'north_atlantic', 'east_pacific'}
+_hurdat_archive_obj = {}
+
+
+def _load_hurdat_archive(basin):
+    global _hurdat_archive_obj
+    if basin not in _hurdat_archive_obj:
+        from tropycal import tracks as trtracks
+        _hurdat_archive_obj[basin] = trtracks.TrackDataset(basin=basin, source='hurdat')
+    return _hurdat_archive_obj[basin]
+
+
+def _slice_storm_track(storm, ctime, max_future_hours=12):
+    """Truncate a tropycal Storm/RealtimeStorm's track to observations at or
+    before ctime. Returns None if ctime is before the storm's formation.
+    A short gap past the last available fix is tolerated (best-track fixes
+    land on ~6h synoptic times, so "now" or the newest RTOFS ctime is often
+    a few hours ahead of the latest recorded position) — beyond that, treat
+    it as no coverage rather than showing a stale position."""
+    times = getattr(storm, 'time', None)
+    if times is None:
+        times = getattr(storm, 'date', None)
+    if times is None or len(times) == 0:
+        return None
+    dates = [pd.Timestamp(d) for d in times]
+    if ctime < min(dates):
+        return None
+    if ctime > max(dates) and (ctime - max(dates)).total_seconds() / 3600 > max_future_hours:
+        return None
+    idx = [i for i, d in enumerate(dates) if d <= ctime]
+    if not idx:
+        return None
+    return types.SimpleNamespace(
+        invest=getattr(storm, 'invest', False),
+        lon=[storm.lon[i] for i in idx],
+        lat=[storm.lat[i] for i in idx],
+        vmax=[storm.vmax[i] for i in idx],
+        name=storm.name,
+        basin=storm.basin,
+    )
+
+
+def _load_realtime_storms():
+    """Fetch and cache every currently-active storm (globally) along with its
+    full OFCL advisory history, keyed by advisory init time. Fetched once per
+    run — get_operational_forecasts() pulls NHC's a-deck, which retains every
+    advisory cycle issued so far this storm (unlike the .fst file, which is
+    overwritten in place and only ever holds the latest cycle)."""
+    global _realtime_storm_cache
+    if _realtime_storm_cache is not None:
+        return _realtime_storm_cache
+    storms = []
+    try:
+        rt = _load_realtime()
+        keys = rt.list_active_storms()
+        logger.info("Tropycal realtime: %d active storm(s) globally — %s", len(keys), keys)
+        for k in keys:
+            try:
+                s = rt.get_storm(k)
+                ofcl = {}
+                if not s.invest:
+                    ofcl = s.get_operational_forecasts().get('OFCL', {})
+                storms.append((s, ofcl))
+            except Exception as e:
+                logger.warning("Tropycal realtime: failed to fetch forecast history for %s: %s", k, e)
+    except Exception as e:
+        logger.warning("Tropycal realtime feed unavailable: %s", e)
+    _realtime_storm_cache = storms
+    return storms
+
+
+def _forecast_at_or_before(ofcl, ctime):
+    """Pick the OFCL advisory cycle in effect at ctime — the most recent
+    init time at or before ctime — from a {init_str: forecast_dict} map, as
+    returned by Storm.get_operational_forecasts()['OFCL']."""
+    if not ofcl:
+        return None
+    candidates = [
+        (dt.datetime.strptime(init, "%Y%m%d%H"), fc) for init, fc in ofcl.items()
+    ]
+    candidates = [(t, fc) for t, fc in candidates if t <= ctime]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda tf: tf[0])[1]
+
+
 def _archive_storms_at(ctime, basin):
+    """IBTrACS/btk archive lookup — fallback for storms no longer present in
+    the realtime feed (already dissipated) or genuinely historical ctimes.
+    Position/track comes from IBTrACS+btk (all basins); the forecast cone,
+    when available, comes from a separate HURDAT-sourced lookup (only
+    north_atlantic/east_pacific, and only once NHC has finalized the
+    storm into HURDAT — typically the following off-season)."""
     basin_ds = _load_archive(basin)
+    hurdat_ds = _load_hurdat_archive(basin) if basin in _HURDAT_BASINS else None
     year = ctime.year
     active_stms, active_fcts = [], []
     for sid in list(basin_ds.data.keys()):
@@ -114,27 +211,26 @@ def _archive_storms_at(ctime, basin):
             continue
         try:
             storm = basin_ds.get_storm(sid)
-            times = getattr(storm, 'time', None) or getattr(storm, 'date', None)
-            if not times:
+            sliced = _slice_storm_track(storm, ctime)
+            if sliced is None:
                 continue
-            dates = [pd.Timestamp(d) for d in times]
-            if not (min(dates) <= ctime <= max(dates)):
-                continue
-            idx = [i for i, d in enumerate(dates) if d <= ctime]
-            if not idx:
-                continue
-            s = types.SimpleNamespace(
-                invest=getattr(storm, 'invest', False),
-                lon=[storm.lon[i] for i in idx],
-                lat=[storm.lat[i] for i in idx],
-                vmax=[storm.vmax[i] for i in idx],
-                name=storm.name,
-                basin=storm.basin,
-            )
-            active_stms.append(s)
-            active_fcts.append(storm.get_nhc_forecast_dict(ctime))
         except Exception:
             continue
+
+        fct = None
+        if not sliced.invest and hurdat_ds is not None:
+            try:
+                fct = hurdat_ds.get_storm(sid).get_nhc_forecast_dict(ctime)
+            except Exception as e:
+                logger.info("No HURDAT forecast for %s @ %s: %s", sid, ctime, e)
+
+        if fct is None and not sliced.invest:
+            # No cone to draw and it's not an invest marker — skip rather
+            # than handing plot_storms a forecast dict it'll crash on.
+            continue
+
+        active_stms.append(sliced)
+        active_fcts.append(fct)
     return active_stms, active_fcts
 
 
@@ -142,19 +238,32 @@ def _get_storms_for_time(ctime, extent):
     if not plot_hurricanes:
         return [], []
     basin = _basin_for_extent(extent)
-    now = pd.Timestamp.utcnow().tz_localize(None)
-    age_hours = (now - ctime).total_seconds() / 3600
     try:
-        if age_hours <= _REALTIME_WINDOW_HOURS:
-            logger.info("Tropycal: realtime feed, basin=%s (%.1fh old)", basin, age_hours)
-            rt = _load_realtime()
-            keys = rt.list_active_storms()
-            logger.info("Tropycal realtime: %d active storm(s) globally — %s", len(keys), keys)
-            stms = [rt.get_storm(k) for k in keys]
-            fcts = [s.get_forecast_realtime(True) for s in stms]
-            if stms:
-                return stms, fcts
-        logger.info("Tropycal: IBTrACS archive, basin=%s, time=%s", basin, ctime)
+        # Prefer the realtime feed, truncated to ctime, so storms still
+        # active today also show up correctly on earlier dates within their
+        # lifespan (not just "today") — including the OFCL forecast cycle
+        # that was actually in effect at ctime, not just the latest one.
+        # Falls back to the IBTrACS/btk archive for storms the realtime feed
+        # no longer knows about — dissipated systems or genuinely historical
+        # processing.
+        active_stms, active_fcts = [], []
+        for storm, ofcl in _load_realtime_storms():
+            sliced = _slice_storm_track(storm, ctime)
+            if sliced is None:
+                continue
+            fct = _forecast_at_or_before(ofcl, ctime)
+            if fct is None and not sliced.invest:
+                # No OFCL advisory had been issued yet at ctime (e.g. plotting
+                # a time right at genesis, before the first cycle) — nothing
+                # sane to draw a cone from, so skip this storm at this ctime.
+                continue
+            active_stms.append(sliced)
+            active_fcts.append(fct)
+        if active_stms:
+            logger.info("Tropycal realtime: %d storm(s) covering %s", len(active_stms), ctime)
+            return active_stms, active_fcts
+
+        logger.info("Tropycal: no realtime coverage for %s — checking IBTrACS archive, basin=%s", ctime, basin)
         stms, fcts = _archive_storms_at(ctime, basin)
         logger.info("Tropycal archive: %d storm(s) found", len(stms))
         return stms, fcts
@@ -442,6 +551,7 @@ def main():
         extent = rc["extent"]
         extent_data = np.add(extent, [-1, 1, -1, 1]).tolist()
         lon360 = lon180to360(extent_data[:2])
+        kwargs["transform"] = region_transform(extent)
 
         if "ocean_heat_content" not in rc or rc["ocean_heat_content"] is None:
             logger.info("No OHC config for %s, skipping.", region_name)
