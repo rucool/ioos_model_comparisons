@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Region configs – IOOS Model Comparisons{% endblock %}
+
+{% block head_extra %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/regions_editor.css') }}" />
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="row g-3">
+    <!-- region list -->
+    <div class="col-12 col-lg-3">
+      <div class="d-flex gap-2 mb-2">
+        <input id="filter" class="form-control form-control-sm" placeholder="filter…">
+        <button id="newBtn" class="btn btn-sm btn-outline-primary" title="new region">+</button>
+      </div>
+      <div id="regionList" class="list-group list-group-flush region-list"></div>
+    </div>
+
+    <!-- editor -->
+    <div class="col-12 col-lg-9">
+      <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <h6 class="mb-0" id="regionTitle">Select a region</h6>
+        <span class="badge bg-secondary" id="versionBadge" style="display:none"></span>
+        <div class="ms-auto d-flex gap-2">
+          <select id="versionSelect" class="form-select form-select-sm" style="width:auto"></select>
+          <button id="validateBtn" class="btn btn-sm btn-outline-secondary" disabled>Check</button>
+          <button id="saveBtn" class="btn btn-sm btn-success" disabled>Save</button>
+          <button id="deleteBtn" class="btn btn-sm btn-outline-danger" disabled
+                  title="remove the override so regions.py defaults apply">Drop override</button>
+        </div>
+      </div>
+
+      <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab"
+            data-bs-target="#formPane" type="button">Form</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab"
+            data-bs-target="#jsonPane" type="button">JSON</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab"
+            data-bs-target="#histPane" type="button">History</button></li>
+      </ul>
+
+      <div class="tab-content border border-top-0 rounded-bottom p-3">
+        <div class="tab-pane fade show active" id="formPane">
+          <div id="formBody" class="row g-3"></div>
+        </div>
+        <div class="tab-pane fade" id="jsonPane">
+          <p class="small text-muted mb-1">
+            Anything the form doesn't cover. Validated on save just like the form.
+          </p>
+          <textarea id="jsonBox" class="form-control font-monospace" rows="22"
+                    spellcheck="false"></textarea>
+        </div>
+        <div class="tab-pane fade" id="histPane">
+          <div id="histBody" class="small"></div>
+        </div>
+      </div>
+
+      <div id="issues" class="mt-2"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block data_channel %}
+<script>
+  const API_BASE   = {{ request.script_root | tojson }};
+  const CSRF_TOKEN = {{ csrf_token() | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{{ url_for('static', filename='js/regions_editor.js') }}"></script>
+{% endblock %}

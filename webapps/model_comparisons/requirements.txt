@@ -5,3 +5,12 @@ requests>=2.31
 gunicorn>=21.0
 erddapy>=2.0
 pandas>=1.5
+flask-login>=0.6
+pymongo>=4
+bcrypt>=4.0
+python-dotenv>=1.0
+numpy
+joblib
+xarray
+matplotlib
+shapely

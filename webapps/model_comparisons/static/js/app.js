@@ -21,6 +21,7 @@ const state = {
   argoRegion: document.getElementById('argoRegion').value,
   gliderIds: [],
   argoIds: {},
+  fvonIds: {},
   stickyGliderId: null,  // set on day nav to restore same glider on new date
 };
 
@@ -109,6 +110,45 @@ async function downloadPlot(containerId, imageId) {
   }
 }
 
+// ─── Image Lightbox ────────────────────────────────────────────────────────
+// Delegated to the document so it works for every plot image on the page,
+// including ones re-created via setImage()'s innerHTML replacement.
+const lightbox = document.getElementById('imageLightbox');
+const lightboxImage = document.getElementById('lightboxImage');
+
+function openLightbox(src, alt) {
+  if (!src) return;
+  lightboxImage.src = src;
+  lightboxImage.alt = alt || '';
+  lightbox.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  lightbox.classList.remove('show');
+  lightboxImage.src = '';
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('click', (e) => {
+  const img = e.target.closest('.plot-image');
+  if (img && !img.classList.contains('d-none') && img.src) {
+    openLightbox(img.src, img.alt);
+    return;
+  }
+  if (e.target === lightbox) {
+    closeLightbox();
+  }
+});
+
+document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && lightbox.classList.contains('show')) {
+    closeLightbox();
+  }
+});
+
 function showToast(msg) {
   document.getElementById('alertToastMsg').textContent = msg;
   const el = document.getElementById('alertToast');
@@ -123,17 +163,20 @@ function populateVarDepth(region) {
   if (!info) return;
   const sel = document.getElementById('mapVarDepth');
   sel.innerHTML = '';
-  for (const v of info.variables) {
+  const sortedVariables = [...info.variables].sort((a, b) => a.localeCompare(b));
+  for (const v of sortedVariables) {
     if (v === 'ocean_heat_content') {
       const opt = document.createElement('option');
       opt.value = v;
       opt.textContent = "Ocean Heat Content";
       sel.appendChild(opt);
     } else {
-      for (const d of info.depths) {
+      const depths = (info.depths && info.depths[v]) || [];
+      const label = v.charAt(0).toUpperCase() + v.slice(1);
+      for (const d of depths) {
         const opt = document.createElement('option');
         opt.value = `${v}_${d}`;
-        opt.textContent = `${v} @ ${d}`;
+        opt.textContent = `${label} @ ${d}`;
         sel.appendChild(opt);
       }
     }
@@ -143,13 +186,14 @@ function populateVarDepth(region) {
 
 // ─── Overview: dynamic depth buttons ─────────────────────────────────────────
 
-function updateOverviewDepths(region) {
+function updateOverviewDepths(region, variable) {
   const info = REGION_INFO[region];
   const container = document.getElementById('ov_depth_btns');
   if (!info || !info.depths || !container) return;
 
+  const depths = info.depths[variable] || [];
   container.innerHTML = '';
-  info.depths.forEach((depth, i) => {
+  depths.forEach((depth, i) => {
     const safeId = 'ov_dep_' + depth.replace(/[^a-z0-9]/gi, '_');
 
     const input = document.createElement('input');
@@ -160,7 +204,10 @@ function updateOverviewDepths(region) {
     input.value = depth;
     input.autocomplete = 'off';
     if (i === 0) input.checked = true;
-    input.addEventListener('change', loadOverview);
+    input.addEventListener('change', () => {
+      updateOverviewGoesVisibility();
+      loadOverview();
+    });
 
     const label = document.createElement('label');
     label.className = 'btn btn-outline-ocean btn-sm';
@@ -172,18 +219,61 @@ function updateOverviewDepths(region) {
   });
 }
 
+// GOES SST comparisons only exist for surface (0m) temperature — hide the
+// GOES-16/19 comparison buttons for any other variable/depth selection.
+function updateOverviewGoesVisibility() {
+  const regionInput = document.querySelector('input[name="ov_region"]:checked');
+  const isSpecial = regionInput && regionInput.value === 'Fiji';
+  const varInput = document.querySelector('input[name="ov_variable"]:checked');
+  const depInput = document.querySelector('input[name="ov_depth"]:checked');
+  const showGoes = !isSpecial && varInput && varInput.value === 'temperature' &&
+                    depInput && depInput.value === '0m';
+
+  const goes16El = document.getElementById('ov_mod_goes16');
+  const goes19El = document.getElementById('ov_mod_goes19');
+  [goes16El, goes19El].forEach(btn => {
+    if (!btn) return;
+    btn.style.display = showGoes ? '' : 'none';
+    btn.nextElementSibling.style.display = showGoes ? '' : 'none';
+  });
+
+  const checkedModel = document.querySelector('input[name="ov_model"]:checked');
+  if (!showGoes && checkedModel && (checkedModel.value === 'goes16' || checkedModel.value === 'goes19')) {
+    document.getElementById('ov_mod_espc').checked = true;
+  }
+}
+
 // ─── Maps – Toggle State ──────────────────────────────────────────────────────
 
 let mapModels = [
   { key: 'copernicus', label: 'RTOFS vs. Copernicus (CMEMS)' },
   { key: 'espc',       label: 'RTOFS vs. ESPC' },
-  { key: 'goes',       label: 'RTOFS vs. GOES' },
+  { key: 'eccofs',     label: 'RTOFS vs. ECCOFS' },
+  { key: 'goes16',     label: 'RTOFS vs. GOES-16' },
+  { key: 'goes19',     label: 'RTOFS vs. GOES-19' },
 ];
 let mapCurrentModelIdx = 0;
-let mapCachedUrls = { copernicus: null, espc: null, espc_cmems: null, goes: null };
+let mapCachedUrls = { copernicus: null, espc: null, espc_cmems: null, goes16: null, goes19: null, eccofs: null };
 
-function updateMapModelsConfig(region) {
-  if (region === 'Guam' || region === 'Fiji') {
+// ECCOFS is an East Coast product — regions off that coverage area never get
+// a comparison, mirrors ECCOFS_EXCLUDED_REGIONS in app.py.
+const MAP_ECCOFS_EXCLUDED_REGIONS = new Set([
+  'Tropical Western Atlantic', 'Eastern Pacific - Mexico', 'Hawaii',
+  'WMO V - South Pacific', 'Philippines Sea', 'Guam', 'Fiji',
+]);
+
+function updateMapModelsConfig(region, varDepth) {
+  // GOES SST comparisons don't cover the South Pacific — Fiji never has them,
+  // regardless of variable/depth.
+  const showGoes = varDepth === 'temperature_0m' && region !== 'Fiji';
+  // Fiji's RTOFS comparisons went live 2026-08-24, but Ocean Heat Content is
+  // still only ever published as a single combined three-model image (see
+  // build_map_urls's Fiji-specific OHC filename) — that one variable stays
+  // locked to the ESPC-vs-CMEMS option the way the whole region used to be.
+  const fijiOhcOnly = region === 'Fiji' && varDepth === 'ocean_heat_content';
+  const showEccofs = !fijiOhcOnly && !MAP_ECCOFS_EXCLUDED_REGIONS.has(region);
+
+  if (fijiOhcOnly) {
     mapModels = [
       { key: 'espc_cmems', label: 'ESPC vs. CMEMS' }
     ];
@@ -191,8 +281,22 @@ function updateMapModelsConfig(region) {
     mapModels = [
       { key: 'copernicus', label: 'RTOFS vs. Copernicus (CMEMS)' },
       { key: 'espc',       label: 'RTOFS vs. ESPC' },
-      { key: 'goes',       label: 'RTOFS vs. GOES' },
     ];
+    if (region === 'Guam' || region === 'Fiji') {
+      // Guam's and Fiji's RTOFS comparisons are both new (sparse history);
+      // the legacy ESPC vs. CMEMS comparison still has full historical
+      // coverage for both.
+      mapModels.push({ key: 'espc_cmems', label: 'ESPC vs. CMEMS' });
+    }
+    if (showEccofs) {
+      mapModels.push({ key: 'eccofs', label: 'RTOFS vs. ECCOFS' });
+    }
+    if (showGoes) {
+      mapModels.push(
+        { key: 'goes16', label: 'RTOFS vs. GOES-16' },
+        { key: 'goes19', label: 'RTOFS vs. GOES-19' },
+      );
+    }
   }
 
   if (mapCurrentModelIdx >= mapModels.length) {
@@ -277,7 +381,9 @@ function preloadAdjacentMaps() {
         if (data.copernicus && data.copernicus.available) preloadImage(data.copernicus.url);
         if (data.espc && data.espc.available) preloadImage(data.espc.url);
         if (data.espc_cmems && data.espc_cmems.available) preloadImage(data.espc_cmems.url);
-        if (data.goes && data.goes.available) preloadImage(data.goes.url);
+        if (data.eccofs && data.eccofs.available) preloadImage(data.eccofs.url);
+        if (data.goes16 && data.goes16.available) preloadImage(data.goes16.url);
+        if (data.goes19 && data.goes19.available) preloadImage(data.goes19.url);
       } catch (e) {
         // silently fail on preload errors
       }
@@ -286,7 +392,9 @@ function preloadAdjacentMaps() {
       if (data.copernicus && data.copernicus.available) preloadImage(data.copernicus.url);
       if (data.espc && data.espc.available) preloadImage(data.espc.url);
       if (data.espc_cmems && data.espc_cmems.available) preloadImage(data.espc_cmems.url);
-      if (data.goes && data.goes.available) preloadImage(data.goes.url);
+      if (data.eccofs && data.eccofs.available) preloadImage(data.eccofs.url);
+      if (data.goes16 && data.goes16.available) preloadImage(data.goes16.url);
+      if (data.goes19 && data.goes19.available) preloadImage(data.goes19.url);
     }
   });
 }
@@ -312,11 +420,13 @@ async function loadMaps() {
     mapCachedUrls.copernicus = data.copernicus && data.copernicus.available ? data.copernicus.url : null;
     mapCachedUrls.espc       = data.espc && data.espc.available       ? data.espc.url       : null;
     mapCachedUrls.espc_cmems = data.espc_cmems && data.espc_cmems.available ? data.espc_cmems.url : null;
-    mapCachedUrls.goes       = data.goes && data.goes.available       ? data.goes.url       : null;
+    mapCachedUrls.eccofs     = data.eccofs && data.eccofs.available   ? data.eccofs.url     : null;
+    mapCachedUrls.goes16     = data.goes16 && data.goes16.available   ? data.goes16.url     : null;
+    mapCachedUrls.goes19     = data.goes19 && data.goes19.available   ? data.goes19.url     : null;
 
     renderMapModel();
 
-    if (!mapCachedUrls.copernicus && !mapCachedUrls.espc && !mapCachedUrls.espc_cmems && !mapCachedUrls.goes) {
+    if (!mapCachedUrls.copernicus && !mapCachedUrls.espc && !mapCachedUrls.espc_cmems && !mapCachedUrls.eccofs && !mapCachedUrls.goes16 && !mapCachedUrls.goes19) {
       showToast('No images available for the selected date/time.');
     }
   };
@@ -338,7 +448,7 @@ async function loadMaps() {
     preloadAdjacentMaps();
   } catch (err) {
     console.error(err);
-    mapCachedUrls = { copernicus: null, espc: null, espc_cmems: null, goes: null };
+    mapCachedUrls = { copernicus: null, espc: null, espc_cmems: null, goes16: null, goes19: null, eccofs: null };
     setUnavailable('mapImageContainer', 'Maps');
     showToast('Network error while fetching images.');
   } finally {
@@ -715,7 +825,7 @@ setInterval(updateClock, 1000);
 
 // Map: auto-update helper
 function autoUpdateMaps() {
-  if (document.getElementById('mapAutoUpdate').checked) loadMaps();
+  loadMaps();
 }
 
 // Map: time step buttons
@@ -737,13 +847,15 @@ document.getElementById('mapDate').addEventListener('change', (e) => {
 // Map: region change → repopulate variable/depth
 document.getElementById('mapRegion').addEventListener('change', (e) => {
   state.mapRegion = e.target.value;
-  updateMapModelsConfig(state.mapRegion);
   populateVarDepth(state.mapRegion);
+  updateMapModelsConfig(state.mapRegion, state.mapVarDepth);
   autoUpdateMaps();
 });
 
 // Map: variable/depth change
-document.getElementById('mapVarDepth').addEventListener('change', () => {
+document.getElementById('mapVarDepth').addEventListener('change', (e) => {
+  state.mapVarDepth = e.target.value;
+  updateMapModelsConfig(state.mapRegion, state.mapVarDepth);
   autoUpdateMaps();
 });
 
@@ -806,17 +918,45 @@ document.querySelectorAll('input[name="profileType"]').forEach(radio => {
         }
       });
 
-      // If the currently selected option is hidden, switch to the first visible one
+      // If the currently selected option is hidden, we need a fallback region.
       const selectedOption = argoRegionSelect.options[argoRegionSelect.selectedIndex];
-      if (selectedOption && selectedOption.style.display === 'none') {
-        const firstVisible = Array.from(argoRegionSelect.options).find(o => o.style.display !== 'none');
-        if (firstVisible) {
-          argoRegionSelect.value = firstVisible.value;
-          state.argoRegion = firstVisible.value;
-        }
-      }
+      const needsFallback = !selectedOption || selectedOption.style.display === 'none';
 
-      if (state.profileType === 'FVON' || state.profileType === 'Argo') {
+      if (needsFallback && state.profileType === 'FVON') {
+        // Fiji and Bahamas don't publish on the same schedule — Bahamas'
+        // FVON feed has been stale for months — so picking "the first
+        // visible option" (alphabetical: Bahamas before Fiji) silently
+        // defaults to whichever sorts first, not whichever actually has
+        // current data. Check both and take the newer one instead.
+        const candidates = Array.from(argoRegionSelect.options)
+          .filter(o => o.style.display !== 'none')
+          .map(o => o.value);
+        const results = await Promise.all(candidates.map(async (region) => {
+          try {
+            const res = await fetch(`${API_BASE}/api/fvon-latest-date?region=${encodeURIComponent(region)}`);
+            const data = await res.json();
+            return { region, date: data.date || null };
+          } catch (err) {
+            console.error(err);
+            return { region, date: null };
+          }
+        }));
+        const best = results.filter(r => r.date).sort((a, b) => b.date.localeCompare(a.date))[0];
+        if (best) {
+          argoRegionSelect.value = best.region;
+          state.argoRegion = best.region;
+          state.profileDate = best.date;
+          document.getElementById('profileDate').value = best.date;
+        }
+      } else {
+        if (needsFallback) {
+          const firstVisible = Array.from(argoRegionSelect.options).find(o => o.style.display !== 'none');
+          if (firstVisible) {
+            argoRegionSelect.value = firstVisible.value;
+            state.argoRegion = firstVisible.value;
+          }
+        }
+
         const endpoint = state.profileType === 'FVON' ? `${API_BASE}/api/fvon-latest-date` : `${API_BASE}/api/argo-latest-date`;
         const params = new URLSearchParams({ region: state.argoRegion });
         try {
@@ -833,6 +973,23 @@ document.querySelectorAll('input[name="profileType"]').forEach(radio => {
 
     } else {
       argoGroup.style.setProperty('display', 'none', 'important');
+
+      // Gliders' most recent per-day file is frequently still sparse (most
+      // of the fleet hasn't been processed into it yet) — the same "today's
+      // file often isn't complete" issue Argo/FVON already route around
+      // above. Without this, opening the Profiles tab (Glider is the
+      // default type) shows only a handful of platforms instead of the
+      // fleet, and looks like gliders are broken rather than a data lag.
+      try {
+        const res = await fetch(`${API_BASE}/api/glider-latest-date`);
+        const data = await res.json();
+        if (data.date) {
+          state.profileDate = data.date;
+          document.getElementById('profileDate').value = state.profileDate;
+        }
+      } catch (err) {
+        console.error(err);
+      }
     }
     refreshProfileIds();
     autoUpdateProfile();
@@ -843,7 +1000,7 @@ document.querySelectorAll('input[name="profileType"]').forEach(radio => {
 document.getElementById('argoRegion').addEventListener('change', async (e) => {
   state.argoRegion = e.target.value;
   if (state.profileType === 'FVON' || state.profileType === 'Argo') {
-    const endpoint = state.profileType === 'FVON' ? '${API_BASE}/api/fvon-latest-date' : '${API_BASE}/api/argo-latest-date';
+    const endpoint = state.profileType === 'FVON' ? `${API_BASE}/api/fvon-latest-date` : `${API_BASE}/api/argo-latest-date`;
     const params = new URLSearchParams({ region: state.argoRegion });
     try {
       const res = await fetch(`${endpoint}?${params}`);
@@ -867,7 +1024,7 @@ document.getElementById('platformId').addEventListener('change', () => {
 });
 
 function autoUpdateProfile() {
-  if (document.getElementById('profileAutoUpdate').checked) loadProfile();
+  loadProfile();
 }
 
 function refreshProfileIds() {
@@ -989,7 +1146,7 @@ async function loadAdaptiveSampling() {
 
 // Adaptive Sampling: auto-update helper
 function autoUpdateASG() {
-  if (document.getElementById('asgAutoUpdate').checked) loadAdaptiveSampling();
+  loadAdaptiveSampling();
 }
 
 // Adaptive Sampling: time step buttons
@@ -1023,6 +1180,22 @@ document.getElementById('adaptive-tab').addEventListener('shown.bs.tab', () => {
   }
 });
 
+function showDashboardTabFromHash() {
+  const targetByHash = {
+    '#overview': 'overview-tab',
+    '#maps': 'maps-tab',
+    '#profiles': 'profiles-tab',
+    '#adaptive': 'adaptive-tab',
+  };
+  const tabId = targetByHash[window.location.hash];
+  if (!tabId) return;
+  const tab = document.getElementById(tabId);
+  if (tab) bootstrap.Tab.getOrCreateInstance(tab).show();
+}
+
+window.addEventListener('DOMContentLoaded', showDashboardTabFromHash);
+window.addEventListener('hashchange', showDashboardTabFromHash);
+
 
 // ══════════════════════════════════════════════════════════
 // ─── OVERVIEW TAB ───
@@ -1030,10 +1203,12 @@ document.getElementById('adaptive-tab').addEventListener('shown.bs.tab', () => {
 
 function preloadOverviewImages(data) {
   if (!data) return;
-  if (data.copernicus && data.copernicus.url) preloadImage(data.copernicus.url);
-  if (data.espc && data.espc.url) preloadImage(data.espc.url);
-  if (data.espc_cmems && data.espc_cmems.url) preloadImage(data.espc_cmems.url);
-  if (data.goes && data.goes.url) preloadImage(data.goes.url);
+  if (data.copernicus && data.copernicus.available) preloadImage(data.copernicus.url);
+  if (data.espc && data.espc.available) preloadImage(data.espc.url);
+  if (data.espc_cmems && data.espc_cmems.available) preloadImage(data.espc_cmems.url);
+  if (data.eccofs && data.eccofs.available) preloadImage(data.eccofs.url);
+  if (data.goes16 && data.goes16.available) preloadImage(data.goes16.url);
+  if (data.goes19 && data.goes19.available) preloadImage(data.goes19.url);
 }
 
 function preloadOverviewAdjacentProducts(region, currentVar, currentDep) {
@@ -1064,18 +1239,14 @@ function preloadOverviewAdjacentProducts(region, currentVar, currentDep) {
   });
 }
 
-function loadOverview() {
+function loadOverview(allowFallback = true) {
   const regionInput = document.querySelector('input[name="ov_region"]:checked');
   const region = regionInput ? regionInput.value : state.ovRegions[state.ovCurrentRegionIndex];
   const ovVar = document.querySelector('input[name="ov_variable"]:checked').value;
   const depthInput = document.querySelector('input[name="ov_depth"]:checked');
   const ovDep = depthInput ? depthInput.value : '0m';
   const product = ovVar === 'ocean_heat_content' ? ovVar : ovVar + '_' + ovDep;
-  let model = document.querySelector('input[name="ov_model"]:checked').value;
-
-  if (region === 'Guam' || region === 'Fiji') {
-    model = 'espc_cmems';
-  }
+  const model = document.querySelector('input[name="ov_model"]:checked').value;
 
   const url = `${API_BASE}/api/overview-latest?region=${encodeURIComponent(region)}&variable_depth=${encodeURIComponent(product)}`;
   
@@ -1093,9 +1264,25 @@ function loadOverview() {
       document.getElementById('ov_time_badge').textContent = "--Z";
       return;
     }
-    
-    const imgData = data[model];
-    if (imgData && imgData.url) {
+
+    // Each model comparison finishes rendering on its own schedule, so the
+    // selected model may not be ready yet even though others are. On automatic
+    // loads (region/variable/depth change, initial load) fall back to the
+    // first visible model that is ready. A model the user explicitly picked
+    // (clicking it, or the prev/next arrows) is always respected as-is —
+    // if it's not ready, say so instead of silently swapping it out.
+    let chosenModel = model;
+    if (allowFallback && !(data[chosenModel] && data[chosenModel].available)) {
+      const fallback = getVisibleOverviewModels().find(m => data[m] && data[m].available);
+      if (fallback) {
+        chosenModel = fallback;
+        const radio = document.querySelector(`input[name="ov_model"][value="${chosenModel}"]`);
+        if (radio) radio.checked = true;
+      }
+    }
+
+    const imgData = data[chosenModel];
+    if (imgData && imgData.available) {
       const img = document.getElementById('ov_image');
       img.onerror = () => {
         img.classList.add('d-none');
@@ -1103,7 +1290,7 @@ function loadOverview() {
       };
       img.src = imgData.url;
       img.classList.remove('d-none');
-      
+
       document.getElementById('ov_date_label').textContent = data.date;
       document.getElementById('ov_time_badge').textContent = data.time;
     } else {
@@ -1137,51 +1324,90 @@ function loadOverview() {
 
 // Overview Event Listeners
 
-// Variable: show/hide depth group (OHC has no depth dimension)
+// Variable: show/hide depth group (OHC has no depth dimension), rebuild depth
+// buttons (each variable has its own depth set), reload
 document.querySelectorAll('input[name="ov_variable"]').forEach(el => {
   el.addEventListener('change', (e) => {
+    const region = document.querySelector('input[name="ov_region"]:checked').value;
     document.getElementById('ov_depth_group').style.display =
       e.target.value === 'ocean_heat_content' ? 'none' : '';
+    updateOverviewModelVisibility(region, e.target.value);
+    updateOverviewDepths(region, e.target.value);
+    updateOverviewGoesVisibility();
     loadOverview();
   });
 });
 
-// Model: reload on change
+// Model: reload on change. A model the user explicitly clicked should be
+// respected as-is (no silent fallback) — show "not available" if it isn't ready.
 document.querySelectorAll('input[name="ov_model"]').forEach(el => {
-  el.addEventListener('change', loadOverview);
+  el.addEventListener('change', () => loadOverview(false));
 });
 
 // Region: update model labels/visibility, rebuild depth buttons, reload
 document.querySelectorAll('input[name="ov_region"]').forEach(el => {
   el.addEventListener('change', (e) => {
     const region = e.target.value;
+    const variable = document.querySelector('input[name="ov_variable"]:checked').value;
     state.ovCurrentRegionIndex = state.ovRegions.indexOf(region);
-    const isSpecial = region === 'Guam' || region === 'Fiji';
-    const copEl  = document.getElementById('ov_mod_copernicus');
-    const goesEl = document.getElementById('ov_mod_goes');
-    const espcEl = document.getElementById('ov_mod_espc');
-    [copEl, goesEl].forEach(btn => {
-      btn.style.display = isSpecial ? 'none' : '';
-      btn.nextElementSibling.style.display = isSpecial ? 'none' : '';
-    });
-    espcEl.nextElementSibling.textContent = isSpecial ? 'ESPC vs CMEMS' : 'ESPC';
-    if (isSpecial) espcEl.checked = true;
-    updateOverviewDepths(region);
+    updateOverviewModelVisibility(region, variable);
+    updateOverviewDepths(region, variable);
+    updateOverviewGoesVisibility();
     loadOverview();
   });
 });
 
-function toggleOverviewModel(direction = 1) {
-  const region = document.querySelector('input[name="ov_region"]:checked').value;
-  const isSpecialRegion = region === 'Guam' || region === 'Fiji';
-  if (isSpecialRegion) return;
+// Fiji's RTOFS comparisons went live 2026-08-24. Like Guam's (whose RTOFS
+// history is still short), they sit alongside the older ESPC-vs-CMEMS
+// comparison rather than replacing it — except Ocean Heat Content, which
+// for Fiji is still only ever published as a single combined three-model
+// image (see build_map_urls's Fiji-specific OHC filename), so that one
+// variable stays locked to the ESPC-vs-CMEMS option the way the whole
+// region used to be. Every other region only ever produces RTOFS-based
+// comparisons.
+function updateOverviewModelVisibility(region, variable) {
+  const isFiji = region === 'Fiji';
+  const isGuam = region === 'Guam';
+  const fijiOhcOnly = isFiji && variable === 'ocean_heat_content';
+  const espcEl      = document.getElementById('ov_mod_espc');
+  const copEl       = document.getElementById('ov_mod_copernicus');
+  const espcCmemsEl = document.getElementById('ov_mod_espc_cmems');
+  const eccofsEl    = document.getElementById('ov_mod_eccofs');
+  const showEccofs  = !fijiOhcOnly && !MAP_ECCOFS_EXCLUDED_REGIONS.has(region);
 
-  const models = ['espc', 'copernicus', 'goes'];
+  const setVisible = (btn, visible) => {
+    btn.style.display = visible ? '' : 'none';
+    btn.nextElementSibling.style.display = visible ? '' : 'none';
+  };
+
+  setVisible(espcEl, !fijiOhcOnly);
+  setVisible(copEl, !fijiOhcOnly);
+  setVisible(espcCmemsEl, isFiji || isGuam);
+  setVisible(eccofsEl, showEccofs);
+
+  const checkedModel = document.querySelector('input[name="ov_model"]:checked');
+  if (fijiOhcOnly) {
+    espcCmemsEl.checked = true;
+  } else if (checkedModel === espcCmemsEl && !isGuam && !isFiji) {
+    espcEl.checked = true;
+  } else if (checkedModel === eccofsEl && !showEccofs) {
+    espcEl.checked = true;
+  }
+}
+
+function getVisibleOverviewModels() {
+  return Array.from(document.querySelectorAll('input[name="ov_model"]'))
+    .filter(el => el.style.display !== 'none')
+    .map(el => el.value);
+}
+
+function toggleOverviewModel(direction = 1) {
+  const models = getVisibleOverviewModels();
   const currentModel = document.querySelector('input[name="ov_model"]:checked').value;
   const idx = models.indexOf(currentModel);
   const nextIdx = (idx + direction + models.length) % models.length;
   document.querySelector(`input[name="ov_model"][value="${models[nextIdx]}"]`).checked = true;
-  loadOverview();
+  loadOverview(false);
 }
 
 document.getElementById('ov_prev_model').addEventListener('click', () => toggleOverviewModel(-1));
@@ -1190,8 +1416,11 @@ document.getElementById('ov_next_model').addEventListener('click', () => toggleO
 
 // Keyboard Navigation (Overview + Maps tabs)
 document.addEventListener('keydown', (e) => {
-  // Skip if user is typing in a form field
+  // Skip if user is typing in a form field, or the lightbox is open (its own
+  // keydown listener handles Escape; arrow keys shouldn't change the image
+  // behind it while it's showing a snapshot of a specific image).
   if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+  if (lightbox.classList.contains('show')) return;
 
   const overviewPane = document.getElementById('overview-pane');
   const mapsPane     = document.getElementById('maps-pane');
@@ -1220,15 +1449,20 @@ document.addEventListener('keydown', (e) => {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 (function init() {
-  // Populate map tabs based on default region
-  updateMapModelsConfig(state.mapRegion);
-
   // Populate variable/depth for default region
   populateVarDepth(state.mapRegion);
 
-  // Initialize overview depth buttons for the default region
+  // Populate map tabs based on default region + variable/depth
+  updateMapModelsConfig(state.mapRegion, state.mapVarDepth);
+
+  // Initialize overview depth buttons for the default region + variable
   const defaultOvRegion = document.querySelector('input[name="ov_region"]:checked');
-  if (defaultOvRegion) updateOverviewDepths(defaultOvRegion.value);
+  const defaultOvVariable = document.querySelector('input[name="ov_variable"]:checked');
+  if (defaultOvRegion && defaultOvVariable) {
+    updateOverviewModelVisibility(defaultOvRegion.value, defaultOvVariable.value);
+    updateOverviewDepths(defaultOvRegion.value, defaultOvVariable.value);
+  }
+  updateOverviewGoesVisibility();
 
   // Pre-load maps on page load
   loadOverview();

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Gulf Stream fronts – IOOS Model Comparisons{% endblock %}
+
+{% block head_extra %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/fronts_editor.css') }}" />
+{% endblock %}
+
+{% block content %}
+{% set can_edit = current_user.is_authenticated and current_user.has_role("editor") %}
+{% with archive_nav_mode="links", archive_nav_active="fronts" %}
+  {% include "archive_nav.html" %}
+{% endwith %}
+<div class="fronts-toolbar d-flex align-items-center gap-2 flex-wrap px-3 py-2">
+  <select id="daySelect" class="form-select form-select-sm" style="width:auto"></select>
+  <select id="versionSelect" class="form-select form-select-sm" style="width:auto"
+          title="version history"></select>
+  <div class="btn-group btn-group-sm">
+    <input type="radio" class="btn-check" name="field" id="fSst" value="sst" checked>
+    <label class="btn btn-outline-secondary" for="fSst">SST</label>
+    <input type="radio" class="btn-check" name="field" id="fSla" value="sla">
+    <label class="btn btn-outline-secondary" for="fSla">SLA</label>
+    <input type="radio" class="btn-check" name="field" id="fOisst" value="oisst">
+    <label class="btn btn-outline-secondary" for="fOisst">OISST</label>
+    <input type="radio" class="btn-check" name="field" id="fNone" value="none">
+    <label class="btn btn-outline-secondary" for="fNone">None</label>
+  </div>
+  <input type="range" id="opacity" class="form-range" min="0" max="1" step="0.05"
+         value="0.85" style="width:90px" title="overlay opacity">
+  <div class="form-check form-switch mb-0">
+    <input class="form-check-input" type="checkbox" id="showRings" checked>
+    <label class="form-check-label small" for="showRings">rings</label>
+  </div>
+  <button id="undoBtn" class="btn btn-sm btn-outline-secondary {% if not can_edit %}d-none{% endif %}" disabled>Undo</button>
+  <button id="revertBtn" class="btn btn-sm btn-outline-warning {% if not can_edit %}d-none{% endif %}">Revert to auto</button>
+  <button id="saveBtn" class="btn btn-sm btn-success {% if not can_edit %}d-none{% endif %}">Save</button>
+  {% if not can_edit and not current_user.is_authenticated %}
+  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('auth.login', next=request.path) }}">Sign in to edit</a>
+  {% endif %}
+</div>
+<!-- OISST controls: shown only when that layer is selected -->
+<div id="oisstBar" class="d-flex align-items-end gap-2 flex-wrap px-3 pb-2" style="display:none!important">
+  <div>
+    <label class="form-label small mb-0">date</label>
+    <input type="date" id="oDate" class="form-control form-control-sm" style="width:10rem">
+  </div>
+  <div class="btn-group btn-group-sm align-self-end">
+    <button class="btn btn-outline-secondary" id="oPrev" title="previous day">&laquo;</button>
+    <button class="btn btn-outline-secondary" id="oNext" title="next day">&raquo;</button>
+  </div>
+  <div>
+    <label class="form-label small mb-0">colormap</label>
+    <select id="oCmap" class="form-select form-select-sm" style="width:12rem"></select>
+  </div>
+  <div><label class="form-label small mb-0">min</label>
+    <input type="number" step="any" id="oVmin" class="form-control form-control-sm" style="width:6rem"></div>
+  <div><label class="form-label small mb-0">max</label>
+    <input type="number" step="any" id="oVmax" class="form-control form-control-sm" style="width:6rem"></div>
+  <div><label class="form-label small mb-0">stride</label>
+    <input type="number" step="any" id="oStride" class="form-control form-control-sm" style="width:6rem"
+           title="colour band width; blank = continuous ramp"></div>
+  <button id="oAuto" class="btn btn-sm btn-outline-secondary" title="fit limits to this scene">Auto</button>
+  <div class="ms-auto"><canvas id="oBar" width="240" height="34"></canvas></div>
+</div>
+<div id="map"></div>
+<div id="statusbar" class="px-3 py-1 small d-flex gap-3 flex-wrap">
+  <span id="statVertices">—</span><span id="statQc">—</span>
+  <span id="statEdited">—</span><span id="statMsg" class="ms-auto"></span>
+</div>
+
+<div class="modal fade" id="saveModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Save edited wall?</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <p id="saveSummary" class="mb-2"></p>
+      <div class="alert alert-warning small mb-2" id="simplifyWarning"></div>
+      <div class="alert alert-secondary small mb-0">
+        Saved as a new <b>version</b> — the automatic one is kept, not overwritten,
+        and stays available in the version dropdown. The saved copy is marked
+        <code>qc_stale</code> because the stored support/displacement numbers
+        describe the automatic line.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-success" id="saveConfirm">Save</button>
+    </div>
+  </div></div>
+</div>
+{% endblock %}
+
+{% block data_channel %}
+<script>
+  const API_BASE   = {{ request.script_root | tojson }};
+  const CSRF_TOKEN = {{ csrf_token() | tojson }};
+  const CAN_EDIT   = {{ can_edit | tojson }};
+  const MIN_EDDY_DAYS = 2;
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
+<script src="{{ url_for('static', filename='js/fronts_editor.js') }}"></script>
+{% endblock %}

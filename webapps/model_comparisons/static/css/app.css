@@ -31,11 +31,9 @@
 
 html {
   height: 100%;
-  overflow: hidden;
 }
 
 body {
-  height: 100%;
   margin: 0;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 14px;
@@ -43,6 +41,22 @@ body {
   background: var(--tab-bar-bg);
   display: flex;
   flex-direction: column;
+}
+
+/* The single-page tabbed app (index.html) is laid out to fill exactly one
+   viewport, with every tab pane managing its own internal scroll areas —
+   that's what needs html/body locked to viewport height with no page
+   scroll. Plain top-down pages sharing this same base template/stylesheet
+   (the /regions and /fronts editors) are NOT built that way: they're normal
+   pages whose content can be taller than one screen, and locking them the
+   same way silently made it impossible to scroll down to see anything
+   below the fold. Opt in via body_class in base.html instead of applying
+   this globally. */
+body.app-shell {
+  height: 100%;
+  overflow: hidden;
+}
+html:has(body.app-shell) {
   overflow: hidden;
 }
 
@@ -54,10 +68,15 @@ body {
 }
 
 .brand-title {
-  font-size: 1rem;
+  font-size: 2.3rem;
   font-weight: 700;
   letter-spacing: -.01em;
   color: #fff;
+}
+
+.navbar-logo {
+  height: 55px;
+  width: auto;
 }
 
 .brand-sub {
@@ -341,6 +360,29 @@ body {
   min-height: 400px;
 }
 
+/* ─── Profiles tab: map + plot side-by-side layout ─── */
+.profile-display {
+  flex-direction: row;
+}
+
+.profile-map-panel {
+  width: 350px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  resize: horizontal;  /* drag the edge to resize; requires width, not flex-basis */
+  overflow: hidden;
+  min-width: 200px;
+  max-width: 800px;
+  padding-bottom: 0;
+}
+
+.profile-plot-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
 .image-panel-body img.plot-image {
   max-width: 100%;
   max-height: 100%;  /* key: image shrinks to fit the body's height */
@@ -350,6 +392,7 @@ body {
   border-radius: var(--radius-sm);
   display: block;
   animation: fadeIn .3s ease;
+  cursor: zoom-in;
 }
 
 @keyframes fadeIn {
@@ -439,23 +482,6 @@ body {
 .region-flip-btn.left { left: 1rem; }
 .region-flip-btn.right { right: 1rem; }
 
-/* ─── Responsive ─── */
-@media (max-width: 900px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
-  .controls-sidebar {
-    border-right: none;
-    border-bottom: 1px solid var(--sidebar-border);
-    padding: .75rem;
-  }
-}
-
-@media (max-width: 576px) {
-  .image-display { padding: .75rem; }
-  .brand-title   { font-size: .85rem; }
-}
-
 /* ─── Overview pane layout ─── */
 .ov-region-bar {
   flex-shrink: 0;
@@ -496,6 +522,184 @@ body {
   border-color: var(--panel-border);
   border-bottom-color: var(--panel-bg);
   font-weight: 600;
+}
+
+/* ─── Responsive ───
+   Below 900px the sidebar + image layout stacks into a single column
+   (.content-grid, .ov-sidebar-grid, and the Profiles tab's map+plot row).
+   The desktop shell assumes everything sits side by side and never
+   exceeds one viewport (hence overflow:hidden everywhere), but once
+   stacked, sidebar + image easily add up to more than one screen's
+   height — so on mobile we drop the height-locking/clipping chain and
+   let the page scroll normally instead of silently cutting content off. */
+@media (max-width: 900px) {
+  .content-grid,
+  .ov-sidebar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .controls-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--sidebar-border);
+    padding: .75rem;
+  }
+
+  .image-display {
+    padding: .75rem;
+  }
+
+  html, body {
+    overflow: visible;
+  }
+
+  .app-wrapper,
+  #mainTabContent,
+  .tab-pane.show.active,
+  .content-grid,
+  .ov-sidebar-grid,
+  .ov-sidebar-grid > main,
+  .controls-sidebar,
+  .image-display,
+  .image-panel,
+  .image-panel-body {
+    flex: none;
+    overflow: visible;
+  }
+
+  /* Grid/flex items default to min-width:auto (their content's intrinsic
+     min width), so a wide child like #mapModelTabs would otherwise stretch
+     the whole column past the viewport instead of scrolling internally. */
+  .content-grid > *,
+  .ov-sidebar-grid > *,
+  .image-display,
+  .image-panel,
+  .image-panel-header,
+  #mapModelTabs {
+    min-width: 0;
+  }
+
+  .image-panel-body {
+    min-height: 240px;
+  }
+
+  .image-panel-body img.plot-image {
+    max-height: 70vh;
+  }
+
+  /* Profiles tab: map + plot stack instead of sitting side by side, and
+     the map panel drops its fixed desktop width/drag-resize in favor of
+     a plain fixed height. */
+  .profile-display {
+    flex-direction: column;
+  }
+  .profile-map-panel {
+    width: 100%;
+    height: 280px;
+    resize: none;
+    min-width: 0;
+    max-width: none;
+    /* Leaflet's tile grid renders slightly larger than its container and
+       relies on an ancestor clipping it (true on desktop via .image-panel's
+       base overflow:hidden) — re-assert that here since the broad
+       .image-panel { overflow: visible } rule above would otherwise let
+       tiles bleed past this fixed-height panel and widen the whole page. */
+    overflow: hidden;
+  }
+
+  /* Tab bar: one swipeable row instead of wrapping across several lines */
+  .tab-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tab-pills::-webkit-scrollbar { display: none; }
+  .tab-pills .nav-item { flex-shrink: 0; }
+  .tab-pills .nav-item.ms-auto { margin-left: 0 !important; }
+
+  /* Maps tab's Copernicus/ESPC/GOES-16/GOES-19 sub-tabs: same overflow
+     risk as the main tab bar, same fix. */
+  #mapModelTabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+  #mapModelTabs::-webkit-scrollbar { display: none; }
+  #mapModelTabs .nav-item { flex-shrink: 0; }
+
+  .brand-title   { font-size: 1.15rem; }
+  .navbar-logo   { height: 42px; }
+  .nav-timestamp { font-size: 1rem; }
+
+  /* Bootstrap's .navbar-brand forces white-space:nowrap, which pushes this
+     long title past the viewport instead of wrapping under the logo. */
+  .navbar-brand-group {
+    min-width: 0;
+  }
+  .navbar-brand-group .navbar-brand {
+    white-space: normal;
+    line-height: 1.2;
+    min-width: 0;
+  }
+
+  .image-lightbox { padding: 1rem; }
+  .lightbox-close { top: .5rem; right: .5rem; width: 40px; height: 40px; }
+}
+
+/* ─── Image Lightbox ───
+   Tapping/clicking any plot image opens it full-size over a dark backdrop —
+   dismiss via the close button, a backdrop click, or Escape. */
+.image-lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 12, 16, .92);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  cursor: zoom-out;
+}
+
+.image-lightbox.show {
+  display: flex;
+}
+
+.image-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 50px rgba(0, 0, 0, .5);
+  cursor: default;
+  animation: fadeIn .2s ease;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .15);
+  color: #fff;
+  font-size: 1.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition);
+  z-index: 2001;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, .3);
 }
 
 
