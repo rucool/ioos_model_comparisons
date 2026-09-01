@@ -3,7 +3,8 @@ import numpy as np
 from ioos_model_comparisons.calc import (
     calculate_transect,
     lon180to360,
-    lon360to180
+    lon360to180,
+    rotate_vector
     )
 import os
 import random
@@ -96,6 +97,14 @@ def rtofs(rename=None, source='east', chunks=None):
         'Y': 'y'
     })
     ds = ds.set_coords(['lon', 'lat'])
+
+    # The scraped THREDDS aggregations occasionally contain duplicate
+    # timestamps (e.g. both a nowcast and forecast file landing on the same
+    # MT value). A non-unique time index breaks .sel(..., method="nearest"),
+    # so drop duplicates here, keeping the most recently scraped file.
+    if ds.get_index('time').duplicated().any():
+        ds = ds.drop_duplicates('time', keep='last')
+
     ds.attrs['model'] = model
     return ds
 
@@ -256,6 +265,27 @@ def espc_ts(rename=False, chunks=None):
     # ds["water_temp"] = ds_ts["water_temp"]
     # ds["salinity"] = ds_ts["salinity"]
 
+    # The FMRC "best" aggregation hands back two identical time axes and puts
+    # water_temp on time1 while salinity stays on time. Left alone, a
+    # .sel(time=...) only collapses salinity and temperature keeps every
+    # forecast hour. Fold time1 back into time so one .sel reduces both.
+    if "time1" in ds.dims:
+        if not np.array_equal(ds["time1"].values, ds["time"].values):
+            raise ValueError(
+                "ESPC 'time' and 'time1' axes differ -- cannot fold them into "
+                "a single time dimension."
+            )
+        drop = [v for v in ("time_offset", "time1_offset", "time1_run")
+                if v in ds.variables]
+        ds = ds.drop_vars(drop)
+        ds = xr.Dataset(
+            {
+                name: da.rename({"time1": "time"}) if "time1" in da.dims else da
+                for name, da in ds.data_vars.items()
+            },
+            attrs=ds.attrs,
+        )
+
     ds.attrs['model'] = 'ESPC'
 
     if rename:
@@ -314,7 +344,7 @@ class ESPC:
     def _load_data(self):
         """Load individual datasets lazily and store them."""
         datasets = {
-            # 'water_temp': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/{self.year_loaded}',
+            'water_temp': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/{self.year_loaded}',
             'salinity': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/s3z/{self.year_loaded}',
             'water_u': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/u3z/{self.year_loaded}',
             'water_v': f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/{self.year_loaded}'
@@ -414,6 +444,56 @@ class ESPC:
     
 
 
+    @staticmethod
+    def _is_flat_profile(da, dim='depth', atol=1e-4):
+        """
+        Check whether a profile is suspiciously constant across depth.
+
+        ESPC has occasionally published a newest time step where a variable
+        (seen so far with salinity) is filled with a single repeated value
+        at every depth instead of a real profile -- almost certainly a
+        placeholder/incomplete write upstream rather than real ocean
+        structure. This flags that case so callers can fall back to the
+        previous time step instead of silently plotting/using it.
+        """
+        if dim not in da.dims or da.sizes[dim] < 2:
+            return False
+        vals = np.asarray(da.values, dtype=float)
+        valid = vals[~np.isnan(vals)]
+        if valid.size < 2:
+            return False
+        return bool(np.allclose(valid, valid[0], atol=atol))
+
+    def _select_point_with_fallback(self, da, lon, lat, time, max_time_fallback=4):
+        """
+        Select the nearest time/lon/lat point from `da`, stepping backward
+        through earlier time steps (up to `max_time_fallback` steps) if the
+        selected profile is flat with depth (see `_is_flat_profile`).
+        """
+        da_pt = da.sel(time=time, lon=lon, lat=lat, method='nearest')
+
+        if not self._is_flat_profile(da_pt):
+            return da_pt
+
+        times = da['time'].values
+        sel_time = da_pt['time'].values
+        idx = int(np.argmin(np.abs(times - sel_time)))
+
+        for step in range(1, max_time_fallback + 1):
+            prev_idx = idx - step
+            if prev_idx < 0:
+                break
+            candidate = da.sel(time=times[prev_idx], lon=lon, lat=lat, method='nearest')
+            if not self._is_flat_profile(candidate):
+                print(f"ESPC: '{da.name}' at {pd.Timestamp(sel_time)} was flat with depth "
+                      f"(likely a bad/incomplete upstream time step); falling back to "
+                      f"{pd.Timestamp(times[prev_idx])}")
+                return candidate
+
+        print(f"ESPC: '{da.name}' at {pd.Timestamp(sel_time)} was flat with depth and stayed "
+              f"flat after stepping back {max_time_fallback} time steps; returning it as-is")
+        return da_pt
+
     def get_point(self, lon, lat, time, interp=False, vars=None):
         """
         Retrieve data for a specific lon/lat/time point.
@@ -442,6 +522,8 @@ class ESPC:
                 return 'water_u'
             elif var == 'v':
                 return 'water_v'
+            else:
+                return var
 
 
         lon = lon180to360(lon)
@@ -456,14 +538,14 @@ class ESPC:
             if interp:
                 da = da.interp(time=time, lon=lon, lat=lat)
             else:
-                da = da.sel(time=time, lon=lon, lat=lat, method='nearest', drop=True)
+                da = self._select_point_with_fallback(da, lon, lat, time)
             var_data.append(da)
 
         ds = xr.merge(var_data, compat='override')
 
         # Rename variables only if needed
         rename_map = {
-            # 'water_temp': 'temperature',
+            'water_temp': 'temperature',
             'water_u': 'u',
             'water_v': 'v'
         }
@@ -1367,6 +1449,457 @@ def doppio(rename=False):
     specific time with s→z conversion and staggered-grid averaging applied.
     """
     return Doppio()
+
+
+# =============================================================================
+# ECCOFS (ROMS) — Rutgers/UCSC/Fathom/NOAA East Coast Community Ocean
+# Forecast System, published to the public "noaa-nos-eccofs-pds" S3 bucket
+# (NOAA Open Data Dissemination). See https://registry.opendata.aws/noaa-nos-eccofs/
+#
+# There is no THREDDS/OPeNDAP endpoint for this dataset. Reading it directly
+# over HTTPS via the netCDF-C byte-range reader was tried first, but the
+# files are netCDF-3 classic format, where all variables for a given time
+# step are interleaved into one on-disk "record" — so a remote read's cost
+# is dominated by the number of variables touched, not by how small a
+# spatial subset is requested (~60s per variable regardless of subset
+# size). Instead, the whole qck file (~12 GB) is downloaded once to a local
+# cache (data/eccofs/); every later read — any timestep, any worker, any
+# script re-run — is then a plain fast local-disk read. The cache is keyed
+# on the S3 object's size, and downloads are staged to a ".part" file and
+# atomically renamed on completion, so a crash mid-download never leaves a
+# corrupt file behind and a re-run just resumes cleanly from scratch.
+#
+# The "qck" (quicksave) product is used rather than the full "his"/"avg"
+# 50-level output because it is ~1000x smaller: it stores surface fields
+# plus 3 fixed depth slices (2, 50, 100 m) instead of the full s-level
+# water column, which is enough for the depths this project plots (deeper
+# requests like 150/200 m simply resolve to the nearest available slice,
+# same as the AMSEAS/CMEMS integrations).
+ECCOFS_BUCKET = "noaa-nos-eccofs-pds"
+
+
+def _eccofs_cache_dir():
+    from ioos_model_comparisons import configs as conf
+
+    cache_dir = conf.path_data / "eccofs"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _eccofs_s3_client():
+    import boto3
+    from botocore import UNSIGNED
+    from botocore.config import Config
+
+    return boto3.client("s3", config=Config(signature_version=UNSIGNED))
+
+
+def _eccofs_latest_key():
+    """Return the S3 key of the most recently published ECCOFS qck file.
+
+    Excludes the older "_fwd" continuation files (no longer produced for
+    recent dates) — the base qck file already spans a hindcast + forecast
+    window of about a week.
+    """
+    s3 = _eccofs_s3_client()
+    paginator = s3.get_paginator("list_objects_v2")
+    candidates = []
+    for page in paginator.paginate(Bucket=ECCOFS_BUCKET, Prefix="qck/"):
+        for obj in page.get("Contents", []):
+            if obj["Key"].endswith(".nc") and "_fwd" not in obj["Key"]:
+                candidates.append(obj)
+    if not candidates:
+        raise RuntimeError("No ECCOFS qck files found in S3 bucket.")
+    latest = max(candidates, key=lambda o: o["LastModified"])
+    return latest["Key"]
+
+
+def ensure_eccofs_cached(key=None):
+    """Ensure the ECCOFS qck file for *key* is downloaded to the local cache.
+
+    Returns the local path, downloading first only if no up-to-date copy is
+    already cached (checked by comparing file size to S3's ContentLength).
+    Also drops any other cached qck files, since only the current "latest"
+    one is ever needed.
+
+    Safe to call from multiple places: ECCOFS() calls it, and the main
+    comparison script also calls it once up front (before spawning parallel
+    workers) so that workers racing to instantiate ECCOFS() on a cold cache
+    don't each try to download the same 12 GB file concurrently.
+    """
+    key = key or _eccofs_latest_key()
+    s3 = _eccofs_s3_client()
+    remote_size = s3.head_object(Bucket=ECCOFS_BUCKET, Key=key)["ContentLength"]
+
+    cache_dir  = _eccofs_cache_dir()
+    local_path = cache_dir / os.path.basename(key)
+
+    if local_path.is_file() and local_path.stat().st_size == remote_size:
+        logger.info(f"ECCOFS: using cached file {local_path} ({remote_size / 1024**3:.1f} GB)")
+        return local_path
+
+    logger.info(f"ECCOFS: downloading {key} ({remote_size / 1024**3:.1f} GB) to {local_path} ...")
+    tmp_path = local_path.with_suffix(local_path.suffix + ".part")
+    t0 = _time.time()
+    s3.download_file(ECCOFS_BUCKET, key, str(tmp_path))
+    os.replace(tmp_path, local_path)  # atomic — avoids partial-file races
+    logger.info(f"ECCOFS: download complete in {(_time.time() - t0) / 60:.1f} min")
+
+    for f in cache_dir.glob("eccofs_qck_*.nc"):
+        if f != local_path:
+            logger.info(f"ECCOFS: removing stale cached file {f}")
+            f.unlink(missing_ok=True)
+
+    return local_path
+
+
+def _eccofs_at_time(raw_ds, time, method="nearest"):
+    """Eagerly load one full-domain timestep from the raw ECCOFS qck dataset.
+
+    Returns an in-memory xarray.Dataset with variables temperature, salinity,
+    u, v on a discrete depth dimension (2, 50, 100 m, positive-down) and 2-D
+    lon/lat coordinates — compatible with the rest of the comparison
+    framework (same shape as the Doppio integration).
+    """
+    sub = raw_ds.sel(time=time, method=method)
+    sub = sub[["temp_slice", "salt_slice", "u_eastward_slice", "v_northward_slice"]]
+    sub = sub.rename({
+        "temp_slice": "temperature",
+        "salt_slice": "salinity",
+        "u_eastward_slice": "u",
+        "v_northward_slice": "v",
+    })
+    sub.load()  # local-disk read, once per timestep instead of once per region
+    return sub
+
+
+class ECCOFS:
+    """ECCOFS ROMS quicksave (qck) product, downloaded once to a local cache.
+
+    Use .sel(time=...) to retrieve data for a specific time. Returns an
+    in-memory xarray.Dataset with temperature, salinity, u, v on fixed depth
+    levels (2, 50, 100 m) and 2-D lon/lat coordinates.
+
+    Examples
+    --------
+    >>> ec = ECCOFS()
+    >>> ds = ec.sel(time=datetime(2026, 7, 29))
+    >>> ds['temperature'].sel(depth=0, method='nearest')
+    """
+
+    def __init__(self):
+        key = _eccofs_latest_key()
+        local_path = ensure_eccofs_cached(key)
+        self.source = str(local_path)
+        raw = xr.open_dataset(local_path, engine="netcdf4")
+
+        depth = (-raw["z_slice"].values).astype(float)  # ROMS z (neg-down) -> positive-down
+        raw = raw.assign_coords(z_slice=depth).rename({
+            "ocean_time": "time",
+            "eta_rho": "y",
+            "xi_rho": "x",
+            "lon_rho": "lon",
+            "lat_rho": "lat",
+            "z_slice": "depth",
+        })
+        raw = raw.set_coords(["lon", "lat"])
+        raw["lon"] = raw["lon"].load()
+        raw["lat"] = raw["lat"].load()
+
+        self._ds = raw
+        self.attrs = {"model": "ECCOFS"}
+        logger.info("ECCOFS loaded from %s. Grid: %s", local_path, raw["lon"].shape)
+
+    def sel(self, time=None, method="nearest", **kwargs):
+        """Return dataset at *time* (eagerly loaded, full domain)."""
+        if time is None:
+            raise ValueError("time is required")
+        ds = _eccofs_at_time(self._ds, time, method=method)
+        ds.attrs["model"] = "ECCOFS"
+        return ds
+
+
+def eccofs(rename=False):
+    """Load the latest ECCOFS qck product from NOAA's public S3 bucket.
+
+    Returns an ECCOFS instance. Call .sel(time=...) to get data for a
+    specific time (eagerly loaded, full domain — see ECCOFS docstring).
+    """
+    return ECCOFS()
+
+
+# =============================================================================
+# ECCOFS full-depth (ROMS "his" product) — used where full water-column
+# resolution matters (e.g. Ocean Heat Content), trading away the "qck"
+# product's 3-hourly cadence for one full-depth (50 s-level) snapshot per
+# calendar day. Unlike "qck" (one file spans ~8 days), "his" is one file
+# per timestep (~4.3 GB each), so only the specific calendar-day files a
+# caller actually asks for get downloaded/cached — not the whole rolling
+# window. Depths are native ROMS s-levels, so this reuses the same s->z
+# interpolation machinery as the Doppio integration above.
+def _eccofs_his_index():
+    """Return [(datetime, s3_key, size_bytes), ...] for the latest published
+    ECCOFS cycle's own file set (sequence 0001-0003 = that cycle's 3-day
+    analysis window, 0004-0008 = its 5-day forecast), sorted by time.
+
+    Deliberately uses only the single most-recently-published cycle, not
+    each date's own separate initialization: this project's other models
+    (RTOFS, ESPC, ...) are read from "best" THREDDS aggregations, which for
+    a given valid time serve whatever forecast lead the latest available
+    run happens to have for it. Matching ECCOFS the same way -- latest
+    cycle, nearest-time match within its own analysis+forecast span -- is
+    what makes "RTOFS's field for 2026-08-08" and "ECCOFS's field for
+    2026-08-08" apples-to-apples: both come from a run initialized on
+    2026-08-07, not ECCOFS's own from-scratch analysis run three weeks
+    earlier that also happens to cover 2026-08-08.
+
+    Sequence numbering: 0001 = the cycle's own reference date (embedded in
+    the filename), 0002 = +1 day, ..., 0008 = +7 days -- confirmed directly
+    by an ECCOFS developer. Each file's date is derived from its filename
+    rather than opened remotely to confirm (one S3 listing instead of
+    dozens of remote reads); _eccofs_his_at_time()/sel() cross-check the
+    real ocean_time once a file is actually opened, so a future naming
+    convention change would surface as a loud mismatch, not a silently
+    wrong date.
+    """
+    s3 = _eccofs_s3_client()
+    paginator = s3.get_paginator("list_objects_v2")
+    objs = []
+    for page in paginator.paginate(Bucket=ECCOFS_BUCKET, Prefix="his/"):
+        objs.extend(page.get("Contents", []))
+
+    pattern = re.compile(r"eccofs_his_(\d{8})_(\d{4})\.nc$")
+    by_ref = {}
+    for obj in objs:
+        m = pattern.search(obj["Key"])
+        if m:
+            by_ref.setdefault(m.group(1), []).append((m.group(2), obj))
+    if not by_ref:
+        raise RuntimeError("No ECCOFS his files found in S3 bucket.")
+    latest_ref = max(by_ref)
+
+    index = []
+    for seq, obj in sorted(by_ref[latest_ref], key=lambda e: int(e[0])):
+        t = pd.Timestamp(latest_ref) + pd.Timedelta(days=int(seq) - 1)
+        index.append((t, obj["Key"], obj["Size"]))
+    return index
+
+
+def ensure_eccofs_his_cached(key, size=None):
+    """Ensure a single ECCOFS "his" file is downloaded to the local cache.
+
+    Same atomic-download / size-check pattern as ensure_eccofs_cached, just
+    per-timestep-file instead of the one big "qck" file.
+    """
+    s3 = _eccofs_s3_client()
+    if size is None:
+        size = s3.head_object(Bucket=ECCOFS_BUCKET, Key=key)["ContentLength"]
+
+    cache_dir  = _eccofs_cache_dir() / "his"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    local_path = cache_dir / os.path.basename(key)
+
+    if local_path.is_file() and local_path.stat().st_size == size:
+        logger.info(f"ECCOFS his: using cached file {local_path} ({size / 1024**3:.1f} GB)")
+        return local_path
+
+    logger.info(f"ECCOFS his: downloading {key} ({size / 1024**3:.1f} GB) to {local_path} ...")
+    tmp_path = local_path.with_suffix(local_path.suffix + ".part")
+    t0 = _time.time()
+    s3.download_file(ECCOFS_BUCKET, key, str(tmp_path))
+    os.replace(tmp_path, local_path)
+    logger.info(f"ECCOFS his: download complete in {(_time.time() - t0) / 60:.1f} min")
+    return local_path
+
+
+def _eccofs_his_at_time(raw_ds, z_rho, lon2d, lat2d, angle):
+    """Interpolate one ECCOFS "his" snapshot from s-levels to DOPPIO_DEPTHS.
+
+    Same staggered-grid averaging + s->z interpolation as _doppio_at_time,
+    plus a grid-to-earth rotation that Doppio's grid doesn't need: ECCOFS's
+    raw 'u'/'v' are along the curvilinear grid's local xi/eta axes, not
+    true east/north, until rotated by the per-cell 'angle' variable -- non-
+    trivial across this domain (tens of degrees, not a small correction).
+
+    Uses calc.rotate_vector(), which expects degrees and rotates by -theta
+    (its formula is the transpose of the standard CCW rotation matrix), so
+    'angle' (radians, CCW from the XI-axis to true east) must be negated
+    and converted to degrees before calling it. Verified against the Gulf
+    Stream east of Cape Hatteras (u,v at the surface there should point
+    ~30-70 deg compass bearing): rotate_vector(u, v, -degrees(angle)) gives
+    ~47 deg at 1.27 m/s; +degrees(angle) gives ~127 deg (wrong quadrant),
+    and passing angle in radians un-converted gives ~87 deg (barely
+    different from the unrotated ~87 deg raw value -- confirms that
+    skipping the radians->degrees conversion silently produces almost no
+    rotation at all, not an obviously-wrong result).
+    """
+    temp = raw_ds['temp'].isel(ocean_time=0).values
+    salt = raw_ds['salt'].isel(ocean_time=0).values
+    ns, neta, nxi = temp.shape
+
+    u_s = raw_ds['u'].isel(ocean_time=0).values
+    u_r = np.empty((ns, neta, nxi))
+    u_r[:, :, 0]    = u_s[:, :, 0]
+    u_r[:, :, 1:-1] = 0.5 * (u_s[:, :, :-1] + u_s[:, :, 1:])
+    u_r[:, :, -1]   = u_s[:, :, -1]
+
+    v_s = raw_ds['v'].isel(ocean_time=0).values
+    v_r = np.empty((ns, neta, nxi))
+    v_r[:, 0, :]    = v_s[:, 0, :]
+    v_r[:, 1:-1, :] = 0.5 * (v_s[:, :-1, :] + v_s[:, 1:, :])
+    v_r[:, -1, :]   = v_s[:, -1, :]
+
+    # Rotate grid-relative (xi, eta) velocity to Earth-relative (east, north).
+    # See docstring above for why the angle is negated and degree-converted.
+    angle_deg = -np.degrees(angle)
+    u_east, v_north = rotate_vector(u_r, v_r, angle_deg)
+
+    temp_z = _roms_interp_to_z(temp, z_rho, DOPPIO_DEPTHS)
+    salt_z = _roms_interp_to_z(salt, z_rho, DOPPIO_DEPTHS)
+    u_z    = _roms_interp_to_z(u_east,  z_rho, DOPPIO_DEPTHS)
+    v_z    = _roms_interp_to_z(v_north, z_rho, DOPPIO_DEPTHS)
+
+    ds_out = xr.Dataset(
+        {
+            'temperature': (['depth', 'y', 'x'], temp_z),
+            'salinity':    (['depth', 'y', 'x'], salt_z),
+            'u':           (['depth', 'y', 'x'], u_z),
+            'v':           (['depth', 'y', 'x'], v_z),
+        },
+        coords={
+            'depth': (['depth'], DOPPIO_DEPTHS, {'units': 'm', 'positive': 'down'}),
+            'lon':   (['y', 'x'], lon2d, {'units': 'degrees_east'}),
+            'lat':   (['y', 'x'], lat2d, {'units': 'degrees_north'}),
+            'time':  raw_ds['ocean_time'].isel(ocean_time=0).values,
+        },
+    )
+    ds_out.attrs['model'] = 'ECCOFS'
+    return ds_out
+
+
+class ECCOFSFullDepth:
+    """Full-depth (50 s-level) ECCOFS from the "his" (history) product.
+
+    Unlike ECCOFS (the "qck" product, used for temperature/salinity/
+    currents comparisons), this resolves the full water column — needed
+    for an accurate Ocean Heat Content integral — at the cost of only one
+    snapshot per calendar day instead of qck's 3-hourly cadence.
+
+    Always sourced from the single most-recently-published ECCOFS cycle
+    (see _eccofs_his_index()) — .sel(time=D) returns whichever of that
+    cycle's own analysis (days 0-2) or forecast (days 3-7) fields is
+    nearest D, not D's own from-scratch initialization from a different
+    cycle. That matters for comparing against this project's other models:
+    RTOFS/ESPC/etc. are read from "best" THREDDS aggregations, which serve
+    whatever forecast lead the latest run has for a given valid time, so
+    matching that same "latest cycle" behavior here is what makes e.g.
+    RTOFS's and ECCOFS's fields for the same date genuinely apples-to-
+    apples (both from a run initialized the same day), rather than
+    comparing RTOFS's forecast against ECCOFS's own separately-timed
+    analysis for that date.
+
+    Only the specific calendar-day "his" files actually requested via
+    .sel(time=...) are downloaded, so the first call for a new date pays a
+    ~4.3 GB download; later calls (any run, any process) for a date already
+    cached are instant. Once a newer cycle is published, this instance's
+    __init__ prunes any cached files from the now-superseded older cycle.
+
+    Examples
+    --------
+    >>> ec = ECCOFSFullDepth()
+    >>> ds = ec.sel(time=datetime(2026, 7, 29))
+    >>> ds['temperature'].sel(depth=0, method='nearest')
+    """
+
+    def __init__(self):
+        self._index = _eccofs_his_index()
+        _, first_key, _ = self._index[0]
+
+        # Static grid metadata is identical across every his snapshot (same
+        # model grid every day) — read it once, directly over HTTPS
+        # byte-range, rather than downloading a whole 4.3 GB file just for
+        # a few small non-record variables.
+        url = f"https://{ECCOFS_BUCKET}.s3.amazonaws.com/{first_key}#mode=bytes"
+        with xr.open_dataset(url, engine="netcdf4") as _ds:
+            self._z_rho = _roms_s_to_z(
+                _ds['h'].values,
+                float(_ds['hc']),
+                _ds['Cs_r'].values,
+                _ds['s_rho'].values,
+                int(_ds['Vtransform']),
+            )
+            self._lon_rho = _ds['lon_rho'].values
+            self._lat_rho = _ds['lat_rho'].values
+            self._angle   = _ds['angle'].values
+
+        self._cache = {}  # s3 key -> already-interpolated in-memory Dataset
+        self.attrs = {"model": "ECCOFS"}
+
+        # Only the latest cycle's files are ever wanted again — drop any
+        # cached files left over from a now-superseded older cycle.
+        current_keys = {os.path.basename(k) for _, k, _ in self._index}
+        for f in (_eccofs_cache_dir() / "his").glob("eccofs_his_*.nc"):
+            if f.name not in current_keys:
+                logger.info(f"ECCOFS his: removing stale cached file {f} (reference date no longer in S3 bucket)")
+                f.unlink(missing_ok=True)
+
+        logger.info("ECCOFS his index built: %d snapshot(s), %s to %s",
+                    len(self._index), self._index[0][0], self._index[-1][0])
+
+    def sel(self, time=None, method="nearest", **kwargs):
+        """Return the latest cycle's field nearest *time*, on fixed z-depths.
+
+        Logs a warning when *time* falls more than 12 hours outside the
+        latest cycle's own 8-day (3-day analysis + 5-day forecast) span —
+        that means the request is asking for a date the current cycle
+        doesn't actually cover, so the nearest edge of that span is being
+        substituted rather than a genuine match for the requested date.
+        """
+        if time is None:
+            raise ValueError("time is required")
+        target = pd.Timestamp(time)
+        ts, key, size = min(self._index, key=lambda item: abs((item[0] - target).total_seconds()))
+        if abs((ts - target).total_seconds()) > 12 * 3600:
+            logger.warning(
+                "ECCOFS his: %s is outside the latest cycle's coverage — using nearest available, %s (%s)",
+                target, ts, key,
+            )
+
+        if key not in self._cache:
+            local_path = ensure_eccofs_his_cached(key, size)
+            raw = xr.open_dataset(local_path, engine="netcdf4")
+            actual_ts = pd.Timestamp(raw['ocean_time'].values[0])
+            if actual_ts != ts:
+                # The index trusts the filename's reference date rather than
+                # opening every file remotely (see _eccofs_his_index()) — if
+                # that assumption ever breaks, flag it loudly rather than
+                # silently mislabeling this snapshot's date.
+                logger.error(
+                    "ECCOFS his: %s's actual ocean_time (%s) doesn't match its "
+                    "reference-date-derived timestamp (%s) — naming convention "
+                    "may have changed.", key, actual_ts, ts,
+                )
+            self._cache[key] = _eccofs_his_at_time(raw, self._z_rho, self._lon_rho, self._lat_rho, self._angle)
+            raw.close()
+
+        ds = self._cache[key]
+        ds.attrs["model"] = "ECCOFS"
+        return ds
+
+    def get_point(self, lon, lat, time, method="nearest"):
+        """Return the full-depth profile at the curvilinear grid point nearest
+        (lon, lat), for the his snapshot nearest *time*.
+
+        Nearest-neighbor is brute-force (no KD-tree) since this is only ever
+        called a handful of times per snapshot (e.g. once per Argo profile),
+        not in a tight loop.
+        """
+        ds = self.sel(time=time, method=method)
+        dist2 = (self._lon_rho - lon) ** 2 + (self._lat_rho - lat) ** 2
+        iy, ix = np.unravel_index(np.argmin(dist2), dist2.shape)
+        point = ds.isel(y=int(iy), x=int(ix))
+        point.attrs["model"] = "ECCOFS"
+        return point
 
 
 if __name__ == '__main__':

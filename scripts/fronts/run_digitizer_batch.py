@@ -1,71 +1,74 @@
 """
-run_digitizer_batch.py — run trace_front() over the past N days and build a
-QC summary archive, so thresholds (--min-support, a future fill-frac gate,
-day-over-day displacement) can be set from real distributions instead of
-guessed from two scenes.
+run_digitizer_batch.py — run the full digitizer over the past N days.
 
-Loads the full time window ONCE (one remote read), then reuses it for every
-day's persistence_fill() rather than reopening the dataset per day.
+Does exactly what run_digitizer_goes19.py does for one scene — wall, rings
+from altimetry, both map figures, the Leaflet overlays and the MongoDB
+writes — repeated over a date range, plus a QC summary CSV across the run.
+The per-scene work is shared via ioos_model_comparisons/fronts/pipeline.py so
+a backfill and a nightly run cannot produce different products.
 
-Note: this backfills the WALL and its QC only — it does not detect rings.
-Use run_digitizer_goes19.py, day by day in order, if you want the altimetry
-ring archive (ring persistence chains from the previous day's file).
+The one thing it does differently is fetching: the whole SST time window is
+read ONCE and re-sliced per day, instead of a fresh remote read each time.
+The CMEMS SLA dataset handle is likewise opened once (see eddies._open_sla),
+which takes a 14-day run from ~2 minutes of redundant opening to ~15 seconds.
+
+Ring persistence (days_tracked) chains day to day, so run a range in
+chronological order — which this does — for the counts to build up.
 
 Usage:
     python3 scripts/fronts/run_digitizer_batch.py --days 14
+    python3 scripts/fronts/run_digitizer_batch.py --days 30 --no-plots
+    python3 scripts/fronts/run_digitizer_batch.py --days 5 --no-eddies --no-mongo
 """
 import argparse
 
 import matplotlib
 matplotlib.use("agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from cool_maps.plot import add_features, add_ticks
-
-import ioos_model_comparisons.configs as conf
+from ioos_model_comparisons.env import load_env
 from ioos_model_comparisons.fronts import DEFAULT_OUTPUT_DIR
-from ioos_model_comparisons.fronts.digitizer import (
-    WallConfig, persistence_fill, trace_front, front_to_geojson, plot_front,
-    wall_displacement_km)
+from ioos_model_comparisons.fronts.digitizer import persistence_fill
+from ioos_model_comparisons.fronts.pipeline import SceneOptions, process_scene
 from ioos_model_comparisons.platforms import get_goes
 from ioos_model_comparisons.regions import region_config
 
 OUT_DIR = DEFAULT_OUTPUT_DIR
 FILL_DAYS = 3
-DILATE_PX = 2
-MIN_SUPPORT = 0.9
-# Set from the first two-week archive: median displacement never exceeded
-# 15.2 km/day even on the two visibly worst days (fragmented wall, a ring
-# wrapped instead of passed by) — both still read as ~9 km median because a
-# long stable line dilutes a localized derailment. 40 km leaves ~2.6x margin
-# above the observed max while still catching a wholesale wrong-feature jump.
-# Revisit once more days accumulate; this is not yet a validated threshold.
-MAX_DISP_KM = 40.0
-# Localized gate, west of 68.5W only (the stable, hand-validated sector):
-# the same archive never exceeded 36 km there, so 75 km (~2x) is meaningful.
-# East of 68.5W the localized metric is REPORTED but not gated — real
-# meander/ring evolution produced 90-270 km localized displacement on 9 of
-# 13 archive days, indistinguishable from a derailment (the confirmed
-# 2026-08-16 ring-wrap included) without ground truth.
-MAX_LOCAL_WEST_KM = 75.0
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--days", type=int, default=14, help="How many past days to run (default 14)")
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--days", type=int, default=14, help="how many past days (default 14)")
     p.add_argument("--end", type=pd.Timestamp, default=None,
-                    help="Last day to include (default: latest available scene)")
-    p.add_argument("--no-plots", action="store_true", help="Skip per-day PNGs, write GeoJSON only")
+                   help="last day to include (default: latest available scene)")
+    p.add_argument("--dilate-px", type=int, default=2, metavar="N",
+                   help="grow each scene's cloud mask N px (default 2)")
+    p.add_argument("--min-support", type=float, default=0.9, metavar="F")
+    p.add_argument("--max-displacement-km", type=float, default=40.0, metavar="KM")
+    p.add_argument("--max-local-west-km", type=float, default=75.0, metavar="KM")
+    p.add_argument("--min-eddy-days", type=int, default=2, metavar="N")
+    p.add_argument("--no-plots", action="store_true",
+                   help="skip the two per-day figures (overlays are still written, "
+                        "since the editor needs them)")
+    p.add_argument("--no-eddies", action="store_true", help="skip altimetry rings")
+    p.add_argument("--no-eddy-coupling", action="store_true")
+    p.add_argument("--no-mongo", action="store_true", help="files only")
+    p.add_argument("--force-auto", action="store_true",
+                   help="write automatic versions even for days that already have "
+                        "a hand-edited one in MongoDB")
+    p.add_argument("--verbose", action="store_true",
+                   help="full per-scene output instead of one line per day")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    load_env()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    region = region_config("gulf_stream")
-    extent = region["extent"]
+    extent = region_config("gulf_stream")["extent"]
 
     print("Loading GOES-19 SST (one remote read for the whole window)...")
     sst_full = get_goes(satellite="goes19")
@@ -80,137 +83,91 @@ def main():
     times = pd.to_datetime(window.time.values)
     targets = times[times >= (end - pd.Timedelta(days=args.days - 1))]
     print(f"Window loaded: {len(times)} scenes {times[0]} .. {times[-1]}; "
-          f"{len(targets)} target day(s) to digitize")
+          f"{len(targets)} target day(s)\n")
 
-    cfg = WallConfig(lat_bounds=(33.0, 44.0), lon_bounds=(extent[0], extent[1]))
+    opts = SceneOptions(
+        fill_days=FILL_DAYS, dilate_px=args.dilate_px,
+        min_support=args.min_support,
+        max_displacement_km=args.max_displacement_km,
+        max_local_west_km=args.max_local_west_km,
+        min_eddy_days=args.min_eddy_days, no_eddies=args.no_eddies,
+        no_eddy_coupling=args.no_eddy_coupling, no_mongo=args.no_mongo,
+        force_auto=args.force_auto, no_plots=args.no_plots,
+        verbose=args.verbose)
 
     rows = []
-    prev_wall = None
-    prev_date = None
     for t in targets:
+        t = pd.Timestamp(t)
+        # Re-slice the window already in memory rather than re-reading it.
         stack = window.sel(time=slice(t - pd.Timedelta(days=FILL_DAYS), t))
-        sst, age = persistence_fill(stack, dilate_px=DILATE_PX)
-        filled_frac = float((age.values > 0).mean())
+        sst, age = persistence_fill(stack, dilate_px=args.dilate_px)
+        try:
+            r = process_scene(sst, age, t, extent=extent, out_dir=OUT_DIR,
+                              opts=opts, n_composited=stack.sizes["time"])
+        except Exception as exc:
+            # One bad day must not abandon the rest of the range.
+            print(f"{t:%Y-%m-%d}: FAILED ({exc})")
+            rows.append(dict(date=f"{t:%Y-%m-%d}", failed=str(exc)))
+            continue
 
-        trace = trace_front(sst, cfg, age=age)
-        n_anchor = int(np.isfinite(trace.anchors["lat"].values).sum())
-        support_frac = trace.support_frac()
-        fill_stats = trace.wall_fill_stats()
+        d = r["disp"]
+        rows.append(dict(
+            date=f"{t:%Y-%m-%d}", time=str(r["time"]), stamp=r["stamp"],
+            n_anchor=r["n_anchor"], n_cols=r["n_cols"],
+            lon_coverage=round(r["lon_coverage"], 3), n_pieces=r["n_pieces"],
+            support_frac=round(r["support_frac"], 4) if np.isfinite(r["support_frac"]) else None,
+            wall_fill_frac=round(r["fill_stats"]["frac"], 4) if r["fill_stats"] else None,
+            scene_filled_frac=round(r["scene_filled_frac"], 4),
+            n_eddies=r["n_eddies"], n_warm=r["n_warm"], n_cold=r["n_cold"],
+            n_confirmed=r["n_confirmed"],
+            disp_median_km=round(d["median_km"], 1) if d else None,
+            disp_local_km=round(d["local_km"], 1) if d else None,
+            disp_local_west_km=round(d["local_west_km"], 1) if d else None,
+            worst_lon=round(d["worst_lon"], 2) if d and d["worst_lon"] else None,
+            explained_by_ring=(r["explained"] or {}).get("explained"),
+            prior_source=r["prior_meta"].get("prior_source"),
+            wall_version=r["wall_version"], n_overlays=r["n_overlays"],
+            qc_pass=r["qc_pass"]))
 
-        disp = None
-        if prev_wall is not None and trace.wall:
-            disp = wall_displacement_km(prev_wall, trace.wall)
-
-        qc_pass = bool(support_frac >= MIN_SUPPORT)
-        if disp is not None:
-            qc_pass = (qc_pass and disp["median_km"] <= MAX_DISP_KM
-                       and disp["local_west_km"] <= MAX_LOCAL_WEST_KM)
-
-        row = dict(
-            date=pd.Timestamp(t).strftime("%Y-%m-%d"), time=str(pd.Timestamp(t)),
-            n_anchor=n_anchor, n_cols=trace.lons.size,
-            lon_coverage=round(trace.lon_coverage(), 3), n_pieces=len(trace.wall),
-            n_warm_rings=len(trace.warm_rings), n_cold_rings=len(trace.cold_rings),
-            support_frac=round(support_frac, 4) if np.isfinite(support_frac) else None,
-            wall_fill_frac=round(fill_stats["frac"], 4) if fill_stats else None,
-            wall_mean_fill_age_d=round(fill_stats["mean_age_days"], 2) if fill_stats else None,
-            wall_max_fill_age_d=round(fill_stats["max_age_days"], 2) if fill_stats else None,
-            scene_filled_frac=round(filled_frac, 4),
-            qc_pass=qc_pass,
-            disp_median_km=round(disp["median_km"], 1) if disp else None,
-            disp_max_km=round(disp["max_km"], 1) if disp else None,
-            disp_local_km=round(disp["local_km"], 1) if disp else None,
-            disp_local_west_km=round(disp["local_west_km"], 1) if disp else None,
-            worst_lon=round(disp["worst_lon"], 2) if disp and disp["worst_lon"] else None,
-            worst_lat=round(disp["worst_lat"], 2) if disp and disp["worst_lat"] else None,
-            disp_n=disp["n"] if disp else None,
-        )
-        rows.append(row)
-        print(f"{row['date']}: anchors {n_anchor}/{row['n_cols']} | "
-              f"coverage {row['lon_coverage']:.0%} in {row['n_pieces']} piece(s) | "
-              f"rings {row['n_warm_rings']}w/{row['n_cold_rings']}c | "
-              f"support {support_frac:.1%} | fill {row['wall_fill_frac']:.1%} | "
-              f"qc_pass {qc_pass}" +
-              (f" | vs {prev_date}: median {disp['median_km']:.1f} km, "
-               f"local {disp['local_km']:.0f} km @ {disp['worst_lon']:.1f}W "
-               f"(west {disp['local_west_km']:.0f} km)" if disp else ""))
-
-        geojson_path = OUT_DIR / f"gulf_stream_north_wall_{pd.Timestamp(t):%Y%m%dT%H%M}.geojson"
-        front_to_geojson(trace, geojson_path, time=pd.Timestamp(t), source="GOES-19",
-                         extra={"fill_days": FILL_DAYS, "dilate_px": DILATE_PX,
-                                "scene_filled_frac": round(filled_frac, 4),
-                                "min_support": MIN_SUPPORT, "qc_pass": qc_pass,
-                                "disp_median_km": row["disp_median_km"],
-                                "disp_max_km": row["disp_max_km"],
-                                "disp_local_km": row["disp_local_km"],
-                                "disp_local_west_km": row["disp_local_west_km"],
-                                "disp_worst_lon": row["worst_lon"],
-                                "disp_worst_lat": row["worst_lat"]})
-
-        if not args.no_plots:
-            fig, ax = plt.subplots(figsize=(14, 8),
-                                   subplot_kw={"projection": conf.projection["map"]},
-                                   layout="constrained")
-            ax.set_extent(extent, crs=conf.projection["data"])
-            add_features(ax); add_ticks(ax, extent, label_left=True)
-            h = ax.pcolormesh(sst["lon"], sst["lat"], sst, cmap="turbo",
-                              vmin=20, vmax=29, transform=conf.projection["data"])
-            if filled_frac:
-                ax.contourf(sst["lon"], sst["lat"], np.where(age.values > 0, 1.0, np.nan),
-                            levels=[0.5, 1.5], colors="none", hatches=["...."],
-                            transform=conf.projection["data"])
-            fig.colorbar(h, ax=ax, orientation="horizontal", shrink=0.6, pad=0.05,
-                         label="Sea Water Temperature (°C)")
-            plot_front(ax, trace, transform=conf.projection["data"],
-                      wall_kw=dict(label="Digitized north wall"))
-            first_bad = True
-            for l, s in zip(trace.wall, trace.support):
-                if s.all():
-                    continue
-                ax.plot(l[:, 0], np.where(~s, l[:, 1], np.nan), "-", color="red",
-                        lw=3.5, zorder=22, transform=conf.projection["data"],
-                        label="unsupported (no gradient)" if first_bad else None)
-                first_bad = False
-            ax.legend(loc="lower left", fontsize=9)
-            qc_tag = "PASS" if qc_pass else "FAIL"
-            ax.set_title(f"GOES-19  {pd.Timestamp(t):%Y-%m-%d %H:%M UTC}   "
-                         f"[QC {qc_tag}: support {support_frac:.0%}]",
-                         fontsize=14, fontweight="bold")
-            png_path = OUT_DIR / f"gulf_stream_north_wall_{pd.Timestamp(t):%Y%m%dT%H%M}.png"
-            fig.savefig(png_path, dpi=100, bbox_inches="tight", pad_inches=0.1)
-            plt.close(fig)
-
-        prev_wall = trace.wall
-        prev_date = row["date"]
+        if not args.verbose:
+            print(f"{t:%Y-%m-%d}: anchors {r['n_anchor']}/{r['n_cols']} | "
+                  f"{r['lon_coverage']:.0%} in {r['n_pieces']} piece(s) | "
+                  f"rings {r['n_warm']}w/{r['n_cold']}c ({r['n_confirmed']} conf) | "
+                  f"support {r['support_frac']:.1%} | "
+                  + (f"median {d['median_km']:.1f} km | " if d else "")
+                  + f"qc {'pass' if r['qc_pass'] else 'FAIL'}"
+                  + (f" | mongo v{r['wall_version']}" if r["wall_version"] else "")
+                  + f" | overlays->db {r['n_overlays']}")
 
     df = pd.DataFrame(rows)
-    # name by span, not a hardcoded "2weeks" — --days is variable
     csv_path = OUT_DIR / f"qc_summary_{df.date.min()}_{df.date.max()}.csv"
     df.to_csv(csv_path, index=False)
     print(f"\nWrote {csv_path}")
-    print("\n--- summary ---")
-    print(f"support_frac:     min={df.support_frac.min():.1%} "
-          f"median={df.support_frac.median():.1%} max={df.support_frac.max():.1%}")
-    print(f"wall_fill_frac:   min={df.wall_fill_frac.min():.1%} "
-          f"median={df.wall_fill_frac.median():.1%} max={df.wall_fill_frac.max():.1%}")
-    d = df.disp_median_km.dropna()
-    if len(d):
-        print(f"day-over-day median displacement: min={d.min():.1f} km "
-              f"median={d.median():.1f} km max={d.max():.1f} km")
-    lw = df.disp_local_west_km.dropna()
-    if len(lw):
-        print(f"localized, west of 68.5W (GATED):     min={lw.min():.1f} km "
-              f"median={lw.median():.1f} km max={lw.max():.1f} km")
-    la = df.disp_local_km.dropna()
-    if len(la):
-        print(f"localized, whole domain (reported):   min={la.min():.1f} km "
-              f"median={la.median():.1f} km max={la.max():.1f} km")
-        print("  ^ not gated: real meander/ring evolution east of 68.5W is "
-              "indistinguishable from derailment by this metric")
-    print(f"qc_pass: {df.qc_pass.sum()}/{len(df)} days")
-    for _, r in df[~df.qc_pass].iterrows():
-        print(f"  FAIL {r.date}: support {r.support_frac:.1%}, "
-              f"median {r.disp_median_km} km, local-west {r.disp_local_west_km} km")
+
+    ok = df[df.get("failed").isna()] if "failed" in df else df
+    if len(ok):
+        print("\n--- summary ---")
+        for col, label in (("support_frac", "support"),
+                           ("wall_fill_frac", "wall on filled px"),
+                           ("disp_median_km", "day-over-day median (km)"),
+                           ("disp_local_west_km", "localized west of 68.5W (km)")):
+            v = ok[col].dropna() if col in ok else []
+            if len(v):
+                print(f"  {label:32s} min={v.min():.3g} median={v.median():.3g} max={v.max():.3g}")
+        if "n_eddies" in ok:
+            print(f"  {'rings per day':32s} min={ok.n_eddies.min()} "
+                  f"median={ok.n_eddies.median():.0f} max={ok.n_eddies.max()}")
+        if "n_overlays" in ok:
+            sent, want = int(ok.n_overlays.sum()), 2 * len(ok)
+            print(f"  {'overlays written to mongo':32s} {sent}/{want}"
+                  + ("" if sent == want else
+                     "   <- some did not reach the database; check MONGODB_URI"))
+        print(f"  qc_pass: {int(ok.qc_pass.sum())}/{len(ok)} days")
+        for _, r in ok[~ok.qc_pass].iterrows():
+            print(f"    FAIL {r.date}: support {r.support_frac}, "
+                  f"median {r.disp_median_km} km, local-west {r.disp_local_west_km} km")
+    if "failed" in df and df.failed.notna().any():
+        print(f"  {int(df.failed.notna().sum())} day(s) errored — see rows in the CSV")
 
 
 if __name__ == "__main__":

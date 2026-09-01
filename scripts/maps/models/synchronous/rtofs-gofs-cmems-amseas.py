@@ -1,3 +1,23 @@
+"""
+Compare RTOFS (OPeNDAP) against ESPC/CMEMS/AMSEAS/CNAPS/Doppio/ECCOFS/
+RTOFS-Parallel, across regions and timestamps, in parallel worker processes.
+
+Usage:
+    python3 scripts/maps/models/synchronous/rtofs-gofs-cmems-amseas.py
+
+    # Regions + comparison models
+    python3 scripts/maps/models/synchronous/rtofs-gofs-cmems-amseas.py \
+        --regions gom mab --espc --cmems
+
+    # Explicit time range
+    python3 scripts/maps/models/synchronous/rtofs-gofs-cmems-amseas.py \
+        --start 2026-08-01T18 --end 2026-08-02T18 --freq 6H
+
+    # Skip already-plotted outputs, run sequentially
+    python3 scripts/maps/models/synchronous/rtofs-gofs-cmems-amseas.py \
+        --no-overwrite --serial
+"""
+import argparse
 import datetime as dt
 import time
 import traceback
@@ -11,7 +31,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import ioos_model_comparisons.configs as conf
 from ioos_model_comparisons.calc import lon180to360, lon360to180
-from ioos_model_comparisons.models import rtofs, amseas, CMEMS, espc_ts, espc_uv, cnaps
+from ioos_model_comparisons.models import rtofs, amseas, CMEMS, espc_ts, espc_uv, cnaps, ECCOFSFullDepth
 from ioos_model_comparisons.platforms import (
     get_active_gliders,
     get_argo_floats_by_time, get_goes
@@ -19,7 +39,8 @@ from ioos_model_comparisons.platforms import (
 from ioos_model_comparisons.plotting import (
     plot_model_region_comparison,
     plot_model_region_comparison_streamplot,
-    plot_sst
+    plot_sst,
+    region_transform,
 )
 from ioos_model_comparisons.regions import region_config
 from ioos_model_comparisons.db import (
@@ -45,7 +66,10 @@ path_save = conf.path_plots / "maps"
 
 SCRIPT_ID = "wfs"
 
-# ── Model selection flags ─────────────────────────────────────────────────────
+# ── Model selection flags (defaults; overridden by CLI args in main()) ────────
+# RTOFS is the fixed base model for every comparison plot, so it has no CLI
+# toggle. The rest default to off except ECCOFS, matching the historical
+# behavior of this script.
 plot_rtofs  = True
 plot_para   = False
 plot_espc   = True
@@ -53,6 +77,41 @@ plot_cmems  = True
 plot_amseas = False
 plot_cnaps  = False
 plot_doppio = False
+plot_eccofs = True
+
+# When True, skip the temperature/salinity comparison and SST plots and only
+# generate the currents streamplot comparisons — set via --currents-only.
+currents_only = False
+
+# ECCOFS's curvilinear grid only spans the Atlantic/Intra-Americas Seas
+# (Grand Banks to the Orinoco river mouth) — these regions (by folder name)
+# fall outside that domain, or far enough into its edge that coverage is
+# mostly land-mask/NaN, so skip the RTOFS-vs-ECCOFS comparison for them.
+# Uses the full-depth "his" product (ECCOFSFullDepth in models.py) so every
+# configured depth (0/150/200/etc.) resolves exactly instead of falling
+# back to qck's nearest available level — at the cost of only one ECCOFS
+# snapshot per calendar day, so multiple 6-hourly ctimes on the same day
+# will show an identical ECCOFS panel.
+ECCOFS_EXCLUDED_REGIONS = {
+    'tropical_western_atlantic',
+    'mexico_pacific',
+    'hawaii',
+    'wmo_v_south',
+    'philippines_sea',
+    'guam',
+    'fiji',
+}
+
+# ECCOFS only publishes one nowcast per calendar day (00Z) — see
+# ECCOFSFullDepth in models.py — so evaluating it at every 6-hourly ctime
+# just re-loads/re-subsets/re-plots the same snapshot up to 4x per day.
+# Restricting RTOFS-vs-ECCOFS to 00Z skips that redundant work entirely.
+ECCOFS_HOUR = 0
+
+
+def _is_eccofs_hour(ctime) -> bool:
+    return pd.Timestamp(ctime).hour == ECCOFS_HOUR
+
 
 # ── Parallelization ───────────────────────────────────────────────────────────
 parallel    = True
@@ -62,35 +121,63 @@ max_workers = 4   # one worker per concurrent timestamp
 kwargs = {
     'transform': conf.projection,
     'dpi':       conf.dpi,
-    'overwrite': False,
+    'overwrite': True,
     'colorbar':  True,
     'legend':    True,
 }
 
-# ── Date / region configuration ───────────────────────────────────────────────
-conf.days    = 1
-conf.regions = [
-    'caribbean',
-    'gom', 
-    'tropical_western_atlantic', 
-    'mab', 
-    'sab', 
-    'west_florida_shelf',
-    'windward',
-    ]
-# conf.regions = ['mab']
-today       = dt.date.today()
-date_start  = today - dt.timedelta(days=conf.days)
-date_end    = today + dt.timedelta(days=1)
-freq        = '6H'
-date_list   = pd.date_range(date_start, date_end, freq=freq)
-date_list_2 = pd.date_range(date_start - dt.timedelta(days=1), date_end, freq=freq)
-
-search_start  = date_list[0] - dt.timedelta(hours=conf.search_hours)
-extent_list   = [region_config(region)["extent"] for region in conf.regions]
-extent_df     = pd.DataFrame(extent_list, columns=['lonmin', 'lonmax', 'latmin', 'latmax'])
-global_extent = [extent_df.lonmin.min(), extent_df.lonmax.max(),
-                 extent_df.latmin.min(), extent_df.latmax.max()]
+# ── CLI arguments ──────────────────────────────────────────────────────────────
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Compare RTOFS (OPeNDAP) against ESPC/CMEMS/AMSEAS/CNAPS/Doppio/"
+            "ECCOFS/RTOFS-Parallel across regions and timestamps."
+        ),
+    )
+    parser.add_argument(
+        "--regions", nargs="*", default=None,
+        help="Regions to plot (default: conf.regions from ioos_model_comparisons/configs.py)",
+    )
+    parser.add_argument(
+        "--start", type=pd.Timestamp, default=None, metavar="DATETIME",
+        help="Start of time range, e.g. 2026-08-01 or 2026-08-01T18 (default: today - --days)",
+    )
+    parser.add_argument(
+        "--end", type=pd.Timestamp, default=None, metavar="DATETIME",
+        help="End of time range, e.g. 2026-08-01 or 2026-08-01T18 (default: today + 1 day)",
+    )
+    parser.add_argument(
+        "--days", type=int, default=1,
+        help="Lookback window in days used to compute --start when it isn't given explicitly (default: 1)",
+    )
+    parser.add_argument(
+        "--freq", default="6H",
+        help="Frequency for the generated timestamp list (default: 6H)",
+    )
+    parser.add_argument("--para", action="store_true", help="Enable RTOFS Parallel comparison")
+    parser.add_argument("--espc", action="store_true", help="Enable ESPC comparison")
+    parser.add_argument("--cmems", action="store_true", help="Enable CMEMS comparison")
+    parser.add_argument("--amseas", action="store_true", help="Enable AMSEAS comparison")
+    parser.add_argument("--cnaps", action="store_true", help="Enable CNAPS comparison")
+    parser.add_argument("--doppio", action="store_true", help="Enable Doppio comparison")
+    parser.add_argument("--no-eccofs", action="store_true", help="Disable ECCOFS comparison")
+    parser.add_argument(
+        "--currents-only", action="store_true",
+        help="Only generate the currents streamplot comparisons; skip TS and SST plots",
+    )
+    parser.add_argument(
+        "--no-overwrite", action="store_true",
+        help="Skip regenerating plots that already exist (default: overwrite existing plots)",
+    )
+    parser.add_argument(
+        "--serial", action="store_true",
+        help="Disable multiprocessing; process timestamps sequentially in the main process",
+    )
+    parser.add_argument(
+        "--max-workers", type=int, default=4, metavar="N",
+        help="Number of worker processes to use when running in parallel (default: 4)",
+    )
+    return parser.parse_args()
 
 # ── Worker-level globals ──────────────────────────────────────────────────────
 # Populated by worker_initializer() in each spawned process.
@@ -102,6 +189,7 @@ _worker_gds_uv = None   # ESPC UV dataset
 _worker_cmems  = None   # CMEMS instance (one per worker)
 _worker_am     = None   # AMSEAS dataset
 _worker_cn     = None   # CNAPS dataset
+_worker_ec     = None   # ECCOFSFullDepth instance (one per worker)
 _doppio_cache  = {}     # {ctime: xr.Dataset} pre-fetched in main, read-only in workers
 
 # Platform data defaults (overwritten by worker_initializer)
@@ -129,16 +217,32 @@ def load_model(model_func, model_name, source=None, rename=True):
 
 
 # ── Worker initializer ────────────────────────────────────────────────────────
-def worker_initializer(argo_df, glider_df, sst_data_16, sst_data_19, bathy, region_cfgs, kw, path_sv, doppio_cache):
+def worker_initializer(argo_df, glider_df, sst_data_16, sst_data_19, bathy, region_cfgs, kw, path_sv, doppio_cache, model_flags):
     """Called once per worker process by ProcessPoolExecutor.
 
     Re-opens OPeNDAP model connections (not picklable) and assigns pre-loaded
     platform data (pandas/numpy, picklable) from the main process.
+
+    Also re-applies the CLI-derived config (model toggles, region list,
+    kwargs) that main() computed from argparse: on macOS, ProcessPoolExecutor
+    spawns a brand-new interpreter per worker that reimports this module from
+    scratch (picking up the hardcoded top-of-file defaults), rather than
+    inheriting the parent process's already-mutated globals the way a forked
+    process would — so those CLI-driven values must be threaded through
+    explicitly via initargs, same as the platform data below.
     """
     global _worker_rds, _worker_rdsp, _worker_gds_ts, _worker_gds_uv
-    global _worker_cmems, _worker_am, _worker_cn, _doppio_cache
+    global _worker_cmems, _worker_am, _worker_cn, _worker_ec, _doppio_cache
     global argo_data, glider_data, sst_sorted_16, sst_sorted_19, bathy_data
     global grid_lons, grid_lats, grid_x, grid_y
+    global plot_rtofs, plot_para, plot_espc, plot_cmems, plot_amseas, plot_cnaps, plot_doppio, plot_eccofs
+    global currents_only
+    global kwargs
+
+    (plot_rtofs, plot_para, plot_espc, plot_cmems,
+     plot_amseas, plot_cnaps, plot_doppio, plot_eccofs, currents_only) = model_flags
+    conf.regions = region_cfgs
+    kwargs = dict(kw)
 
     _worker_rds    = load_model(rtofs,   'RTOFS')                             if plot_rtofs  else None
     _worker_rdsp   = load_model(rtofs,   'RTOFS Parallel', source='parallel') if plot_para   else None
@@ -146,6 +250,7 @@ def worker_initializer(argo_df, glider_df, sst_data_16, sst_data_19, bathy, regi
     _worker_gds_uv = load_model(espc_uv, 'ESPC UV')                           if plot_espc   else None
     _worker_am     = load_model(amseas,  'AMSEAS')                             if plot_amseas else None
     _worker_cn     = load_model(cnaps,   'CNAPS')                              if plot_cnaps  else None
+    _worker_ec     = ECCOFSFullDepth()                                         if plot_eccofs else None
     _doppio_cache  = doppio_cache  # pre-fetched in main; no OPeNDAP in workers
     _worker_cmems  = CMEMS()                                                   if plot_cmems  else None
 
@@ -162,6 +267,21 @@ def worker_initializer(argo_df, glider_df, sst_data_16, sst_data_19, bathy, regi
         grid_y    = _worker_rds.y.values
 
 
+def _restrict_to_surface_currents(region):
+    """When --currents-only is set, restrict the currents streamplot comparison
+    to the surface (0 m) only, instead of every depth configured for the region.
+    No-op if the region has no currents configured, or 0 m isn't one of them.
+    """
+    if not currents_only:
+        return region
+    currents = region.get('currents')
+    if not currents or not currents.get('bool') or 0 not in currents.get('depths', []):
+        return region
+    region = dict(region)
+    region['currents'] = {**currents, 'depths': [0]}
+    return region
+
+
 # ── Per-timestamp processing ──────────────────────────────────────────────────
 def process_time(ctime):
     """Process all regions for a single timestamp. Runs inside a worker process."""
@@ -169,6 +289,7 @@ def process_time(ctime):
     rdtp_flag, rdtp   = attempt_data_load(_worker_rdsp,   ctime, "RTOFS Parallel") if plot_para   else (False, None)
     amt_flag,  amt    = attempt_data_load(_worker_am,     ctime, "AMSEAS")          if plot_amseas else (False, None)
     cnt_flag,  cnt    = attempt_data_load(_worker_cn,     ctime, "CNAPS")           if plot_cnaps  else (False, None)
+    ect_flag,  ect    = attempt_data_load(_worker_ec,     ctime, "ECCOFS")          if plot_eccofs and _is_eccofs_hour(ctime) else (False, None)
     if plot_doppio:
         dpt = _doppio_cache.get(ctime)
         dpt_flag = dpt is not None
@@ -182,13 +303,15 @@ def process_time(ctime):
     for item in conf.regions:
         region    = region_config(item)
         region    = apply_colorbar_overrides(item, region)
+        region    = _restrict_to_surface_currents(region)
         cmems_extent = np.add(region['extent'], [-1, 1, -1, 1]).tolist()
         cdt_flag, cdt = attempt_cmems_data_load(_worker_cmems, ctime, cmems_extent) if plot_cmems else (False, None)
 
         plots, pending_logs = process_region(
             ctime, rdt_flag, rdt, rdtp_flag, rdtp,
             gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
-            amt_flag, amt, cnt_flag, cnt, dpt_flag, dpt, region
+            amt_flag, amt, cnt_flag, cnt, dpt_flag, dpt,
+            ect_flag, ect, region
         )
         plots_generated.extend(plots)
         all_pending_logs.extend(pending_logs)
@@ -199,6 +322,55 @@ def process_time(ctime):
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     global argo_data, glider_data, sst_sorted_16, sst_sorted_19, bathy_data
+    global plot_rtofs, plot_para, plot_espc, plot_cmems, plot_amseas, plot_cnaps, plot_doppio, plot_eccofs
+    global currents_only
+    global parallel, max_workers
+
+    args = parse_args()
+
+    plot_para   = args.para
+    plot_espc   = args.espc
+    plot_cmems  = args.cmems
+    plot_amseas = args.amseas
+    plot_cnaps  = args.cnaps
+    plot_doppio = args.doppio
+    plot_eccofs = not args.no_eccofs
+
+    currents_only = args.currents_only
+
+    kwargs['overwrite'] = not args.no_overwrite
+
+    parallel    = not args.serial
+    max_workers = args.max_workers
+
+    conf.days = args.days
+    if args.regions:
+        conf.regions = args.regions
+    # else: leave conf.regions as whatever ioos_model_comparisons/configs.py defines
+
+    today      = dt.date.today()
+    date_start = args.start or pd.Timestamp(today - dt.timedelta(days=conf.days))
+    date_end   = args.end   or pd.Timestamp(today + dt.timedelta(days=1))
+    date_list   = pd.date_range(date_start, date_end, freq=args.freq)
+    date_list_2 = pd.date_range(date_start - dt.timedelta(days=1), date_end, freq=args.freq)
+
+    search_start  = date_list[0] - dt.timedelta(hours=conf.search_hours)
+    extent_list   = [region_config(region)["extent"] for region in conf.regions]
+    extent_df     = pd.DataFrame(extent_list, columns=['lonmin', 'lonmax', 'latmin', 'latmax'])
+    global_extent = [extent_df.lonmin.min(), extent_df.lonmax.max(),
+                     extent_df.latmin.min(), extent_df.latmax.max()]
+
+    if args.start or args.end:
+        logger.info(f"Time range: {date_start} → {date_end} (freq={args.freq})")
+    else:
+        logger.info(f"No time range specified — using today ± {conf.days}/1 day(s): {date_start} → {date_end}")
+    logger.info(f"Regions: {conf.regions}")
+    logger.info(
+        "Models: rtofs=True para=%s espc=%s cmems=%s amseas=%s cnaps=%s doppio=%s eccofs=%s",
+        plot_para, plot_espc, plot_cmems, plot_amseas, plot_cnaps, plot_doppio, plot_eccofs,
+    )
+    if currents_only:
+        logger.info("--currents-only: skipping TS/SST plots, currents streamplots restricted to 0 m")
 
     start_time_exec = time.time()
 
@@ -266,6 +438,26 @@ def main():
         logger.info("All outputs already exist. Nothing to do.")
         return
 
+    # ── Pre-fetch ECCOFS his files needed for pending timestamps locally ────
+    # (avoids workers racing to each download the same day's ~4.3 GB file
+    # concurrently on a cold cache) — each distinct calendar day among the
+    # pending ctimes is downloaded/interpolated once here; workers then just
+    # hit a fast on-disk cache when they instantiate their own ECCOFSFullDepth.
+    if plot_eccofs:
+        try:
+            logger.info("Ensuring ECCOFS his files are cached locally...")
+            _ec_prefetch = ECCOFSFullDepth()
+            for ctime in date_list_pending:
+                if not _is_eccofs_hour(ctime):
+                    continue  # only one ECCOFS nowcast/day (00Z) — see ECCOFS_HOUR
+                try:
+                    _ec_prefetch.sel(time=ctime)
+                    logger.info(f"ECCOFS his pre-fetched: {ctime}")
+                except Exception as e:
+                    logger.warning(f"ECCOFS his pre-fetch failed for {ctime}: {e}")
+        except Exception as e:
+            logger.error(f"Failed to pre-fetch ECCOFS his files: {e}")
+
     # ── Pre-fetch Doppio sequentially (avoids concurrent OPeNDAP connections) ──
     doppio_cache = {}
     if plot_doppio:
@@ -282,7 +474,8 @@ def main():
 
     # ── Dispatch timestamps ───────────────────────────────────────────────────
     all_results = []
-    init_args   = (argo_data, glider_data, sst_sorted_16, sst_sorted_19, bathy_data, conf.regions, kwargs, path_save, doppio_cache)
+    model_flags = (plot_rtofs, plot_para, plot_espc, plot_cmems, plot_amseas, plot_cnaps, plot_doppio, plot_eccofs, currents_only)
+    init_args   = (argo_data, glider_data, sst_sorted_16, sst_sorted_19, bathy_data, conf.regions, kwargs, path_save, doppio_cache, model_flags)
 
     if parallel:
         with ProcessPoolExecutor(max_workers=max_workers,
@@ -351,15 +544,43 @@ def attempt_data_load(model, ctime, model_name):
 
 
 def attempt_cmems_data_load(cmems_instance, ctime, extent):
-    """Attempt to load CMEMS data for a given time and region extent."""
+    """Attempt to load CMEMS data for a given time and region extent.
+
+    CMEMS uses -180/180 longitude. For a region whose extent crosses the
+    antimeridian (lonmax > 180, e.g. Fiji), a single .sel(longitude=slice(...))
+    silently truncates at 180 instead of wrapping, cutting off everything
+    east of it. Split into a west (lonmin-180) and east (-180 to lonmax-360)
+    subset, shift the east half by +360, and concatenate so lons stay
+    monotonically increasing in 0-360 space — matching the ESPC data and the
+    Mercator(central_longitude=180) map projection (see region_transform()).
+    """
     try:
         if cmems_instance is None:
             raise ValueError("CMEMS instance is not initialized.")
 
-        lon_extent = extent[:2]
         lat_extent = extent[2:]
 
-        data = cmems_instance.get_combined_subset(lon_extent, lat_extent, time=ctime)
+        if extent[1] > 180:
+            lon_west = [float(extent[0]), 180.0]
+            lon_east = [-180.0, float(lon360to180([extent[1]])[0])]
+
+            west = cmems_instance.get_combined_subset(lon_west, lat_extent, time=ctime)
+            east = cmems_instance.get_combined_subset(lon_east, lat_extent, time=ctime)
+
+            if west is None and east is None:
+                raise ValueError(f"No valid CMEMS data found for time {ctime}.")
+
+            parts = []
+            if west is not None:
+                parts.append(west)
+            if east is not None:
+                # Shift -180:lonmax-360 -> 180:lonmax so lons are contiguous with the west part
+                east = east.assign_coords(lon=(east['lon'] + 360))
+                parts.append(east)
+
+            data = xr.concat(parts, dim='lon') if len(parts) > 1 else parts[0]
+        else:
+            data = cmems_instance.get_combined_subset(extent[:2], lat_extent, time=ctime)
 
         if data is None:
             raise ValueError(f"No valid CMEMS data found for time {ctime}.")
@@ -397,11 +618,15 @@ def subset_data_curvilinear(data, extent):
 
 
 def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
-                   amt_flag, amt, cnt_flag, cnt, dpt_flag, dpt, region):
+                   amt_flag, amt, cnt_flag, cnt, dpt_flag, dpt, ect_flag, ect, region):
     """Process a specific region for the given time."""
     extent = region['extent']
     logger.info(f"Subsetting data for region: {region['name']} with extent {extent} at time {ctime}")
+
+    # ECCOFS's grid doesn't usefully cover every region — see ECCOFS_EXCLUDED_REGIONS
+    ect_flag = ect_flag and region['folder'] not in ECCOFS_EXCLUDED_REGIONS
     kwargs['path_save'] = path_save / region['folder']
+    kwargs['transform'] = region_transform(extent)
 
     search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
     search_window_t1 = ctime.strftime(tstr)
@@ -434,6 +659,7 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
         cds_sub  = cdt
         am_sub   = subset_data_lonlat(amt, lon360, extended) if amt_flag else None
         dop_sub  = subset_data_curvilinear(dpt, extended)    if dpt_flag else None
+        ec_sub   = subset_data_curvilinear(ect, extended)    if ect_flag else None
 
         # Subset platform data to this region and time window
         if not argo_data.empty:
@@ -457,10 +683,10 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
             ]
             kwargs['gliders'] = glider_region
 
-        # Process SST data for each satellite
-        sst16 = process_sst_data(sst_sorted_16, extent, ctime) if sst_sorted_16 is not None else None
-        sst19 = process_sst_data(sst_sorted_19, extent, ctime) if sst_sorted_19 is not None else None
-        if sst16 is None and sst19 is None:
+        # Process SST data for each satellite (skipped entirely under --currents-only)
+        sst16 = process_sst_data(sst_sorted_16, extent, ctime) if sst_sorted_16 is not None and not currents_only else None
+        sst19 = process_sst_data(sst_sorted_19, extent, ctime) if sst_sorted_19 is not None and not currents_only else None
+        if not currents_only and sst16 is None and sst19 is None:
             logger.warning(f"SST data unavailable for region {region['name']} at time {ctime}")
 
         # Plot data
@@ -469,13 +695,14 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
         ts_dt        = pd.to_datetime(ctime).to_pydatetime()
 
         if rdt_flag and gdt_flag:
-            try:
-                plot_model_region_comparison(rds_sub, gds_ts_s, region, **kwargs)
-                plots.append(f"{region['name']} | RTOFS vs ESPC (TS)")
-                pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'espc'))
-                logger.info(f"Successfully plotted RTOFS vs ESPC TS for region {region['name']} at time {ctime}")
-            except Exception as e:
-                logger.error(f"Failed to process RTOFS vs ESPC TS at {ctime} for region {region['name']}: {e}", exc_info=True)
+            if not currents_only:
+                try:
+                    plot_model_region_comparison(rds_sub, gds_ts_s, region, **kwargs)
+                    plots.append(f"{region['name']} | RTOFS vs ESPC (TS)")
+                    pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'espc'))
+                    logger.info(f"Successfully plotted RTOFS vs ESPC TS for region {region['name']} at time {ctime}")
+                except Exception as e:
+                    logger.error(f"Failed to process RTOFS vs ESPC TS at {ctime} for region {region['name']}: {e}", exc_info=True)
 
             try:
                 plot_model_region_comparison_streamplot(rds_sub, gds_uv_s, region, **kwargs)
@@ -486,13 +713,14 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
                 logger.error(f"Failed to process RTOFS vs ESPC currents at {ctime} for region {region['name']}: {e}", exc_info=True)
 
         if rdt_flag and rdtp_flag:
-            try:
-                plot_model_region_comparison(rds_sub, rdtp_sub, region, **kwargs)
-                plots.append(f"{region['name']} | RTOFS vs Parallel (TS)")
-                pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'rtofs'))
-                logger.info(f"Successfully plotted RTOFS vs Parallel TS for region {region['name']} at time {ctime}")
-            except Exception as e:
-                logger.error(f"Failed to process RTOFS vs Parallel TS at {ctime} for region {region['name']}: {e}", exc_info=True)
+            if not currents_only:
+                try:
+                    plot_model_region_comparison(rds_sub, rdtp_sub, region, **kwargs)
+                    plots.append(f"{region['name']} | RTOFS vs Parallel (TS)")
+                    pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'rtofs'))
+                    logger.info(f"Successfully plotted RTOFS vs Parallel TS for region {region['name']} at time {ctime}")
+                except Exception as e:
+                    logger.error(f"Failed to process RTOFS vs Parallel TS at {ctime} for region {region['name']}: {e}", exc_info=True)
 
             try:
                 plot_model_region_comparison_streamplot(rds_sub, rdtp_sub, region, **kwargs)
@@ -503,7 +731,7 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
                 logger.error(f"Failed to process RTOFS vs Parallel currents at {ctime} for region {region['name']}: {e}", exc_info=True)
 
         try:
-            if rdt_flag and cdt_flag:
+            if rdt_flag and cdt_flag and not currents_only:
                 plot_model_region_comparison(rds_sub, cds_sub, region, **kwargs)
                 plots.append(f"{region['name']} | RTOFS vs CMEMS")
                 pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'cmems'))
@@ -522,17 +750,18 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
 
         try:
             if rdt_flag and amt_flag:
-                plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
+                if not currents_only:
+                    plot_model_region_comparison(rds_sub, am_sub, region, **kwargs)
+                    pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'amseas'))
                 plot_model_region_comparison_streamplot(rds_sub, am_sub, region, **kwargs)
-                plots.append(f"{region['name']} | RTOFS vs AMSEAS")
-                pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'amseas'))
                 pending_logs.extend(_sp_records(region, ts_dt, 'rtofs', 'amseas'))
+                plots.append(f"{region['name']} | RTOFS vs AMSEAS")
                 logger.info(f"Successfully plotted RTOFS vs AMSEAS for region {region['name']} at time {ctime}")
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs AMSEAS at {ctime} for region {region['name']}: {e}")
 
         try:
-            if rdt_flag and dpt_flag:
+            if rdt_flag and dpt_flag and not currents_only:
                 plot_model_region_comparison(rds_sub, dop_sub, region, **kwargs)
                 plots.append(f"{region['name']} | RTOFS vs Doppio")
                 pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'doppio'))
@@ -548,6 +777,24 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
                 logger.info(f"Successfully plotted RTOFS vs Doppio currents for region {region['name']} at time {ctime}")
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs Doppio currents at {ctime} for region {region['name']}: {e}", exc_info=True)
+
+        try:
+            if rdt_flag and ect_flag and not currents_only:
+                plot_model_region_comparison(rds_sub, ec_sub, region, **kwargs)
+                plots.append(f"{region['name']} | RTOFS vs ECCOFS")
+                pending_logs.extend(_mc_records(region, ts_dt, 'rtofs', 'eccofs'))
+                logger.info(f"Successfully plotted RTOFS vs ECCOFS for region {region['name']} at time {ctime}")
+        except Exception as e:
+            logger.error(f"Failed to process RTOFS vs ECCOFS at {ctime} for region {region['name']}: {e}", exc_info=True)
+
+        try:
+            if rdt_flag and ect_flag:
+                plot_model_region_comparison_streamplot(rds_sub, ec_sub, region, **kwargs)
+                plots.append(f"{region['name']} | RTOFS vs ECCOFS (currents)")
+                pending_logs.extend(_sp_records(region, ts_dt, 'rtofs', 'eccofs'))
+                logger.info(f"Successfully plotted RTOFS vs ECCOFS currents for region {region['name']} at time {ctime}")
+        except Exception as e:
+            logger.error(f"Failed to process RTOFS vs ECCOFS currents at {ctime} for region {region['name']}: {e}", exc_info=True)
 
         if sst16 is not None:
             plot_sst(rds_sub, sst16, region, satellite='GOES-16', **remove_kwargs(['eez', 'currents', 'legend']))
@@ -659,19 +906,23 @@ def _expected_outputs(ctime, region) -> set:
             needed.add(path)
 
     # ── plot_model_region_comparison (one file per variable × depth) ──────────
+    # Skipped entirely under --currents-only.
     model_pairs = []
-    if plot_rtofs and plot_espc:
-        model_pairs.append(('rtofs', 'espc'))
-    if plot_rtofs and plot_para:
-        model_pairs.append(('rtofs', 'rtofs'))
-    if plot_rtofs and plot_cmems:
-        model_pairs.append(('rtofs', 'cmems'))
-    if plot_rtofs and plot_amseas:
-        model_pairs.append(('rtofs', 'amseas'))
-    if plot_rtofs and plot_cnaps:
-        model_pairs.append(('rtofs', 'cnaps'))
-    if plot_rtofs and plot_doppio:
-        model_pairs.append(('rtofs', 'doppio'))
+    if not currents_only:
+        if plot_rtofs and plot_espc:
+            model_pairs.append(('rtofs', 'espc'))
+        if plot_rtofs and plot_para:
+            model_pairs.append(('rtofs', 'rtofs'))
+        if plot_rtofs and plot_cmems:
+            model_pairs.append(('rtofs', 'cmems'))
+        if plot_rtofs and plot_amseas:
+            model_pairs.append(('rtofs', 'amseas'))
+        if plot_rtofs and plot_cnaps:
+            model_pairs.append(('rtofs', 'cnaps'))
+        if plot_rtofs and plot_doppio:
+            model_pairs.append(('rtofs', 'doppio'))
+        if plot_rtofs and plot_eccofs and folder not in ECCOFS_EXCLUDED_REGIONS and _is_eccofs_hour(ctime):
+            model_pairs.append(('rtofs', 'eccofs'))
 
     for m1, m2 in model_pairs:
         for k, depth_list in region['variables'].items():
@@ -693,6 +944,8 @@ def _expected_outputs(ctime, region) -> set:
             stream_pairs.append(('rtofs', 'amseas'))
         if plot_rtofs and plot_doppio:
             stream_pairs.append(('rtofs', 'doppio'))
+        if plot_rtofs and plot_eccofs and folder not in ECCOFS_EXCLUDED_REGIONS and _is_eccofs_hour(ctime):
+            stream_pairs.append(('rtofs', 'eccofs'))
 
         for m1, m2 in stream_pairs:
             for depth in region['currents']['depths']:
@@ -700,7 +953,8 @@ def _expected_outputs(ctime, region) -> set:
                 _need(d / f'{folder}_{tstr}_currents-{depth}m_{m1}-vs-{m2}.png')
 
     # ── plot_sst (no .png extension — matches how plot_sst saves) ────────────
-    if plot_rtofs:
+    # Skipped entirely under --currents-only.
+    if plot_rtofs and not currents_only:
         sst_tags = ((['GOES16'] if sst_sorted_16 is not None else []) +
                     (['GOES19'] if sst_sorted_19 is not None else []))
         for satellite_tag in sst_tags:
@@ -721,19 +975,23 @@ def _expected_plot_keys(ctime, region) -> set:
     rname  = region['name']
     keys   = set()
 
+    # Skipped entirely under --currents-only.
     model_pairs = []
-    if plot_rtofs and plot_espc:
-        model_pairs.append(('rtofs', 'espc'))
-    if plot_rtofs and plot_para:
-        model_pairs.append(('rtofs', 'rtofs'))
-    if plot_rtofs and plot_cmems:
-        model_pairs.append(('rtofs', 'cmems'))
-    if plot_rtofs and plot_amseas:
-        model_pairs.append(('rtofs', 'amseas'))
-    if plot_rtofs and plot_cnaps:
-        model_pairs.append(('rtofs', 'cnaps'))
-    if plot_rtofs and plot_doppio:
-        model_pairs.append(('rtofs', 'doppio'))
+    if not currents_only:
+        if plot_rtofs and plot_espc:
+            model_pairs.append(('rtofs', 'espc'))
+        if plot_rtofs and plot_para:
+            model_pairs.append(('rtofs', 'rtofs'))
+        if plot_rtofs and plot_cmems:
+            model_pairs.append(('rtofs', 'cmems'))
+        if plot_rtofs and plot_amseas:
+            model_pairs.append(('rtofs', 'amseas'))
+        if plot_rtofs and plot_cnaps:
+            model_pairs.append(('rtofs', 'cnaps'))
+        if plot_rtofs and plot_doppio:
+            model_pairs.append(('rtofs', 'doppio'))
+        if plot_rtofs and plot_eccofs and region['folder'] not in ECCOFS_EXCLUDED_REGIONS and _is_eccofs_hour(ctime):
+            model_pairs.append(('rtofs', 'eccofs'))
 
     for m1, m2 in model_pairs:
         for k, depth_list in region['variables'].items():
@@ -752,11 +1010,14 @@ def _expected_plot_keys(ctime, region) -> set:
             stream_pairs.append(('rtofs', 'amseas'))
         if plot_rtofs and plot_doppio:
             stream_pairs.append(('rtofs', 'doppio'))
+        if plot_rtofs and plot_eccofs and region['folder'] not in ECCOFS_EXCLUDED_REGIONS and _is_eccofs_hour(ctime):
+            stream_pairs.append(('rtofs', 'eccofs'))
         for m1, m2 in stream_pairs:
             for depth in region['currents']['depths']:
                 keys.add((rname, tstr_k, "streamplot", "currents", depth, m1, m2))
 
-    if plot_rtofs:
+    # Skipped entirely under --currents-only.
+    if plot_rtofs and not currents_only:
         for sat in (['GOES16'] if sst_sorted_16 is not None else []) + \
                    (['GOES19'] if sst_sorted_19 is not None else []):
             keys.add((rname, tstr_k, "sst", "temperature", 0, "rtofs", sat))
@@ -814,6 +1075,7 @@ def pre_check_date_list(date_list, current_has_argo=False, current_has_gliders=F
         for item in conf.regions:
             region = region_config(item)
             region = apply_colorbar_overrides(item, region)
+            region = _restrict_to_surface_currents(region)
             keys |= _expected_plot_keys(ctime, region)
         expected_by_ts[ctime] = keys
 

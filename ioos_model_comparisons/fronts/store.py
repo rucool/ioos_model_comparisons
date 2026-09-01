@@ -342,6 +342,66 @@ def fetch_wall_lines(stamp, **kw):
     return geometry_to_lines(doc.get("geometry")), doc.get("properties", {})
 
 
+def fetch_wall_lines_for_day(day, *, region=DEFAULT_REGION):
+    """(lines, stamp) for the CURRENT wall on this calendar day, or (None, None).
+
+    `day` is 'YYYY-MM-DD'. Unlike fetch_wall_lines(), the caller doesn't need
+    to know the exact digitize stamp (e.g. '20260828T1055') — just the date,
+    which is what a map script processing a ctime actually has on hand.
+    """
+    coll = _coll(WALLS_COLL)
+    if coll is None:
+        return None, None
+    try:
+        doc = coll.find_one({"region": region, "day": day}, {"_id": 0},
+                            sort=[("stamp", -1), ("version", -1)])
+        if doc is None:
+            return None, None
+        return geometry_to_lines(doc.get("geometry")), doc.get("stamp")
+    except Exception as exc:
+        logger.warning(f"fetch_wall_lines_for_day failed for {day}: {exc}")
+        return None, None
+
+
+def fetch_isotherm_lines_for_day(base_region, day, *, level=15, ref_depth=200):
+    """{model_name: lines} for every model with a saved 200m isotherm on this
+    calendar day, for `base_region` (a regions.py folder name, e.g.
+    "mid_atlantic_bight").
+
+    plotting.py's _save_isotherm_lines() writes one region tag per (map
+    region, model) pair -- "{base_region}_{model}_isotherm{level}c_{depth}m"
+    -- so different models' isotherms for the same day are separate
+    documents rather than versions of one. This scans for all such tags and
+    returns the CURRENT line set for each. Mongo-only; there is no on-disk
+    fallback for these the way the digitized wall has.
+    """
+    coll = _coll(WALLS_COLL)
+    if coll is None:
+        return {}
+    try:
+        suffix = f"_isotherm{level}c_{ref_depth}m"
+        prefix = f"{base_region}_"
+        pattern = f"^{re.escape(prefix)}.*{re.escape(suffix)}$"
+        regions = coll.distinct("region", {"region": {"$regex": pattern}, "day": day})
+
+        out = {}
+        for region in regions:
+            doc = coll.find_one({"region": region, "day": day}, {"_id": 0},
+                                sort=[("stamp", -1), ("version", -1)])
+            if doc is None:
+                continue
+            lines = geometry_to_lines(doc.get("geometry"))
+            if not lines:
+                continue
+            model = (doc.get("properties") or {}).get("model") \
+                or region[len(prefix):-len(suffix)]
+            out[model] = lines
+        return out
+    except Exception as exc:
+        logger.warning(f"fetch_isotherm_lines_for_day failed for {base_region}/{day}: {exc}")
+        return {}
+
+
 def fetch_rings(stamp, *, region=DEFAULT_REGION, version=None):
     coll = _coll(RINGS_COLL)
     if coll is None:
