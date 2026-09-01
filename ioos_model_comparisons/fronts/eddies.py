@@ -54,6 +54,29 @@ class EddyConfig:
     match_km: float = 60.0         # day-over-day linking distance
 
 
+_sla_ds = None
+
+
+def _open_sla(username=None, password=None):
+    """Open (once) the CMEMS SLA dataset.
+
+    Cached at module level because opening it costs ~9 s: a 14-day batch that
+    re-opened per day would spend minutes doing nothing. The handle is lazy,
+    so caching it holds coordinates, not data.
+    """
+    global _sla_ds
+    if _sla_ds is not None:
+        return _sla_ds
+    import copernicusmarine as cm
+    _sla_ds = cm.open_dataset(
+        dataset_id=SLA_DATASET,
+        username=username or "maristizabalvar",
+        password=password or "MariaCMEMS2018",
+        chunk_size_limit=0,
+    )
+    return _sla_ds
+
+
 def get_sla(extent, time=None, username=None, password=None, pad=2.0):
     """Load CMEMS SLA for `extent` ([lon0, lon1, lat0, lat1]).
 
@@ -62,14 +85,7 @@ def get_sla(extent, time=None, username=None, password=None, pad=2.0):
     from the requested time — NRT altimetry can trail by a day or more, and
     a ring map built from stale SSH should say so.
     """
-    import copernicusmarine as cm
-
-    ds = cm.open_dataset(
-        dataset_id=SLA_DATASET,
-        username=username or "maristizabalvar",
-        password=password or "MariaCMEMS2018",
-        chunk_size_limit=0,
-    )
+    ds = _open_sla(username, password)
     da = ds["sla"].sel(
         longitude=slice(extent[0] - pad, extent[1] + pad),
         latitude=slice(extent[2] - pad, extent[3] + pad),

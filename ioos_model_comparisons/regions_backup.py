@@ -25,7 +25,6 @@ def region_config(regions=None, model=None):
     ocean_heat_content = False
     salinity_max = False
     currents = False
-    sea_surface_height = []
 
     key = "mastr"
     if key in regions:
@@ -78,9 +77,9 @@ def region_config(regions=None, model=None):
         folder = "yucatan"
         extent = [-90, -78, 17, 29]
         sea_water_temperature = [
-            dict(depth=0, limits=[24.5, 28.0, 0.25]),
+            dict(depth=0, limits=[24.5, 27.75, .25]),
             # dict(depth=0, limits=[27.5, 31, .25]),
-            dict(depth=150, limits=[18.0, 25.5, 0.5]),
+            dict(depth=150, limits=[18, 25.5, .5]),
             # dict(depth=200, limits=[14, 23, .5])
             ]
         salinity = [
@@ -207,9 +206,9 @@ def region_config(regions=None, model=None):
         # extent = [-91, -79, 18, 32]
 
         sea_water_temperature = [
-            dict(depth=0, limits=[26.0, 32.0, 0.5]),
-            dict(depth=150, limits=[14, 26, 0.5]),
-            dict(depth=200, limits=[12, 23, 0.5])
+            dict(depth=0, limits=[25, 31.5, .5]),
+            dict(depth=150, limits=[14, 26, .5]),
+            dict(depth=200, limits=[12, 23, .5])
             ]
         salinity = [
             dict(depth=0, limits=[32.0, 36.6, .1]), 
@@ -279,7 +278,6 @@ def region_config(regions=None, model=None):
             # depths = [1000],
             depths = [0, 1500],
             limits = [0, 1.5, .1],
-            limits_by_depth = {1500: [0, 0.4, .05]},
             # depths = [0,],
             # limits = [0, 1.5, .1],
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
@@ -295,7 +293,7 @@ def region_config(regions=None, model=None):
             # figsize = (12.125, 7.5)
             figsize = (8,8)
             )
-
+    
     key = "east_coast"
     if key in regions:
         # South Atlantic Bight Limits
@@ -332,7 +330,6 @@ def region_config(regions=None, model=None):
                 color="black"
                 )
             )
-        eez = True
         figure = dict(
             legend = dict(columns=7),
             figsize = (12, 7)
@@ -343,10 +340,10 @@ def region_config(regions=None, model=None):
         # South Atlantic Bight Limits
         name = "South Atlantic Bight"
         folder = "south_atlantic_bight"
-        extent = [-82.25, -63.75, 24.75, 36.25]
+        extent = [-82.25, -63.75, 24.75, 42.25]
         sea_water_temperature = [
-            dict(depth=0, limits=[20.0, 29.0, 0.5]),
-            dict(depth=150, limits=[15, 22.5, 0.5]),
+            dict(depth=0, limits=[23, 30.5, .5]),
+            dict(depth=150, limits=[15, 22.5, .5]),
             # dict(depth=200, limits=[15, 21, .5])
             ]
         salinity = [
@@ -386,11 +383,11 @@ def region_config(regions=None, model=None):
         folder = "mid_atlantic_bight"
         extent = [-77, -63, 35, 44]
         sea_water_temperature = [
-            dict(depth=0, limits=[14, 29, .5]),
-            dict(depth=30, limits=[8, 27, 1]),
-            dict(depth=100, limits=[4, 23, 1]),
-            dict(depth=150, limits=[6, 22, 1]),
-            dict(depth=200, limits=[6, 21, 1])
+            dict(depth=0, limits=[15, 29, 1]),
+            dict(depth=30, limits=[7, 25, 1]),
+            dict(depth=100, limits=[12, 23, 1]),
+            dict(depth=150, limits=[11, 22, 1]),
+            dict(depth=200, limits=[9, 21, 1])
             ]
         salinity = [
             dict(depth=0, limits=[31, 36.5, .25]),
@@ -431,9 +428,9 @@ def region_config(regions=None, model=None):
         # extent = [-83.2, -82.4, 27, 27+30/60]
         extent = [-87.5, -80, 22.5, 30.5]
         sea_water_temperature = [
-            dict(depth=0, limits=[27.0, 30.25, 0.25]),
-            dict(depth=100, limits=[18.0, 27.5, 0.5]),
-            dict(depth=200, limits=[13, 23.0, 1.0]),
+            dict(depth=0, limits=[29, 31.3, .1]),
+            dict(depth=100, limits=[18, 27.5, .5]),
+            dict(depth=200, limits=[13, 24, .5]),
             ]
         salinity = [
             dict(depth=0, limits=[34.5, 36.5 , .1]),
@@ -470,16 +467,16 @@ def region_config(regions=None, model=None):
         # Caribbean Limits
         name = "Caribbean"
         folder = "caribbean"
-        extent = [-89, -58, 7, 23.5]
-        # extent = [-89, -58, 7, 28]
+        # extent = [-89, -58, 7, 23.5]
+        extent = [-89, -58, 7, 28]
         sea_water_temperature = [
-            dict(depth=0, limits=[26.0, 30.25, 0.25]),
-            dict(depth=150, limits=[17, 25, .5]),
+            dict(depth=0, limits=[26, 30.25, .25]),
+            # dict(depth=150, limits=[17, 25, .5]),
             # dict(depth=200, limits=[14, 22.5, .5])
             ]
         salinity = [
-            dict(depth=0, limits=[34.6, 36.8, .1]),
-            dict(depth=150, limits=[35.7, 37.4, .1]),
+            # dict(depth=0, limits=[34.6, 36.8, .1]),
+            # dict(depth=150, limits=[35.7, 37.4, .1]),
             # dict(depth=200, limits=[35.6, 37.1, .1])
             ]
         sea_surface_height = [
@@ -494,7 +491,7 @@ def region_config(regions=None, model=None):
             )
         currents = dict(
             bool=True,
-            depths = [0, 150],
+            depths = [0, 150, 200],
             limits = [0, 1.5, .1],
             coarsen=dict(rtofs=11, espc=12),
             kwargs=dict(
@@ -502,7 +499,7 @@ def region_config(regions=None, model=None):
                 color="black"
                 )
             )
-        eez = True
+        eez = False
         figure = dict(
             legend = dict(columns=8),
             figsize = (12.5,6.5)
@@ -515,8 +512,8 @@ def region_config(regions=None, model=None):
         folder = "caribbean-windward"
         extent = [-68.2, -56.4, 9.25, 19.75]
         sea_water_temperature = [
-            dict(depth=0, limits=[26.0, 28.25, 0.25]),
-            dict(depth=150, limits=[16.5, 24.5, 0.5]),
+            dict(depth=0, limits=[27, 29.3, .1]),
+            dict(depth=150, limits=[16.5, 24.5, .5]),
             # dict(depth=200, limits=[14, 22, .5])
             ]
         salinity = [
@@ -630,8 +627,8 @@ def region_config(regions=None, model=None):
         folder = "tropical_western_atlantic"
         extent = [-70.25, -40.75, 0, 25]
         sea_water_temperature = [
-            dict(depth=0, limits=[23.0, 30.5, 0.5]),
-            dict(depth=150, limits=[11, 24, 1]),
+            dict(depth=0, limits=[25, 29.5, .5]),
+            dict(depth=150, limits=[11, 23, 1]),
             dict(depth=200, limits=[10, 22, 1])
             ]
         salinity = [
@@ -665,12 +662,11 @@ def region_config(regions=None, model=None):
                 linewidth=.5
                 )
             )
-        eez = True
         figure = dict(
             figsize = (12, 8.5),
             legend = dict(columns=9),
             )
-
+        
     key = "passengers"
     if key in regions:
         # Mid Atlantic Bight Limits
@@ -865,8 +861,8 @@ def region_config(regions=None, model=None):
         folder = "bahamas"
         extent = [-82.5, -63, 16, 31]
         sea_water_temperature = [
-            dict(depth=0, limits=[24.0, 31.0, 0.5]),
-            dict(depth=150, limits=[18, 25, 0.5]),
+            dict(depth=0, limits=[27, 32, .25]),
+            dict(depth=150, limits=[18, 25, .5]),
             # dict(depth=200, limits=[14, 22.5, .5])
             ]
         salinity = [
@@ -1018,7 +1014,6 @@ def region_config(regions=None, model=None):
             bool=True,
             depths = [0, 1500],
             limits = [0, 1.0, .1],
-            limits_by_depth = {1500: [0, 0.4, .05]},
             coarsen=dict(
                 rtofs=14,
                 espc=15,
@@ -1027,7 +1022,7 @@ def region_config(regions=None, model=None):
                 ),
             kwargs=dict(
                 ptype="streamplot",
-                color="black",
+                color="black", 
                 density=2.25,
                 linewidth=.5
                 )
@@ -1071,7 +1066,6 @@ def region_config(regions=None, model=None):
             # depths = [1000],
             depths = [0, 1500],
             limits = [0, 1.5, .1],
-            limits_by_depth = {1500: [0, 0.4, .05]},
             # depths = [0,],
             # limits = [0, 1.5, .1],
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
@@ -1087,7 +1081,7 @@ def region_config(regions=None, model=None):
             # figsize = (12.125, 7.5)
             figsize = (8,8)
             )
-
+        
     key = "guam"
     if key in regions:
         # Gulf of Mexico Limits
@@ -1098,8 +1092,9 @@ def region_config(regions=None, model=None):
         extent = [134.75-5, 155.25+5, 4.75, 25.25]
 
         sea_water_temperature = [
-            dict(depth=0, limits=[26, 31.0, .5]),
-            dict(depth=150, limits=[14, 24, 1]),
+            dict(depth=0, limits=[20, 30.5, .5]),
+            dict(depth=150, limits=[14, 26, .5]),
+            # dict(depth=200, limits=[12, 23, .5])
             ]
         salinity = [
             dict(depth=0, limits=[34.0, 35.6, .1]), 
@@ -1119,9 +1114,8 @@ def region_config(regions=None, model=None):
         currents = dict(
             bool=True,
             # depths = [1000],
-            depths = [0, 125, 250, 500, 1000, 1500],
+            depths = [0, 1500],
             limits = [0, 1.5, .1],
-            limits_by_depth = {0: [0, 1.2, 0.1], 125: [0, 1.0, 0.1], 250: [0, 0.6, 0.05], 500: [0, 0.6, 0.05], 1000: [0, 0.3, 0.025], 1500: [0, 0.25, 0.025]},
             # depths = [0,],
             # limits = [0, 1.5, .1],
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
@@ -1161,7 +1155,6 @@ def region_config(regions=None, model=None):
             bool=True,
             depths=[0, 1500],
             limits=[0, 1.5, .1],
-            limits_by_depth={1500: [0, 0.4, .05]},
             coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
             kwargs=dict(
                 ptype="streamplot",
@@ -1172,63 +1165,6 @@ def region_config(regions=None, model=None):
         eez = True
         figure = dict(
             legend=dict(columns=10),
-            figsize=(14, 8)
-        )
-
-    key = "south_africa"
-    if key in regions:
-        name = "South Africa"
-        folder = "south_africa"
-        extent = [10, 40, -40, -25]
-
-        sea_water_temperature = [
-            dict(depth=0, limits=[14, 28, 1]),
-            dict(depth=150, limits=[8, 18, .5]),
-        ]
-        salinity = [
-            dict(depth=0, limits=[34.5, 36.0, .1]),
-            dict(depth=150, limits=[34.5, 35.5, .1]),
-        ]
-        sea_surface_height = []
-        salinity_max = None
-        ocean_heat_content = None
-        currents = dict(
-            bool=True,
-            depths=[0, 1500],
-            limits=[0, 2.0, .1],
-            limits_by_depth={1500: [0, 0.4, .05]},
-            coarsen=dict(rtofs=7, espc=8, hafs=7, cmems=8),
-            kwargs=dict(
-                ptype="streamplot",
-                color="black",
-                density=3,
-            )
-        )
-        eez = True
-        figure = dict(
-            legend=dict(columns=10),
-            figsize=(14, 8)
-        )
-
-    key = "gulf_stream"
-    if key in regions:
-        # Gulf Stream, from the Mid Atlantic Bight shelf break out into the
-        # open mid-Atlantic — wide enough to show the whole warm-core path,
-        # not just its origin near the coast.
-        name = "Gulf Stream"
-        folder = "gulf_stream"
-        extent = [-77.25, -49.75, 31.75, 45.25]
-        sea_water_temperature = [
-            dict(depth=0, limits=[14, 30, 0.5]),
-        ]
-        salinity = []
-        sea_surface_height = []
-        salinity_max = None
-        ocean_heat_content = None
-        currents = dict(bool=False)
-        eez = False
-        figure = dict(
-            legend=dict(columns=5),
             figsize=(14, 8)
         )
 

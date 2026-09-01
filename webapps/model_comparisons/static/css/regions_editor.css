@@ -1,0 +1,12 @@
+.region-list { max-height: 70vh; overflow-y: auto; }
+.region-list .list-group-item { cursor: pointer; padding: .35rem .6rem; }
+.region-list .list-group-item.active { background:#0d6efd; border-color:#0d6efd; }
+.region-list .rg-key { font-family: ui-monospace, monospace; font-size: .8rem; }
+
+#extentMap { height: 220px; border-radius: .375rem; }
+#jsonBox { font-size: .8rem; }
+.limits-row input { width: 6.5rem; }
+.issue-err  { color:#b02a37; }
+.issue-warn { color:#997404; }
+.diff-add { color:#0f5132; } .diff-del { color:#842029; }
+.hist-row { border-bottom:1px solid #eee; padding:.35rem 0; }

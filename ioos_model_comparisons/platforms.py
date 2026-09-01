@@ -1,11 +1,13 @@
 import datetime as dt
 import inspect
+import io
 import multiprocessing
 from collections import namedtuple
 from pprint import pprint
 # urllib.error.HTTPError
 from urllib.error import HTTPError as uHTTPError
 from urllib.error import URLError
+import httpx
 import numpy as np
 import pandas as pd
 from erddapy import ERDDAP
@@ -102,7 +104,7 @@ def filter_argo_by_qc(df, qc_columns=None, allowed_flags=ARGO_GOOD_QC_FLAGS, kee
 
     return df.loc[mask]
 
-def retry_on_exception(max_retries=3, delay=2, backoff=2, exceptions=(Exception,)):
+def retry_on_exception(max_retries=3, delay=2, backoff=2, exceptions=(Exception,), default_factory=None):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -117,10 +119,17 @@ def retry_on_exception(max_retries=3, delay=2, backoff=2, exceptions=(Exception,
                     time.sleep(wait)
                     wait *= backoff
             print(f"Giving up after {max_retries} retries for {func.__name__}")
+            if default_factory is not None:
+                return default_factory()
             return (args[0], pd.DataFrame())  # Return empty DataFrame if all retries fail
         return wrapper
     return decorator
 
+# ERDDAP's erddapy client makes requests via httpx; network/timeout failures
+# surface as httpx.HTTPError, not requests.exceptions.HTTPError.
+ERDDAP_ERRORS = (rHTTPError, httpx.HTTPError)
+
+@retry_on_exception(max_retries=3, delay=2, backoff=2, exceptions=ERDDAP_ERRORS, default_factory=pd.DataFrame)
 def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
                             time_start=None, time_end=dt.date.today(),
                             wmo_id=None, variables=None, include_qc=False):
@@ -181,15 +190,12 @@ def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
     e.constraints = constraints
     e.variables = requested_variables
 
-    try:
-        df = e.to_pandas(
-            index_col="time (UTC)",
-            parse_dates=True,
-        ).dropna().tz_localize(None)
-        df = df.reset_index().rename(rename_argo, axis=1)
-        df = df.set_index(["argo", "time"]).sort_index()
-    except rHTTPError:
-        df = pd.DataFrame()
+    df = e.to_pandas(
+        index_col="time (UTC)",
+        parse_dates=True,
+    ).dropna().tz_localize(None)
+    df = df.reset_index().rename(rename_argo, axis=1)
+    df = df.set_index(["argo", "time"]).sort_index()
     return df
 
 
@@ -338,6 +344,7 @@ def rename_glider_vars(df):
 
     return df
      
+@retry_on_exception(max_retries=3, delay=2, backoff=2, exceptions=ERDDAP_ERRORS, default_factory=pd.DataFrame)
 def get_glider_by_id(dataset_id=None, bbox=None, start=None, end=None, vars=None):
     """_summary_
 
@@ -400,16 +407,12 @@ def get_glider_by_id(dataset_id=None, bbox=None, start=None, end=None, vars=None
     e.dataset_id = dataset_id
     e.variables = variables
     
-    # checking data frame is not empty
-    try:
-        df = e.to_pandas(
-            index_col='time (UTC)',
-            parse_dates=True,
-            skiprows=(1,)  # units information can be dropped.
-        ).dropna().tz_localize(None)
-        df = rename_glider_vars(df)
-    except rHTTPError:
-        print("Please enter a valid dataset id")
+    df = e.to_pandas(
+        index_col='time (UTC)',
+        parse_dates=True,
+        skiprows=(1,)  # units information can be dropped.
+    ).dropna().tz_localize(None)
+    df = rename_glider_vars(df)
     return df
 
 
@@ -448,6 +451,7 @@ def active_drifters(bbox=None, time_start=None, time_end=None):
     return df
 
 
+@retry_on_exception(max_retries=3, delay=2, backoff=2, exceptions=ERDDAP_ERRORS, default_factory=pd.DataFrame)
 def get_ndbc(bbox=None, time_start=None, time_end=None, buoy=None):
     bbox = bbox or [-100, -45, 5, 46]
     time_end = time_end or dt.date.today()
@@ -488,39 +492,6 @@ def get_ndbc(bbox=None, time_start=None, time_end=None, buoy=None):
         skiprows=(1,)  # units information can be dropped.
     ).dropna()
 
-    stations = df.station.unique()
-
-    # e.variables = [
-    #     "station",
-    #     "latitude",
-    #     "longitude",
-    #     "wd",
-    #     "wspd",
-    #     "gst",
-    #     "wvht",
-    #     "dpd",
-    #     "apd",
-    #     "mwd",
-    #     "bar",
-    #     "atmp",
-    #     "wtmp",
-    #     "dewp",
-    #     # "vis",
-    #     # "ptdy",
-    #     # "tide",
-    #     "wspu",
-    #     "wspv",
-    #     "time",
-    # ]
-
-    try:
-        df = e.to_pandas(
-            parse_dates=['time (UTC)'],
-            skiprows=(1,)  # units information can be dropped.
-        ).dropna()
-    except rHTTPError:
-        df = pd.DataFrame()
-
     return df
 
 
@@ -532,28 +503,34 @@ def get_ohc(bbox=None, time=None):
 
     time = time or dt.date.today()
 
-    e = ERDDAP(
-        server="https://coastwatch.noaa.gov/erddap/",
-        protocol="griddap"
+    # Accept datetime/Timestamp or date.
+    if hasattr(time, 'date'):
+        date = time.date()
+    else:
+        date = time
+
+    # noaacwOHCna covers Apr 2020–Jan 2024; noaacwOHC14na covers Jan 2024–present.
+    dataset_id = "noaacwOHCna" if date < dt.date(2024, 1, 15) else "noaacwOHC14na"
+
+    lat_min, lat_max = min(lats), max(lats)
+    lon_min, lon_max = min(lons), max(lons)
+
+    # Use noon as the target time; ERDDAP rounds to the nearest available step.
+    time_str = f"{date}T12:00:00Z"
+
+    # Build the griddap URL directly — avoids griddap_initialize() which hits
+    # the .dds metadata endpoint (returns 403 on CoastWatch despite data being public).
+    url = (
+        f"https://coastwatch.noaa.gov/erddap/griddap/{dataset_id}.nc"
+        f"?ohc[({time_str})]"
+        f"[({lat_min}):1:({lat_max})]"
+        f"[({lon_min}):1:({lon_max})]"
     )
 
-    e.dataset_id = "noaacwOHC14na" #2024 to present
-
-    e.griddap_initialize()
-
-    # Modify constraints
-    e.constraints["latitude<="] = max(lats)
-    e.constraints["latitude>="] = min(lats)
-    e.constraints["longitude>="] = max(lons)
-    e.constraints["longitude<="] = min(lons)
-    e.constraints['time>='] = time.strftime(time_formatter)
-    e.constraints['time<='] = time.strftime(time_formatter)
-    
-    # e.griddap_initialize()
-
-    # return xarray dataset
     try:
-        return e.to_xarray()
+        response = requests.get(url, timeout=60)
+        response.raise_for_status()
+        return xr.open_dataset(io.BytesIO(response.content))
     except requests.exceptions.HTTPError:
         print("No data available for this time period.")
         return

@@ -31,9 +31,11 @@
 
 html {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
+  height: 100%;
   margin: 0;
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 14px;
@@ -41,22 +43,6 @@ body {
   background: var(--tab-bar-bg);
   display: flex;
   flex-direction: column;
-}
-
-/* The single-page tabbed app (index.html) is laid out to fill exactly one
-   viewport, with every tab pane managing its own internal scroll areas —
-   that's what needs html/body locked to viewport height with no page
-   scroll. Plain top-down pages sharing this same base template/stylesheet
-   (the /regions and /fronts editors) are NOT built that way: they're normal
-   pages whose content can be taller than one screen, and locking them the
-   same way silently made it impossible to scroll down to see anything
-   below the fold. Opt in via body_class in base.html instead of applying
-   this globally. */
-body.app-shell {
-  height: 100%;
-  overflow: hidden;
-}
-html:has(body.app-shell) {
   overflow: hidden;
 }
 
@@ -155,7 +141,7 @@ html:has(body.app-shell) {
 /* ─── Content grid ─── */
 .content-grid {
   display: grid;
-  grid-template-columns: 270px 1fr;
+  grid-template-columns: 300px 1fr;
   gap: 0;
   flex: 1;       /* fill the active tab-pane (which is now flex column) */
   min-height: 0;
@@ -349,40 +335,6 @@ html:has(body.app-shell) {
   overflow: hidden;  /* never scroll – image scales to fit */
 }
 
-/* Leaflet map container — needs overflow visible and a real height to render tiles */
-#profileMapContainer {
-  padding: 0 !important;
-  overflow: visible !important;
-  display: block !important;
-  align-items: unset !important;
-  justify-content: unset !important;
-  height: 100% !important;
-  min-height: 400px;
-}
-
-/* ─── Profiles tab: map + plot side-by-side layout ─── */
-.profile-display {
-  flex-direction: row;
-}
-
-.profile-map-panel {
-  width: 350px;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  resize: horizontal;  /* drag the edge to resize; requires width, not flex-basis */
-  overflow: hidden;
-  min-width: 200px;
-  max-width: 800px;
-  padding-bottom: 0;
-}
-
-.profile-plot-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
 .image-panel-body img.plot-image {
   max-width: 100%;
   max-height: 100%;  /* key: image shrinks to fit the body's height */
@@ -482,28 +434,6 @@ html:has(body.app-shell) {
 .region-flip-btn.left { left: 1rem; }
 .region-flip-btn.right { right: 1rem; }
 
-/* ─── Overview pane layout ─── */
-.ov-region-bar {
-  flex-shrink: 0;
-  padding: .45rem 1rem;
-  background: var(--tab-bar-bg);
-  border-bottom: 1px solid var(--tab-bar-border);
-  overflow-x: auto;
-  display: flex;
-  justify-content: center;
-}
-
-.ov-sidebar-grid {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.ov-sidebar-grid > aside { overflow-y: auto; overflow-x: hidden; }
-.ov-sidebar-grid > main  { overflow: hidden; }
-
 /* ─── Map Model Tabs ─── */
 #mapModelTabs .nav-link {
   color: var(--text-muted);
@@ -526,15 +456,14 @@ html:has(body.app-shell) {
 
 /* ─── Responsive ───
    Below 900px the sidebar + image layout stacks into a single column
-   (.content-grid, .ov-sidebar-grid, and the Profiles tab's map+plot row).
-   The desktop shell assumes everything sits side by side and never
-   exceeds one viewport (hence overflow:hidden everywhere), but once
-   stacked, sidebar + image easily add up to more than one screen's
-   height — so on mobile we drop the height-locking/clipping chain and
-   let the page scroll normally instead of silently cutting content off. */
+   (.content-grid). The desktop shell assumes the sidebar and image sit
+   side by side and never exceed one viewport (hence overflow:hidden
+   everywhere), but once stacked, sidebar + image easily add up to more
+   than one screen's height — so on mobile we drop the height-locking/
+   clipping chain and let the page scroll normally instead of silently
+   cutting content off. */
 @media (max-width: 900px) {
-  .content-grid,
-  .ov-sidebar-grid {
+  .content-grid {
     grid-template-columns: 1fr;
   }
 
@@ -556,26 +485,12 @@ html:has(body.app-shell) {
   #mainTabContent,
   .tab-pane.show.active,
   .content-grid,
-  .ov-sidebar-grid,
-  .ov-sidebar-grid > main,
   .controls-sidebar,
   .image-display,
   .image-panel,
   .image-panel-body {
     flex: none;
     overflow: visible;
-  }
-
-  /* Grid/flex items default to min-width:auto (their content's intrinsic
-     min width), so a wide child like #mapModelTabs would otherwise stretch
-     the whole column past the viewport instead of scrolling internally. */
-  .content-grid > *,
-  .ov-sidebar-grid > *,
-  .image-display,
-  .image-panel,
-  .image-panel-header,
-  #mapModelTabs {
-    min-width: 0;
   }
 
   .image-panel-body {
@@ -586,27 +501,18 @@ html:has(body.app-shell) {
     max-height: 70vh;
   }
 
-  /* Profiles tab: map + plot stack instead of sitting side by side, and
-     the map panel drops its fixed desktop width/drag-resize in favor of
-     a plain fixed height. */
-  .profile-display {
-    flex-direction: column;
-  }
-  .profile-map-panel {
-    width: 100%;
-    height: 280px;
-    resize: none;
+  /* Grid/flex items default to min-width:auto (their content's intrinsic
+     min width), so a wide child like #mapModelTabs would otherwise stretch
+     the whole column past the viewport instead of scrolling internally. */
+  .content-grid > *,
+  .image-display,
+  .image-panel,
+  .image-panel-header,
+  #mapModelTabs {
     min-width: 0;
-    max-width: none;
-    /* Leaflet's tile grid renders slightly larger than its container and
-       relies on an ancestor clipping it (true on desktop via .image-panel's
-       base overflow:hidden) — re-assert that here since the broad
-       .image-panel { overflow: visible } rule above would otherwise let
-       tiles bleed past this fixed-height panel and widen the whole page. */
-    overflow: hidden;
   }
 
-  /* Tab bar: one swipeable row instead of wrapping across several lines */
+  /* Tab bar: one swipeable row instead of wrapping across 2-3 lines */
   .tab-pills {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -617,15 +523,14 @@ html:has(body.app-shell) {
   .tab-pills .nav-item { flex-shrink: 0; }
   .tab-pills .nav-item.ms-auto { margin-left: 0 !important; }
 
-  /* Maps tab's Copernicus/ESPC/GOES-16/GOES-19 sub-tabs: same overflow
-     risk as the main tab bar, same fix. */
+  /* Data Archive's Copernicus/ESPC sub-tabs: same overflow risk as
+     the main tab bar, same fix. */
   #mapModelTabs {
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     flex-shrink: 1;
-    min-width: 0;
   }
   #mapModelTabs::-webkit-scrollbar { display: none; }
   #mapModelTabs .nav-item { flex-shrink: 0; }
@@ -702,4 +607,55 @@ html:has(body.app-shell) {
   background: rgba(255, 255, 255, .3);
 }
 
+/* ─── Text Lightbox ───
+   Shares the .image-lightbox backdrop/overlay but shows a text file (e.g.
+   eddy_trajectory's daily 12N-crossing forecast table) in a scrollable card
+   instead of an image. */
+.text-lightbox-panel {
+  background: var(--panel-bg);
+  border-radius: var(--radius-md);
+  width: 100%;
+  max-width: 900px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  cursor: default;
+  box-shadow: 0 10px 50px rgba(0, 0, 0, .5);
+  animation: fadeIn .2s ease;
+}
+
+.text-lightbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--panel-border);
+  font-weight: 600;
+  font-size: .85rem;
+  color: var(--text-main);
+  flex-shrink: 0;
+}
+
+.text-lightbox-panel pre {
+  margin: 0;
+  padding: 1rem 1.25rem;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: .78rem;
+  line-height: 1.5;
+  color: var(--text-main);
+  white-space: pre;
+}
+
+@media (max-width: 576px) {
+  .text-lightbox-panel {
+    max-height: 90vh;
+  }
+  .text-lightbox-panel pre {
+    font-size: .7rem;
+    padding: .75rem 1rem;
+  }
+}
 

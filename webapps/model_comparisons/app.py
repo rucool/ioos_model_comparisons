@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import re
 import os
 import json
+import logging
 import time as _time
 import threading as _threading
 from concurrent.futures import ThreadPoolExecutor
@@ -194,6 +195,19 @@ _threading.Thread(target=_glider_positions_loop, daemon=True).start()
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+# --- front editor: sign-in + the MongoDB-backed wall editor -----------------
+# Both are additive. The dashboard and every existing /api/* route stay public
+# and anonymous; only /fronts requires a session. If FLASK_SECRET_KEY is unset
+# the editor self-disables (503) and the public site is unaffected.
+from ioos_model_comparisons.env import load_env    # noqa: E402
+load_env()
+from auth import init_auth                          # noqa: E402
+from fronts_bp import fronts_bp                     # noqa: E402
+from regions_bp import regions_bp                   # noqa: E402
+init_auth(app)
+app.register_blueprint(fronts_bp)
+app.register_blueprint(regions_bp)
+
 # Optional local plots directory; set LOCAL_PLOTS_DIR env var to serve location
 # data from a local mirror. Omit (or leave empty) to always fetch from the remote server.
 _LOCAL_PLOTS_BASE = os.environ.get("LOCAL_PLOTS_DIR", "")
@@ -225,114 +239,24 @@ _TRACKS_CACHE_TTL = 3600  # seconds
 # ---------------------------------------------------------------------------
 # Region / variable metadata
 # ---------------------------------------------------------------------------
-region_info = {
-    "Yucatan/Mastr": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "300m", "600m", "900m"]
-    },
-    "Yucatan": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m"]
-    },
-    "Caribbean: Leeward Islands": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "200m"]
-    },
-    "Loop Current Eddy": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "30m"]
-    },
-    "Gulf of Mexico": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "200m"]
-    },
-    "Eastern Gulf of Mexico": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "200m"]
-    },
-    "US East Coast": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "200m"]
-    },
-    "South Atlantic Bight": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "200m"]
-    },
-    "Mid Atlantic Bight": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "30m", "100m", "150m", "200m"]
-    },
-    "West Florida Shelf": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m"]
-    },
-    "Caribbean": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "200m"]
-    },
-    "Caribbean: Windward Islands": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m"]
-    },
-    "Amazon Plume": {
-        "variables": ["temperature", "salinity", "currents"],
-        "depths": ["0m", "150m", "160m", "200m"]
-    },
-    "Hurricane Alley": {
-        "variables": ["temperature", "salinity", "currents"],
-        "depths": ["0m", "150m", "200m"]
-    },
-    "Tropical Western Atlantic": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "100m", "150m", "200m"]
-    },
-    "Atlantis II Seamounts": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "300m"]
-    },
-    "Eastern Pacific - Mexico": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "100m", "200m"]
-    },
-    "Hawaii": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "100m", "200m"]
-    },
-    "WMO V - South Pacific": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "175m"]
-    },
-    "RU29": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "100m", "150m", "200m"]
-    },
-    "East Coast": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m"]
-    },
-    "Philippines Sea": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "200m", "1500m"]
-    },
-    "Western Gulf of Mexico": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "200m"]
-    },
-    "Guam": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m"]
-    },
-    "Fiji": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "1500m"]
-    },
-    "Bahamas": {
-        "variables": ["temperature", "salinity", "ocean_heat_content", "currents"],
-        "depths": ["0m", "150m", "1500m"]
-    }
-}
+# region_info (variables + per-variable depths, since currents are frequently
+# plotted at depths temperature/salinity aren't) used to be a hand-typed
+# snapshot here, kept "in sync" with ioos_model_comparisons/regions.py by
+# hand — which is exactly why it silently fell out of sync (gulf_stream and
+# south_africa were both missing entirely). It's now built live from the same
+# source every offline plotting script and the /regions web editor already
+# read: regions.region_config() + db.apply_colorbar_overrides(). See
+# ioos_model_comparisons/region_catalog.py. Cached for
+# region_catalog.CACHE_TTL seconds, so an edit through /regions shows up here
+# without a code change or restart.
+from ioos_model_comparisons.region_catalog import get_region_info  # noqa: E402
 
-argo_regions = list(region_info.keys())
+# map_regions is a deliberate curated subset of region_info's regions, not
+# derived: it's every region for which the offline RTOFS-vs-model comparison
+# map pipeline actually publishes images, which regions.py has no way to
+# encode (regions like Amazon Plume or Loop Current Eddy are fully configured
+# there but have no published Maps Archive imagery). Keep in sync by hand;
+# a startup check below logs if an entry no longer matches a real region.
 map_regions = [
     "Caribbean",
     "Gulf of Mexico",
@@ -346,6 +270,13 @@ map_regions = [
     "Guam",
     "Fiji"
 ]
+
+_unknown_map_regions = set(map_regions) - set(get_region_info().keys())
+if _unknown_map_regions:
+    logging.getLogger(__name__).warning(
+        f"map_regions has entries not found in region_info (renamed or "
+        f"removed in regions.py?): {sorted(_unknown_map_regions)}"
+    )
 
 # ---------------------------------------------------------------------------
 # Adaptive Sampling Guidance metadata
@@ -398,8 +329,19 @@ def check_image(url):
 TIME_STEPS = ["00Z", "06Z", "12Z", "18Z"]
 
 
+# ECCOFS's curvilinear ROMS grid only usefully covers the Atlantic/
+# Intra-Americas Seas — matches ECCOFS_EXCLUDED_REGIONS in
+# scripts/maps/models/synchronous/rtofs-gofs-cmems-amseas.py and
+# ocean_heat_content.py (there keyed by folder name; here by display name,
+# since that's what build_map_urls already takes).
+ECCOFS_EXCLUDED_REGIONS = {
+    "Tropical Western Atlantic", "Eastern Pacific - Mexico", "Hawaii",
+    "WMO V - South Pacific", "Philippines Sea", "Guam", "Fiji",
+}
+
+
 def build_map_urls(region, variable_depth, date_obj, time_str):
-    """Return (img_copernicus, img_espc, img_espc_cmems, img_goes) URLs."""
+    """Return (img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs) URLs."""
     variable_depth_mod = variable_depth.replace("_", "-")
     year = date_obj.year
     month = add_zeros(date_obj.month)
@@ -420,10 +362,13 @@ def build_map_urls(region, variable_depth, date_obj, time_str):
         f"{region_url_key}/{variable_depth}/{year}/{month}/"
     )
 
-    img_goes = None
+    img_goes16 = None
+    img_goes19 = None
+    img_eccofs = None
+    eccofs_ok = region not in ECCOFS_EXCLUDED_REGIONS
 
     if variable_depth == "ocean_heat_content":
-        if region in ('Guam', 'Fiji'):
+        if region == 'Fiji':
             # Single combined three-model image: {RegionName}_{timestamp}_ohc_rtofs-espc-cmems.png
             file_name_ohc = f"{region}_{year}-{month}-{day}T{time_code}Z_ohc_rtofs-espc-cmems.png"
             img_copernicus = None
@@ -437,6 +382,8 @@ def build_map_urls(region, variable_depth, date_obj, time_str):
             img_copernicus = f"{base_url}{file_name_ohc}_heat_content_rtofs-cmems.png"
             img_espc      = f"{base_url}{file_name_ohc}_heat_content_rtofs-espc.png"
             img_espc_cmems = f"{base_url}{file_name_ohc}_heat_content_espc-cmems.png"
+            if eccofs_ok:
+                img_eccofs = f"{base_url}{file_name_ohc}_heat_content_rtofs-eccofs.png"
     else:
         file_name = (
             f"{region_file_slug}"
@@ -446,9 +393,14 @@ def build_map_urls(region, variable_depth, date_obj, time_str):
         img_copernicus = f"{base_url}{file_name}_rtofs-vs-cmems.png"
         img_espc      = f"{base_url}{file_name}_rtofs-vs-espc.png"
         img_espc_cmems = f"{base_url}{file_name}_espc-vs-cmems.png"
-        img_goes       = f"{base_url}{file_name}_rtofs-vs-GOES.png"
+        if eccofs_ok:
+            img_eccofs = f"{base_url}{file_name}_rtofs-vs-eccofs.png"
+        # GOES SST comparisons are only produced for surface temperature.
+        if variable_depth == "temperature_0m":
+            img_goes16 = f"{base_url}{file_name}_rtofs-vs-GOES16.png"
+            img_goes19 = f"{base_url}{file_name}_rtofs-vs-GOES19.png"
 
-    return img_copernicus, img_espc, img_espc_cmems, img_goes
+    return img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs
 def build_adaptive_sampling_url(region_key, display_name, variable_folder,
                                 panel_type, var_code, model_folder,
                                 date_obj, time_str):
@@ -629,6 +581,46 @@ def get_latest_argo_date(region):
         return None
 
 
+_glider_latest_date_cache = {"ts": 0.0, "date": None}
+_GLIDER_LATEST_DATE_TTL = 1800  # seconds
+
+
+def get_latest_glider_date(lookback_days=16):
+    """Most recent date with a published per-day gliders/{date}/locations.json
+    — whatever it contains, same as Argo/FVON's own *-latest-date lookups
+    (which likewise just take the newest date with any data, no completeness
+    check). By request 2026-08-24: always reflect the actual latest day so
+    this tracks the glider script's real output directly, including while
+    it's still catching up on a given day, rather than lagging behind on an
+    older "more complete" day.
+
+    Scans backward day by day (same primary source fetch_gliders() reads)
+    and returns as soon as it finds a day with at least one entry. Cached
+    since this can be several HTTP requests.
+    """
+    now = _time.time()
+    if now - _glider_latest_date_cache["ts"] < _GLIDER_LATEST_DATE_TTL:
+        return _glider_latest_date_cache["date"]
+
+    today = datetime.now().date()
+    result = None
+    for i in range(lookback_days):
+        d = today - timedelta(days=i)
+        month_day = f"{add_zeros(d.month)}-{add_zeros(d.day)}"
+        url = f"{BASE_REMOTE_PROFILES}/gliders/{d.year}/{month_day}/locations.json"
+        try:
+            r = requests.get(url, timeout=6)
+            if r.status_code == 200 and len(r.json()) > 0:
+                result = d.strftime("%Y-%m-%d")
+                break
+        except Exception:
+            continue
+
+    _glider_latest_date_cache["ts"] = now
+    _glider_latest_date_cache["date"] = result
+    return result
+
+
 def get_fvon_ids(region, date_obj):
     year = date_obj.year
     month = add_zeros(date_obj.month)
@@ -699,10 +691,11 @@ def get_fvon_profile_url(region, filename, date_obj):
 def index():
     today = datetime.now().strftime("%Y-%m-%d")
     asg_latest = get_asg_latest_date()  # cached on first call; fast on server restart
+    region_info = get_region_info()  # live regions.py + MongoDB, see region_catalog.py
     return render_template(
         "index.html",
         region_info=region_info,
-        argo_regions=argo_regions,
+        argo_regions=sorted(region_info.keys()),
         map_regions=map_regions,
         adaptive_sampling_regions=adaptive_sampling_regions,
         adaptive_sampling_variables=adaptive_sampling_variables,
@@ -724,7 +717,7 @@ def api_maps():
     except ValueError:
         return jsonify({"error": "Invalid date format"}), 400
 
-    img_copernicus, img_espc, img_espc_cmems, img_goes = build_map_urls(region, variable_depth, date_obj, time_str)
+    img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs = build_map_urls(region, variable_depth, date_obj, time_str)
 
     return jsonify({
         "copernicus": {
@@ -742,10 +735,20 @@ def api_maps():
             "available": check_image(img_espc_cmems),
             "label": "ESPC vs. CMEMS",
         },
-        "goes": {
-            "url": img_goes,
-            "available": check_image(img_goes) if img_goes else False,
-            "label": "RTOFS vs. GOES",
+        "goes16": {
+            "url": img_goes16,
+            "available": check_image(img_goes16) if img_goes16 else False,
+            "label": "RTOFS vs. GOES-16",
+        },
+        "goes19": {
+            "url": img_goes19,
+            "available": check_image(img_goes19) if img_goes19 else False,
+            "label": "RTOFS vs. GOES-19",
+        },
+        "eccofs": {
+            "url": img_eccofs,
+            "available": check_image(img_eccofs) if img_eccofs else False,
+            "label": "RTOFS vs. ECCOFS",
         },
     })
 
@@ -810,6 +813,15 @@ def api_argo_profile():
 def api_argo_latest_date():
     region = request.args.get("region", "Mid Atlantic Bight")
     latest_date = get_latest_argo_date(region)
+    if latest_date:
+        return jsonify({"date": latest_date})
+    else:
+        return jsonify({"date": datetime.now().strftime("%Y-%m-%d")})
+
+
+@app.route("/api/glider-latest-date")
+def api_glider_latest_date():
+    latest_date = get_latest_glider_date()
     if latest_date:
         return jsonify({"date": latest_date})
     else:
@@ -907,27 +919,45 @@ def api_overview_latest():
     except ValueError:
         return jsonify({"error": "Invalid date parsed", "available": False}), 500
 
-    img_copernicus, img_espc, img_espc_cmems, img_goes = build_map_urls(region, variable_depth, date_obj, time_str)
+    img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs = build_map_urls(region, variable_depth, date_obj, time_str)
 
+    # Each model comparison is generated by an independent pipeline, so the
+    # newest run often has some models ready before others. Check each URL
+    # individually (mirrors /api/maps) so the frontend can fall back to
+    # whichever model has actually finished rendering.
     return jsonify({
         "available": True,
         "date": date_str,
         "time": time_str,
         "copernicus": {
             "url": img_copernicus,
+            "available": check_image(img_copernicus),
             "label": "RTOFS vs. Copernicus (CMEMS)"
         },
         "espc": {
             "url": img_espc,
+            "available": check_image(img_espc),
             "label": "RTOFS vs. ESPC"
         },
         "espc_cmems": {
             "url": img_espc_cmems,
+            "available": check_image(img_espc_cmems),
             "label": "ESPC vs. CMEMS"
         },
-        "goes": {
-            "url": img_goes,
-            "label": "RTOFS vs. GOES"
+        "goes16": {
+            "url": img_goes16,
+            "available": check_image(img_goes16) if img_goes16 else False,
+            "label": "RTOFS vs. GOES-16"
+        },
+        "goes19": {
+            "url": img_goes19,
+            "available": check_image(img_goes19) if img_goes19 else False,
+            "label": "RTOFS vs. GOES-19"
+        },
+        "eccofs": {
+            "url": img_eccofs,
+            "available": check_image(img_eccofs) if img_eccofs else False,
+            "label": "RTOFS vs. ECCOFS",
         },
     })
 @app.route("/api/download")

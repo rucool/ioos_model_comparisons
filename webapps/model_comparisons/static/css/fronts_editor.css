@@ -1,0 +1,18 @@
+
+
+#statusbar { font-variant-numeric: tabular-nums; }
+#statusbar .stat-bad  { color: #ff7b72; }
+#statusbar .stat-good { color: #6ee7a8; }
+#statusbar .stat-warn { color: #ffcc66; }
+
+/* the wall should stay legible over both a warm turbo field and a
+   red/blue SLA field, hence white casing under a dark core line */
+.wall-halo { filter: drop-shadow(0 0 2px rgba(255,255,255,0.9)); }
+
+.leaflet-container { background: #10131a; }
+
+/* integrated layout: the editor lives inside the site chrome, so it sizes to
+   the viewport minus navbar/toolbar/status rather than owning <body> */
+#map { height: calc(100vh - 190px); min-height: 420px; }
+.fronts-toolbar { border-bottom: 1px solid rgba(0,0,0,.1); }
+#statusbar { border-top: 1px solid rgba(0,0,0,.1); }

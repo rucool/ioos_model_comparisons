@@ -1,98 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IOOS Model Comparisons Archive Explorer – RUCOOL</title>
-  <meta name="description" content="Interactive ocean model comparison viewer showing RTOFS, GOFS, and Copernicus model plots across U.S. coastal regions." />
+{% extends "base.html" %}
 
-  <!-- Bootstrap 5 CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
-  <!-- Bootstrap Icons -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-  <!-- Custom CSS -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-</head>
+{% block body_class %}app-shell{% endblock %}
 
-<body>
-
-<!-- ══════════════════════════════════════════════════════ NAVBAR -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-navy py-3" id="mainNavbar">
-  <div class="container-fluid px-4">
-    <div class="d-flex align-items-center gap-2">
-      <a href="https://rucool.marine.rutgers.edu" target="_blank">
-        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="RUCOOL Logo" height="55" class="me-2">
-      </a>
-      <a class="navbar-brand m-0 p-0" href="#">
-        <span class="fw-700 brand-title" style="font-size: 2.3rem;">IOOS Model Comparisons Archive Explorer</span>
-      </a>
-    </div>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
-      data-bs-target="#navbarContent" aria-controls="navbarContent"
-      aria-expanded="false" aria-label="Toggle navigation">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="navbarContent">
-      <ul class="navbar-nav ms-auto align-items-center gap-1">
-        <li class="nav-item ms-2">
-          <span class="nav-timestamp text-light-muted" id="currentDateTime"></span>
-        </li>
-      </ul>
-    </div>
-  </div>
-</nav>
+{% block content %}
 
 <!-- ══════════════════════════════════════════════════════ MAIN LAYOUT -->
 <div class="app-wrapper">
 
   <!-- ─── TAB NAV ─── -->
-  <div class="tab-nav-bar">
-    <div class="container-fluid px-4">
-      <ul class="nav nav-pills tab-pills" id="mainTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-          <button class="nav-link active" id="overview-tab" data-bs-toggle="pill"
-            data-bs-target="#overview-pane" type="button" role="tab"
-            aria-controls="overview-pane" aria-selected="true">
-            <i class="bi bi-eye me-1"></i>Overview (Most Recent)
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link" id="maps-tab" data-bs-toggle="pill"
-            data-bs-target="#maps-pane" type="button" role="tab"
-            aria-controls="maps-pane" aria-selected="false">
-            <i class="bi bi-map me-1"></i>Maps Archive
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link" id="profiles-tab" data-bs-toggle="pill"
-            data-bs-target="#profiles-pane" type="button" role="tab"
-            aria-controls="profiles-pane" aria-selected="false">
-            <i class="bi bi-graph-up me-1"></i>Profiles Archive
-          </button>
-        </li>
-        <li class="nav-item" role="presentation">
-          <button class="nav-link" id="adaptive-tab" data-bs-toggle="pill"
-            data-bs-target="#adaptive-pane" type="button" role="tab"
-            aria-controls="adaptive-pane" aria-selected="false">
-            <i class="bi bi-compass me-1"></i>Adaptive Sampling Archive
-          </button>
-        </li>
-        <li class="nav-item ms-auto">
-          <a class="nav-link" href="https://transects.marine.rutgers.edu/" target="_blank" rel="noopener">
-            <i class="bi bi-grid-3x3-gap me-1"></i>Transect/Profile Tool <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75em;opacity:0.75;"></i>
-          </a>
-        </li>
-      </ul>
-    </div>
-  </div>
+  {% with archive_nav_mode="tabs" %}
+    {% include "archive_nav.html" %}
+  {% endwith %}
 
   <!-- ─── TAB CONTENT ─── -->
   <div class="tab-content flex-grow-1" id="mainTabContent">
@@ -188,8 +106,17 @@
                   <input type="radio" class="btn-check" name="ov_model" id="ov_mod_copernicus" value="copernicus" autocomplete="off">
                   <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_copernicus">Copernicus</label>
 
-                  <input type="radio" class="btn-check" name="ov_model" id="ov_mod_goes" value="goes" autocomplete="off">
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_goes">GOES</label>
+                  <input type="radio" class="btn-check" name="ov_model" id="ov_mod_espc_cmems" value="espc_cmems" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_espc_cmems">ESPC vs CMEMS</label>
+
+                  <input type="radio" class="btn-check" name="ov_model" id="ov_mod_eccofs" value="eccofs" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_eccofs">ECCOFS</label>
+
+                  <input type="radio" class="btn-check" name="ov_model" id="ov_mod_goes16" value="goes16" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_goes16">GOES-16</label>
+
+                  <input type="radio" class="btn-check" name="ov_model" id="ov_mod_goes19" value="goes19" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_goes19">GOES-19</label>
                 </div>
               </div>
 
@@ -290,7 +217,7 @@
                   <i class="bi bi-geo-alt me-1"></i>Region
                 </label>
                 <select id="mapRegion" class="form-select form-select-sm control-input">
-                  {% for region in map_regions %}
+                  {% for region in map_regions|sort %}
                   <option value="{{ region }}">{{ region }}</option>
                   {% endfor %}
                 </select>
@@ -309,14 +236,6 @@
               <button class="btn btn-ocean w-100 mt-2" id="mapUpdateBtn" onclick="loadMaps()">
                 <i class="bi bi-arrow-clockwise me-1"></i>Update Maps
               </button>
-
-              <!-- Auto-update toggle -->
-              <div class="form-check form-switch d-flex align-items-center gap-2 mt-3 ps-0">
-                <input class="form-check-input ms-0" type="checkbox" id="mapAutoUpdate" role="switch" style="cursor:pointer; width:2.2em; height:1.2em;">
-                <label class="form-check-label text-muted small" for="mapAutoUpdate" style="cursor:pointer;">
-                  Update on change
-                </label>
-              </div>
 
             </div>
           </div>
@@ -337,7 +256,11 @@
               </div>
               <div class="legend-item mt-1">
                 <span class="legend-dot" style="background:#d97706;"></span>
-                <small>RTOFS vs. GOES</small>
+                <small>RTOFS vs. GOES-16</small>
+              </div>
+              <div class="legend-item mt-1">
+                <span class="legend-dot" style="background:#c2410c;"></span>
+                <small>RTOFS vs. GOES-19</small>
               </div>
             </div>
           </div>
@@ -362,9 +285,15 @@
                   </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                  <button class="nav-link fw-medium px-4 py-2" id="mapTab-goes"
-                    data-model="goes" role="tab" style="border-radius: var(--radius-md) var(--radius-md) 0 0; font-size:.85rem;">
-                    RTOFS / GOES
+                  <button class="nav-link fw-medium px-4 py-2" id="mapTab-goes16"
+                    data-model="goes16" role="tab" style="border-radius: var(--radius-md) var(--radius-md) 0 0; font-size:.85rem;">
+                    RTOFS / GOES-16
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link fw-medium px-4 py-2" id="mapTab-goes19"
+                    data-model="goes19" role="tab" style="border-radius: var(--radius-md) var(--radius-md) 0 0; font-size:.85rem;">
+                    RTOFS / GOES-19
                   </button>
                 </li>
               </ul>
@@ -449,7 +378,7 @@
                   <i class="bi bi-geo-alt me-1"></i>Region
                 </label>
                 <select id="argoRegion" class="form-select form-select-sm control-input">
-                  {% for region in region_info %}
+                  {% for region in region_info|sort %}
                   <option value="{{ region }}">{{ region }}</option>
                   {% endfor %}
                 </select>
@@ -473,14 +402,6 @@
                 <i class="bi bi-arrow-clockwise me-1"></i>Update Profile
               </button>
 
-              <!-- Auto-update toggle -->
-              <div class="form-check form-switch d-flex align-items-center gap-2 mt-3 ps-0">
-                <input class="form-check-input ms-0" type="checkbox" id="profileAutoUpdate" role="switch" style="cursor:pointer; width:2.2em; height:1.2em;">
-                <label class="form-check-label text-muted small" for="profileAutoUpdate" style="cursor:pointer;">
-                  Update on change
-                </label>
-              </div>
-
               <!-- Map visibility toggle -->
               <div class="form-check form-switch d-flex align-items-center gap-2 mt-2 ps-0">
                 <input class="form-check-input ms-0" type="checkbox" id="profileMapToggle" role="switch" checked style="cursor:pointer; width:2.2em; height:1.2em;" onchange="document.getElementById('profileMapPanel').style.display = this.checked ? 'flex' : 'none'; if(this.checked && profileMap) { setTimeout(() => profileMap.invalidateSize(), 50); }">
@@ -494,11 +415,11 @@
         </aside>
 
         <!-- Profile Image display -->
-        <main class="image-display d-flex gap-3" style="flex-direction: row;">
-          
+        <main class="image-display d-flex gap-3 profile-display">
+
           <!-- Map Panel -->
           <!-- We use resize: horizontal to allow dragging the edge, requiring width instead of flex-basis -->
-          <div class="image-panel position-relative" id="profileMapPanel" style="width: 350px; flex: none; display: flex; flex-direction: column; resize: horizontal; overflow: hidden; min-width: 200px; max-width: 800px; padding-bottom: 0;">
+          <div class="image-panel position-relative profile-map-panel" id="profileMapPanel">
             <div class="image-panel-header d-flex justify-content-between align-items-center">
               <div>
                 <span class="panel-badge" style="background:#20c99720;color:#20c997;">Profile Locations</span>
@@ -513,7 +434,7 @@
           </div>
 
           <!-- Profile Plot Panel -->
-          <div class="image-panel" id="profilePanel" style="flex: 1; display:flex; flex-direction:column;">
+          <div class="image-panel profile-plot-panel" id="profilePanel">
             <div class="image-panel-header d-flex justify-content-between align-items-center">
               <div>
                 <span class="panel-badge" style="background:#6f42c120;color:#6f42c1;">Profile Comparison</span>
@@ -582,7 +503,7 @@
                   <i class="bi bi-geo-alt me-1"></i>Region
                 </label>
                 <select id="asgRegion" class="form-select form-select-sm control-input">
-                  {% for region in adaptive_sampling_regions %}
+                  {% for region in adaptive_sampling_regions|sort %}
                   <option value="{{ region }}">{{ region }}</option>
                   {% endfor %}
                 </select>
@@ -594,7 +515,7 @@
                   <i class="bi bi-layers me-1"></i>Variable
                 </label>
                 <select id="asgVariable" class="form-select form-select-sm control-input">
-                  {% for var in adaptive_sampling_variables %}
+                  {% for var in adaptive_sampling_variables|sort %}
                   <option value="{{ var }}">{{ var }}</option>
                   {% endfor %}
                 </select>
@@ -606,7 +527,7 @@
                   <i class="bi bi-cpu me-1"></i>Comparison Model
                 </label>
                 <select id="asgModel" class="form-select form-select-sm control-input">
-                  {% for model in adaptive_sampling_models %}
+                  {% for model in adaptive_sampling_models|sort %}
                   <option value="{{ model }}">{{ model }}</option>
                   {% endfor %}
                 </select>
@@ -616,14 +537,6 @@
               <button class="btn btn-ocean w-100 mt-2" id="asgUpdateBtn" onclick="loadAdaptiveSampling()">
                 <i class="bi bi-arrow-clockwise me-1"></i>Update Figure
               </button>
-
-              <!-- Auto-update toggle -->
-              <div class="form-check form-switch d-flex align-items-center gap-2 mt-3 ps-0">
-                <input class="form-check-input ms-0" type="checkbox" id="asgAutoUpdate" role="switch" style="cursor:pointer; width:2.2em; height:1.2em;">
-                <label class="form-check-label text-muted small" for="asgAutoUpdate" style="cursor:pointer;">
-                  Update on change
-                </label>
-              </div>
 
             </div>
           </div>
@@ -686,18 +599,12 @@
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════ SCRIPTS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  // Pass server-side metadata to JS
-  const API_BASE = {{ request.script_root | tojson }};
-  const REGION_INFO = {{ region_info | tojson }};
-  const MAP_REGIONS = {{ map_regions | tojson }};
-  const ASG_REGIONS   = {{ adaptive_sampling_regions | tojson }};
-  const ASG_VARIABLES = {{ adaptive_sampling_variables | tojson }};
-  const ASG_MODELS    = {{ adaptive_sampling_models | tojson }};
-</script>
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<!-- ══════════════════════════════════════════════════════ IMAGE LIGHTBOX -->
+<div class="image-lightbox" id="imageLightbox">
+  <button class="lightbox-close" id="lightboxClose" aria-label="Close">
+    <i class="bi bi-x-lg"></i>
+  </button>
+  <img src="" id="lightboxImage" alt="">
+</div>
 
-</body>
-</html>
+{% endblock %}

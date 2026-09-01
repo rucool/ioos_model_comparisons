@@ -1526,8 +1526,66 @@ def plot_grase(
 def remove_quiver_handles(ax):
     for art in ax.get_children():
         if isinstance(art, matplotlib.patches.FancyArrowPatch):
-            art.remove()      
-            
+            art.remove()
+
+
+def _load_gulf_stream_wall_lines(day):
+    """Digitized Gulf Stream north wall lines for a calendar day ('YYYY-MM-DD'),
+    or None if nothing is available. MongoDB (the store of record) is tried
+    first, falling back to the digitizer's on-disk GeoJSON working copies —
+    see ioos_model_comparisons/fronts/store.py."""
+    try:
+        from ioos_model_comparisons.fronts.store import fetch_wall_lines_for_day
+        lines, _stamp = fetch_wall_lines_for_day(day)
+        if lines:
+            return lines
+    except Exception as e:
+        print(f"WARNING: Gulf Stream wall lookup (MongoDB) failed for {day}: {e}")
+    try:
+        from ioos_model_comparisons.fronts import DEFAULT_OUTPUT_DIR
+        from ioos_model_comparisons.fronts.digitizer import read_front
+        matches = sorted(DEFAULT_OUTPUT_DIR.glob(
+            f"gulf_stream_north_wall_{day.replace('-', '')}T*.geojson"))
+        if matches:
+            parts, _props = read_front(matches[-1])
+            return parts.get('wall') or None
+    except Exception as e:
+        print(f"WARNING: Gulf Stream wall lookup (file) failed for {day}: {e}")
+    return None
+
+
+def _save_isotherm_lines(region, valid_time, model_name, contour_set, level=15, ref_depth=200):
+    """Persist a model's isotherm contour to MongoDB, using the same
+    versioned line storage as the digitized Gulf Stream wall (see
+    ioos_model_comparisons/fronts/store.py) so both live in one place.
+
+    One region tag per (map region, model) pair -- e.g.
+    "mid_atlantic_bight_cmems_isotherm15c_200m" -- so different models'
+    isotherms for the same timestamp are separate documents rather than
+    colliding as competing "versions" of one document."""
+    try:
+        segs = contour_set.allsegs[0]  # only one level was ever requested
+        lines = [np.asarray(s, float) for s in segs if len(s) >= 2]
+        if not lines:
+            return
+
+        from ioos_model_comparisons.fronts import store
+        geometry = store.lines_to_geometry(lines)
+        if geometry is None:
+            return
+
+        stamp = pd.Timestamp(valid_time).strftime('%Y%m%dT%H%M')
+        model_slug = str(model_name).lower().replace(' ', '_')
+        region_tag = f"{region['folder']}_{model_slug}_isotherm{level}c_{ref_depth}m"
+        store.save_wall_version(
+            stamp, geometry,
+            {"model": model_name, "level_c": level, "ref_depth_m": ref_depth,
+             "region_name": region['name']},
+            region=region_tag, origin="auto", resolution="full", source=model_name,
+        )
+    except Exception as e:
+        print(f"WARNING: could not save {model_name} isotherm to MongoDB: {e}")
+
 
 def plot_model_region_comparison(ds1, ds2, region,
                                        bathy=None,
@@ -1779,13 +1837,39 @@ def plot_model_region_comparison(ds1, ds2, region,
                 glats = gsub['lat']
             h2 = ax2.contourf(glons, glats, gsub.squeeze(), **vargs)
 
-            # Add contour lines for 15°C isotherm in MAB. This identifies the north wall of the Gulf Stream
+            # At the surface in MAB, overlay each model's own 15°C isotherm at
+            # 200m (a proxy for the Gulf Stream north wall) plus the
+            # hand-digitized wall (from the GOES-19 SST digitizer).
             _iso_leg = None
-            if region['name'] == 'Mid Atlantic Bight' and k == 'temperature':
-                ax1.contour(rlons, rlats, rsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
-                ax2.contour(rlons, rlats, rsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
-                _iso_handle = mlines.Line2D([], [], color='red', linewidth=1.5, label='RTOFS 15°C Isotherm (Gulf Stream N. Wall)')
-                _iso_leg = ax3.legend(h + [_iso_handle], l + ['RTOFS 15°C Isotherm (Gulf Stream N. Wall)'], ncol=cols, loc='center', fontsize=8)
+            if region['name'] == 'Mid Atlantic Bight' and k == 'temperature' and depth == 0:
+                _legend_h = list(h)
+                _legend_l = list(l)
+
+                # One legend entry covers both panels -- which model it is is
+                # already implied by that panel's title (ds1.model/ds2.model).
+                _cs1 = ax1.contour(rlons, rlats, rsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+                _legend_h.append(mlines.Line2D([], [], color='red', linewidth=1.5))
+                _legend_l.append('15°C Isotherm (200m)')
+                _save_isotherm_lines(region, time, ds1.model, _cs1)
+
+                try:
+                    gsub200 = ds2[k].sel(depth=200, method='nearest')
+                    for _tdim in [d for d in gsub200.dims if 'time' in d.lower()]:
+                        gsub200 = gsub200.isel({_tdim: 0})
+                    _cs2 = ax2.contour(glons, glats, gsub200.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
+                    _save_isotherm_lines(region, time, ds2.model, _cs2)
+                except Exception as _e:
+                    print(f"WARNING: Could not compute {ds2.model} 200m isotherm: {_e}")
+
+                _wall_lines = _load_gulf_stream_wall_lines(time.strftime('%Y-%m-%d'))
+                if _wall_lines:
+                    for _wl in _wall_lines:
+                        ax1.plot(_wl[:, 0], _wl[:, 1], color='black', linewidth=2, transform=transform['data'], zorder=10001)
+                        ax2.plot(_wl[:, 0], _wl[:, 1], color='black', linewidth=2, transform=transform['data'], zorder=10001)
+                    _legend_h.append(mlines.Line2D([], [], color='black', linewidth=2))
+                    _legend_l.append('Digitized Gulf Stream N. Wall (GOES SST)')
+
+                _iso_leg = ax3.legend(_legend_h, _legend_l, ncol=cols, loc='center', fontsize=8)
                 _iso_leg._legend_box.sep = 1
 
             if colorbar:
@@ -9200,15 +9284,6 @@ def plot_sst(ds1, ds2, region,
         cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
         cb.ax.tick_params(labelsize=12)
         cb.set_label(f'{k.title()} ({rsub.units})', fontsize=12, fontweight="bold")
-
-    # 15°C isotherm at 200m — Gulf Stream north wall indicator, MAB only
-    if region['name'] == 'Mid Atlantic Bight':
-        rtofs_tmp = ds1.sel(depth=200)['temperature']
-        ax1.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
-        ax2.contour(rlons, rlats, rtofs_tmp.squeeze(), levels=[15], colors='red', transform=transform['data'], zorder=10000)
-        _iso_handle = mlines.Line2D([], [], color='red', linewidth=1.5)
-        _iso_leg = ax3.legend(h + [_iso_handle], l + ['RTOFS 15°C Isotherm (Gulf Stream N. Wall)'], ncol=cols, loc='center', fontsize=8)
-        _iso_leg._legend_box.sep = 1
 
     # Add EEZ
     # eez1 = map_add_eez(ax1, zorder=10)

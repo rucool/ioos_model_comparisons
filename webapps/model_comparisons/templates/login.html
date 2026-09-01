@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Sign in – IOOS Model Comparisons{% endblock %}
+{% block content %}
+<div class="container" style="max-width: 420px; margin-top: 3rem;">
+  <h5 class="mb-3">Sign in</h5>
+  <p class="text-muted small">Required only to edit the Gulf Stream front. The
+     rest of the site is open.</p>
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, m in msgs %}
+      <div class="alert alert-{{ cat }} py-2 small">{{ m }}</div>
+    {% endfor %}
+  {% endwith %}
+  <form method="post" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="mb-2">
+      <label class="form-label small">Username</label>
+      <input class="form-control" name="username" required autofocus>
+    </div>
+    <div class="mb-3">
+      <label class="form-label small">Password</label>
+      <input class="form-control" name="password" type="password" required>
+    </div>
+    <button class="btn btn-primary w-100" type="submit">Sign in</button>
+  </form>
+  <p class="text-muted small mt-3 mb-0">
+    Accounts are created with
+    <code>scripts/tools/manage_front_users.py</code>; there is no self-signup.
+  </p>
+</div>
+{% endblock %}
+{% block data_channel %}{% endblock %}
+{% block scripts %}{% endblock %}

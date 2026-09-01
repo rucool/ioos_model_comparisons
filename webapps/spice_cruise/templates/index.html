@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPICE Cruise Data Support Portal – RUCOOL</title>
+  <meta name="description" content="Interactive ocean data viewer showing RTOFS/Copernicus/ESPC model comparisons, satellite products, and glider diagnostic plots for the Tropical Western Atlantic, in support of the SPICE Cruise." />
+
+  <!-- Bootstrap 5 CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+</head>
+
+<body>
+
+<!-- ══════════════════════════════════════════════════════ NAVBAR -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-navy py-3" id="mainNavbar">
+  <div class="container-fluid px-4">
+    <div class="d-flex align-items-center gap-2 navbar-brand-group">
+      <a href="https://rucool.marine.rutgers.edu" target="_blank">
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="RUCOOL Logo" height="55" class="me-2 navbar-logo">
+      </a>
+      <a class="navbar-brand m-0 p-0" href="#">
+        <span class="fw-700 brand-title">SPICE Cruise Data Support Portal</span>
+      </a>
+    </div>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+      data-bs-target="#navbarContent" aria-controls="navbarContent"
+      aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarContent">
+      <ul class="navbar-nav ms-auto align-items-center gap-1">
+        <li class="nav-item ms-2">
+          <span class="panel-badge bg-ocean-light text-ocean-blue"><i class="bi bi-geo-alt me-1"></i>Tropical Western Atlantic</span>
+        </li>
+        <li class="nav-item ms-2">
+          <span class="nav-timestamp text-light-muted" id="currentDateTime"></span>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════════════ MAIN LAYOUT -->
+<div class="app-wrapper">
+
+  <!-- ─── TAB NAV ─── -->
+  <div class="tab-nav-bar">
+    <div class="container-fluid px-4">
+      <ul class="nav nav-pills tab-pills" id="mainTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="maps-tab" data-bs-toggle="pill"
+            data-bs-target="#maps-pane" type="button" role="tab"
+            aria-controls="maps-pane" aria-selected="true">
+            <i class="bi bi-map me-1"></i>Data Archive
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="rtgliders-tab" data-bs-toggle="pill"
+            data-bs-target="#rtgliders-pane" type="button" role="tab"
+            aria-controls="rtgliders-pane" aria-selected="false">
+            <i class="bi bi-broadcast me-1"></i>RT Glider Plots
+          </button>
+        </li>
+        <li class="nav-item ms-auto">
+          <a class="nav-link" href="https://transects.marine.rutgers.edu/" target="_blank" rel="noopener">
+            <i class="bi bi-grid-3x3-gap me-1"></i>Transect/Profile Tool <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75em;opacity:0.75;"></i>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ─── TAB CONTENT ─── -->
+  <div class="tab-content flex-grow-1" id="mainTabContent">
+
+    <!-- ══════════ DATA ARCHIVE TAB ══════════ -->
+    <div class="tab-pane fade show active" id="maps-pane" role="tabpanel" aria-labelledby="maps-tab">
+      <div class="content-grid">
+
+        <!-- Controls sidebar -->
+        <aside class="controls-sidebar">
+          <div class="controls-card">
+            <div class="controls-header">
+              <i class="bi bi-sliders2 me-2"></i>Viewer Configuration
+            </div>
+            <div class="controls-body">
+
+              <!-- Source toggle -->
+              <div class="control-group">
+                <label class="control-label">
+                  <i class="bi bi-collection me-1"></i>Source
+                </label>
+                <div class="btn-group w-100" role="group" id="mapSourceGroup">
+                  <input type="radio" class="btn-check" name="mapSource" id="mapSrcSat" value="satellite" checked />
+                  <label class="btn btn-outline-ocean btn-sm" for="mapSrcSat">Satellite</label>
+                  <input type="radio" class="btn-check" name="mapSource" id="mapSrcGlider" value="glider" />
+                  <label class="btn btn-outline-ocean btn-sm" for="mapSrcGlider">Glider</label>
+                  <input type="radio" class="btn-check" name="mapSource" id="mapSrcModel" value="model" />
+                  <label class="btn btn-outline-ocean btn-sm" for="mapSrcModel">Model Comparisons</label>
+                </div>
+              </div>
+
+              <!-- ── Model Comparisons controls ── -->
+              <div id="mapModelControls" class="d-none">
+
+                <!-- Date -->
+                <div class="control-group">
+                  <label class="control-label" for="mapDate">
+                    <i class="bi bi-calendar3 me-1"></i>Date
+                  </label>
+                  <input type="date" id="mapDate" class="form-control form-control-sm control-input"
+                    value="{{ today }}" />
+                </div>
+
+                <!-- Time step nav -->
+                <div class="control-group">
+                  <label class="control-label">
+                    <i class="bi bi-clock me-1"></i>Time Step
+                  </label>
+                  <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="mapTimeBack"
+                      title="Go back 6 hours">
+                      <i class="bi bi-chevron-left"></i>&nbsp;6h
+                    </button>
+                    <span class="time-badge" id="mapTimeDisplay">00Z</span>
+                    <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="mapTimeForward"
+                      title="Go forward 6 hours">
+                      6h&nbsp;<i class="bi bi-chevron-right"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Variable & Depth (populated by JS) -->
+                <div class="control-group">
+                  <label class="control-label" for="mapVarDepth">
+                    <i class="bi bi-layers me-1"></i>Variable &amp; Depth
+                  </label>
+                  <select id="mapVarDepth" class="form-select form-select-sm control-input">
+                  </select>
+                </div>
+
+                <!-- Update button -->
+                <button class="btn btn-ocean w-100 mt-2" id="mapUpdateBtn" onclick="loadMaps()">
+                  <i class="bi bi-arrow-clockwise me-1"></i>Update Maps
+                </button>
+
+              </div>
+
+              <!-- ── Satellite / Glider controls ── -->
+              <div id="mapSatControls">
+
+                <!-- Date -->
+                <div class="control-group">
+                  <label class="control-label" for="satDate">
+                    <i class="bi bi-calendar3 me-1"></i>Date
+                  </label>
+                  <div class="input-group input-group-sm">
+                    <input type="date" id="satDate" class="form-control form-control-sm control-input"
+                      value="{{ today }}" />
+                    <button class="btn btn-outline-ocean" type="button" id="satLatestBtn"
+                      title="Jump to the most recent date with data for this variable">
+                      <i class="bi bi-rocket-takeoff me-1"></i>Latest
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Variable (populated by JS per date) -->
+                <div class="control-group">
+                  <label class="control-label" for="satVariable">
+                    <i class="bi bi-layers me-1"></i>Variable
+                  </label>
+                  <select id="satVariable" class="form-select form-select-sm control-input">
+                  </select>
+                  <div id="satNoDataMsg" class="no-data-msg d-none">
+                    No images available for this date
+                  </div>
+                </div>
+
+                <button class="btn btn-outline-ocean w-100 btn-sm mb-3 d-none" id="mapForecastBtn" onclick="openForecastText(state.satDate, state.satVariable)" title="View Forecast Data">
+                  <i class="bi bi-table me-1"></i>Forecast Data
+                </button>
+
+                <!-- Timestamp nav -->
+                <div class="control-group">
+                  <label class="control-label">
+                    <i class="bi bi-clock me-1"></i>Timestamp
+                  </label>
+                  <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="satTimeBack"
+                      title="Previous available image">
+                      <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <span class="time-badge flex-grow-1 text-center" id="satTimeDisplay">--:--</span>
+                    <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="satTimeForward"
+                      title="Next available image">
+                      <i class="bi bi-chevron-right"></i>
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Legend card (Model Comparisons only) -->
+          <div class="controls-card mt-3 d-none" id="mapLegendCard">
+            <div class="controls-header">
+              <i class="bi bi-info-circle me-2"></i>Legend
+            </div>
+            <div class="controls-body">
+              <div class="legend-item">
+                <span class="legend-dot" style="background:#0d6efd;"></span>
+                <small>RTOFS vs. Copernicus (CMEMS)</small>
+              </div>
+              <div class="legend-item mt-1">
+                <span class="legend-dot" style="background:#00897b;"></span>
+                <small>RTOFS vs. ESPC</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- About card (Satellite / Glider only) -->
+          <div class="controls-card mt-3" id="mapSatAboutCard">
+            <div class="controls-header">
+              <i class="bi bi-info-circle me-2"></i>About
+            </div>
+            <div class="controls-body">
+              <p class="mb-0" style="font-size:.78rem;color:var(--text-muted);line-height:1.5;">
+                Imagery sourced directly from the SPICE Cruise satellite and glider feed.
+                Variables and timestamps vary day to day.
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Image display – single toggle panel -->
+        <main class="image-display">
+          <div class="image-panel" id="mapPanel1" style="display:flex; flex-direction:column; min-height:0;">
+            <!-- Model Tabs -->
+            <div class="image-panel-header p-0 d-flex justify-content-between align-items-center pe-2 d-none" style="border-bottom: 1px solid var(--panel-border);" id="mapModelHeader">
+              <ul class="nav nav-tabs border-0" id="mapModelTabs" role="tablist" style="gap:2px;">
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link active fw-medium px-4 py-2" id="mapTab-copernicus"
+                    data-model="copernicus" role="tab" style="border-radius: var(--radius-md) var(--radius-md) 0 0; font-size:.85rem;">
+                    RTOFS / CMEMS
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button class="nav-link fw-medium px-4 py-2" id="mapTab-espc"
+                    data-model="espc" role="tab" style="border-radius: var(--radius-md) var(--radius-md) 0 0; font-size:.85rem;">
+                    RTOFS / ESPC
+                  </button>
+                </li>
+              </ul>
+              <button class="btn btn-sm btn-outline-ocean" onclick="downloadPlot('mapImageContainer')" title="Download Image">
+                <i class="bi bi-download"></i> Download
+              </button>
+            </div>
+            <!-- Satellite / Glider header -->
+            <div class="image-panel-header justify-content-between" id="mapSatHeader" style="border-bottom: 1px solid var(--panel-border);">
+              <span class="panel-badge bg-ocean-light text-ocean-blue" id="satVariableLabel">—</span>
+              <div class="d-flex align-items-center gap-2">
+                <span class="text-muted small fw-medium" id="satDateLabel">YYYY-MM-DD</span>
+                <button class="btn btn-sm btn-outline-ocean" onclick="downloadPlot('mapImageContainer')" title="Download Image">
+                  <i class="bi bi-download"></i> Download
+                </button>
+              </div>
+            </div>
+            <!-- Image body – scales to fill available height, no scrolling -->
+            <div class="image-panel-body" id="mapImageContainer">
+              <div class="placeholder-state">
+                <i class="bi bi-image text-muted" style="font-size:3rem;"></i>
+                <p class="text-muted mt-2">Select controls and click <strong>Update Maps</strong></p>
+              </div>
+            </div>
+          </div>
+        </main>
+
+      </div><!-- /content-grid -->
+    </div><!-- /maps-pane -->
+
+    <!-- ══════════ RT GLIDER PLOTS TAB ══════════ -->
+    <div class="tab-pane fade" id="rtgliders-pane" role="tabpanel" aria-labelledby="rtgliders-tab">
+      <div class="content-grid">
+
+        <!-- Controls sidebar -->
+        <aside class="controls-sidebar">
+          <div class="controls-card">
+            <div class="controls-header">
+              <i class="bi bi-sliders2 me-2"></i>RT Glider Controls
+            </div>
+            <div class="controls-body">
+
+              <!-- Glider -->
+              <div class="control-group">
+                <label class="control-label" for="rtGliderSelect">
+                  <i class="bi bi-cpu me-1"></i>Glider
+                </label>
+                <select id="rtGliderSelect" class="form-select form-select-sm control-input">
+                </select>
+              </div>
+
+              <!-- Plot type -->
+              <div class="control-group">
+                <label class="control-label">
+                  <i class="bi bi-layers me-1"></i>Plot Type
+                </label>
+                <div class="btn-group-vertical w-100" role="group">
+                  <input type="radio" class="btn-check" name="rt_category" id="rt_cat_profiles" value="profiles" autocomplete="off" checked>
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="rt_cat_profiles">Profiles</label>
+
+                  <input type="radio" class="btn-check" name="rt_category" id="rt_cat_xsection" value="xsection" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="rt_cat_xsection">Cross-Sections</label>
+
+                  <input type="radio" class="btn-check" name="rt_category" id="rt_cat_ts" value="TS" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm text-start" for="rt_cat_ts">T-S Diagram</label>
+                </div>
+              </div>
+
+              <!-- Time window -->
+              <div class="control-group">
+                <label class="control-label">
+                  <i class="bi bi-clock-history me-1"></i>Time Window
+                </label>
+                <div class="btn-group w-100" role="group">
+                  <input type="radio" class="btn-check" name="rt_period" id="rt_per_synoptic" value="synoptic" autocomplete="off" checked>
+                  <label class="btn btn-outline-ocean btn-sm" for="rt_per_synoptic">Full</label>
+                  <input type="radio" class="btn-check" name="rt_period" id="rt_per_24h" value="last_24h" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm" for="rt_per_24h">24h</label>
+                  <input type="radio" class="btn-check" name="rt_period" id="rt_per_48h" value="last_48h" autocomplete="off">
+                  <label class="btn btn-outline-ocean btn-sm" for="rt_per_48h">48h</label>
+                </div>
+              </div>
+
+              <!-- Variable (profiles/xsection only, populated by JS) -->
+              <div class="control-group" id="rtVariableGroup">
+                <label class="control-label" for="rtVariableSelect">
+                  <i class="bi bi-droplet me-1"></i>Variable
+                </label>
+                <select id="rtVariableSelect" class="form-select form-select-sm control-input">
+                </select>
+                <div id="rtNoDataMsg" class="no-data-msg d-none">
+                  No plots available for this combination
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- About card -->
+          <div class="controls-card mt-3">
+            <div class="controls-header">
+              <i class="bi bi-info-circle me-2"></i>About
+            </div>
+            <div class="controls-body">
+              <p class="mb-0" style="font-size:.78rem;color:var(--text-muted);line-height:1.5;">
+                Real-time diagnostic plots generated directly from each glider's incoming data.
+                Refreshed automatically roughly every 30 minutes.
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Image display -->
+        <main class="image-display">
+          <div class="image-panel" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+            <div class="image-panel-header justify-content-between">
+              <div class="d-flex align-items-center gap-2">
+                <span class="panel-badge bg-ocean-light text-ocean-blue" id="rtGliderBadge">—</span>
+                <span class="panel-badge" id="rtVariableBadge">—</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-ocean" onclick="downloadPlot('rtImageContainer')" title="Download Image">
+                  <i class="bi bi-download"></i> Download
+                </button>
+              </div>
+            </div>
+
+            <div class="image-panel-body position-relative" id="rtImageContainer" style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+
+              <!-- Left/Right flip buttons: cycle variables (profiles/xsection only) -->
+              <button id="rt_prev_var" class="btn btn-dark region-flip-btn position-absolute top-50 start-0 translate-middle-y ms-2 rounded-circle shadow" style="opacity:0.7;width:40px;height:40px;z-index:5;">
+                <i class="bi bi-chevron-left"></i>
+              </button>
+              <button id="rt_next_var" class="btn btn-dark region-flip-btn position-absolute top-50 end-0 translate-middle-y me-2 rounded-circle shadow" style="opacity:0.7;width:40px;height:40px;z-index:5;">
+                <i class="bi bi-chevron-right"></i>
+              </button>
+
+              <div class="placeholder-state" id="rt_placeholder">
+                <i class="bi bi-image text-muted opacity-50 mb-2" style="font-size:2rem;"></i>
+                <span class="fw-medium text-muted">Loading glider plots...</span>
+              </div>
+              <div class="loading-state d-none" id="rt_loading">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+                <span class="fw-medium">Fetching plots...</span>
+              </div>
+              <div class="unavailable-state d-none" id="rt_unavailable">
+                <i class="bi bi-exclamation-circle text-danger mb-1" style="font-size:1.5rem;"></i>
+                <span class="fw-medium text-danger">No plot available for this combination.</span>
+              </div>
+              <img src="" id="rt_image" class="plot-image d-none">
+            </div>
+          </div>
+        </main>
+
+      </div><!-- /content-grid -->
+    </div><!-- /rtgliders-pane -->
+
+  </div><!-- /tab-content -->
+</div><!-- /app-wrapper -->
+
+<!-- ══════════════════════════════════════════════════════ TOAST NOTIFICATION -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="alertToast" class="toast align-items-center text-bg-danger border-0" role="alert"
+    aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="alertToastMsg">Image not available.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ IMAGE LIGHTBOX -->
+<div class="image-lightbox" id="imageLightbox">
+  <button class="lightbox-close" id="lightboxClose" aria-label="Close">
+    <i class="bi bi-x-lg"></i>
+  </button>
+  <img src="" id="lightboxImage" alt="">
+</div>
+
+<!-- ══════════════════════════════════════════════════════ TEXT LIGHTBOX -->
+<div class="image-lightbox" id="textLightbox">
+  <div class="text-lightbox-panel">
+    <div class="text-lightbox-header">
+      <span id="textLightboxTitle">Forecast Data</span>
+      <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-ocean" id="textLightboxDownload" title="Download as .txt">
+          <i class="bi bi-download"></i>
+        </button>
+        <button class="btn-close" id="textLightboxClose" aria-label="Close"></button>
+      </div>
+    </div>
+    <pre id="textLightboxContent"></pre>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ SCRIPTS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  // Pass server-side metadata to JS
+  const API_BASE = {{ request.script_root | tojson }};
+  const REGION = {{ region | tojson }};
+  const REGION_INFO = {{ region_info | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+</body>
+</html>

@@ -82,6 +82,7 @@ plot_rtofs = True
 plot_espc = True
 plot_cmems = True
 plot_para = False
+plot_eccofs = True
 
 # Subplot selection
 plot_temperature = True
@@ -197,11 +198,33 @@ if plot_rtofs:
 if plot_cmems:
     from ioos_model_comparisons.models import CMEMS
     print('Loading CMEMS')
-    
+
     # Read Copernicus
     cobj = CMEMS()
     print('CMEMS loaded')
     clabel = f"CMEMS" # Legend labels
+
+if plot_eccofs:
+    from ioos_model_comparisons.models import ECCOFSFullDepth
+    print('Loading ECCOFS')
+
+    # Full-depth (his) product, not qck -- a 3-level profile would be far
+    # too coarse next to the glider's much denser depth-binned profile.
+    ecobj = ECCOFSFullDepth()
+    print('ECCOFS loaded')
+    elabel = f"ECCOFS" # Legend labels
+
+    # Pre-fetch every distinct calendar day among the loaded glider
+    # profiles now, before driver() gets dispatched across per-glider
+    # workers -- otherwise multiple workers could race to each download
+    # the same day's ~4.3 GB file concurrently on a cold cache.
+    for _day in gliders['time'].dt.normalize().unique():
+        _day = pd.Timestamp(_day)
+        try:
+            ecobj.sel(time=_day)
+            print(f"ECCOFS his pre-fetched: {_day.date()}")
+        except Exception as e:
+            print(f"ECCOFS his pre-fetch failed for {_day.date()}: {e}")
 
 # Convert time threshold to a Timedelta so that we can compare timedeltas.
 time_threshold= pd.Timedelta(hours=time_threshold) 
@@ -472,7 +495,20 @@ def plot_glider_profiles(id, gliders):
             d_c = density(cds['temperature'].values, -cds['depth'].values, cds['salinity'].values, float(cds['lat']), float(cds['lon']))
             cds['density'] = (('depth'), d_c)
             ohc_cmems = ocean_heat_content(cds['depth'].values, cds['temperature'].values, cds['density'].values)
-            
+
+        if plot_eccofs:
+            # ECCOFS
+            eds = ecobj.get_point(mlon, mlat, time_glider)
+            eds = eds.sel(depth=slice(0, depth))
+
+            print(f"ECCOFS - Time: {pd.to_datetime(eds.time.values)}")
+
+            # Calculate density
+            d_e = density(eds['temperature'].values, -eds['depth'].values, eds['salinity'].values, float(eds['lat']), float(eds['lon']))
+            eds['density'] = (('depth'), d_e)
+            ohc_eccofs = ocean_heat_content(eds['depth'].values, eds['temperature'].values, eds['density'].values)
+
+
         # Plot model profiles
         if plot_rtofs:
             tax.plot(rds['temperature'], rds['depth'], '.-', linewidth=5, color='red',  label='_nolegend_')
@@ -493,6 +529,11 @@ def plot_glider_profiles(id, gliders):
             tax.plot(cds['temperature'], cds["depth"], '.-', color="magenta", label='_nolegend_')
             sax.plot(cds['salinity'], cds["depth"], '.-', color="magenta", label='_nolegend_')
             dax.plot(cds['density'], cds["depth"], '.-', color="magenta", label='_nolegend_')
+
+        if plot_eccofs:
+            tax.plot(eds['temperature'], eds["depth"], '.-', color="darkorange", label='_nolegend_')
+            sax.plot(eds['salinity'], eds["depth"], '.-', color="darkorange", label='_nolegend_')
+            dax.plot(eds['density'], eds["depth"], '.-', color="darkorange", label='_nolegend_')
 
         # Plot glider profile
         tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=f"{alabel} (Average Profile)")
@@ -517,10 +558,15 @@ def plot_glider_profiles(id, gliders):
             sax.plot(gds['salinity'], gds["depth"], '-o', color="green", label=glabel)
             dax.plot(gds['density'], gds["depth"], '-o', color="green", label=glabel)
 
-        if plot_cmems:        
+        if plot_cmems:
             tax.plot(cds['temperature'], cds["depth"], '-o', color="magenta", label=clabel)
-            sax.plot(cds['salinity'], cds["depth"], '-o', color="magenta", label=clabel)    
+            sax.plot(cds['salinity'], cds["depth"], '-o', color="magenta", label=clabel)
             dax.plot(cds['density'], cds["depth"], '-o', color="magenta", label=clabel)
+
+        if plot_eccofs:
+            tax.plot(eds['temperature'], eds["depth"], '-o', color="darkorange", label=elabel)
+            sax.plot(eds['salinity'], eds["depth"], '-o', color="darkorange", label=elabel)
+            dax.plot(eds['density'], eds["depth"], '-o', color="darkorange", label=elabel)
         try:
             # Get min and max of each plot. Add a delta to each for x limits
             tmin, tmax = line_limits(tax, delta=.5)
@@ -706,6 +752,14 @@ def plot_glider_profiles(id, gliders):
                 ohc_string += 'CMEMS: N/A,  '
             else:
                 ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
+        except:
+            pass
+
+        try:
+            if np.isnan(ohc_eccofs):
+                ohc_string += 'ECCOFS: N/A,  '
+            else:
+                ohc_string += f"ECCOFS: {ohc_eccofs:.4f},  "
         except:
             pass
 

@@ -386,7 +386,7 @@ def region_config(regions=None, model=None):
         folder = "mid_atlantic_bight"
         extent = [-77, -63, 35, 44]
         sea_water_temperature = [
-            dict(depth=0, limits=[14, 29, .5]),
+            dict(depth=0, limits=[9, 29, 1]),
             dict(depth=30, limits=[8, 27, 1]),
             dict(depth=100, limits=[4, 23, 1]),
             dict(depth=150, limits=[6, 22, 1]),

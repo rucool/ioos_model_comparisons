@@ -1,0 +1,69 @@
+<div class="tab-nav-bar">
+  <div class="container-fluid px-4">
+    <ul class="nav nav-pills tab-pills" id="mainTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        {% if archive_nav_mode == "tabs" %}
+        <button class="nav-link active" id="overview-tab" data-bs-toggle="pill"
+          data-bs-target="#overview-pane" type="button" role="tab"
+          aria-controls="overview-pane" aria-selected="true">
+          <i class="bi bi-eye me-1"></i>Overview (Most Recent)
+        </button>
+        {% else %}
+        <a class="nav-link" href="{{ url_for('index') }}#overview">
+          <i class="bi bi-eye me-1"></i>Overview (Most Recent)
+        </a>
+        {% endif %}
+      </li>
+      <li class="nav-item" role="presentation">
+        {% if archive_nav_mode == "tabs" %}
+        <button class="nav-link" id="maps-tab" data-bs-toggle="pill"
+          data-bs-target="#maps-pane" type="button" role="tab"
+          aria-controls="maps-pane" aria-selected="false">
+          <i class="bi bi-map me-1"></i>Maps Archive
+        </button>
+        {% else %}
+        <a class="nav-link" href="{{ url_for('index') }}#maps">
+          <i class="bi bi-map me-1"></i>Maps Archive
+        </a>
+        {% endif %}
+      </li>
+      <li class="nav-item" role="presentation">
+        {% if archive_nav_mode == "tabs" %}
+        <button class="nav-link" id="profiles-tab" data-bs-toggle="pill"
+          data-bs-target="#profiles-pane" type="button" role="tab"
+          aria-controls="profiles-pane" aria-selected="false">
+          <i class="bi bi-graph-up me-1"></i>Profiles Archive
+        </button>
+        {% else %}
+        <a class="nav-link" href="{{ url_for('index') }}#profiles">
+          <i class="bi bi-graph-up me-1"></i>Profiles Archive
+        </a>
+        {% endif %}
+      </li>
+      <li class="nav-item" role="presentation">
+        {% if archive_nav_mode == "tabs" %}
+        <button class="nav-link" id="adaptive-tab" data-bs-toggle="pill"
+          data-bs-target="#adaptive-pane" type="button" role="tab"
+          aria-controls="adaptive-pane" aria-selected="false">
+          <i class="bi bi-compass me-1"></i>Adaptive Sampling Archive
+        </button>
+        {% else %}
+        <a class="nav-link" href="{{ url_for('index') }}#adaptive">
+          <i class="bi bi-compass me-1"></i>Adaptive Sampling Archive
+        </a>
+        {% endif %}
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if archive_nav_active == 'fronts' %}active{% endif %}"
+           href="{{ url_for('fronts.editor') }}">
+          <i class="bi bi-bezier2 me-1"></i>Gulf Stream Fronts
+        </a>
+      </li>
+      <li class="nav-item ms-auto">
+        <a class="nav-link" href="https://transects.marine.rutgers.edu/" target="_blank" rel="noopener">
+          <i class="bi bi-grid-3x3-gap me-1"></i>Transect/Profile Tool <i class="bi bi-box-arrow-up-right ms-1" style="font-size:0.75em;opacity:0.75;"></i>
+        </a>
+      </li>
+    </ul>
+  </div>
+</div>
