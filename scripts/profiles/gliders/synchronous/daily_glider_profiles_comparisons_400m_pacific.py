@@ -350,8 +350,6 @@ def plot_glider_profiles(id, gliders):
                         maxd.append(np.nanmax(depth_glider))
                     except:
                         continue
-                    ohc = ocean_heat_content(depth_glider, temp_glider, density_glider)
-                    ohc_glider.append(ohc) 
                 else:
                     print('Test')
                     continue
@@ -471,6 +469,15 @@ def plot_glider_profiles(id, gliders):
 
         # Plot glider profile
         bin_avg = pd.concat(binned).groupby('depth').mean().reset_index()
+
+        # Ocean heat content from the reconstructed full-day profile, not
+        # per raw scan -- tdf.groupby(['profile_id', 'time', 'lon', 'lat'])
+        # above splits each dive into one group per CTD scan (time/lon/lat
+        # are effectively unique per row for gliders), so integrating OHC
+        # inside that loop was integrating over single points (trapz of a
+        # single point is 0), badly underestimating OHC vs. the models.
+        ohc_glider.append(ocean_heat_content(bin_avg['depth'], bin_avg['temperature'], bin_avg['density']))
+
         tax.plot(bin_avg['temperature'], bin_avg['depth'], '-o', color='blue', label=alabel)
         sax.plot(bin_avg['salinity'], bin_avg['depth'], '-o', color='blue', label=alabel)
         dax.plot(bin_avg['density'], bin_avg['depth'], '-o', color='blue', label=alabel)
