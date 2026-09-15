@@ -444,10 +444,11 @@ def depth_interpolate(
     index: Optional[str] = None,
     drop_cols: Optional[List[str]] = None,
     interpolation_direction: str = "both",
+    limit_area: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Interpolates the data along the depth axis for a given dataframe.
-    
+
     Parameters:
     -----------
     df : pd.DataFrame
@@ -470,7 +471,14 @@ def depth_interpolate(
         Columns to drop before interpolation.
     interpolation_direction : str
         Direction of interpolation. Can be 'forward', 'backward', or 'both'.
-    
+    limit_area : Optional[str]
+        Passed through to pandas' interpolate(). Pass 'inside' to only fill gaps
+        between real samples and leave bins beyond the profile's actual depth
+        range as NaN, instead of flat-extrapolating the last real value. Needed
+        when averaging several interpolated profiles together (e.g. multiple
+        dives in a day) so a shallow profile doesn't fake deep-bin data that
+        drags the multi-profile mean off of what any profile actually measured.
+
     Returns:
     --------
     pd.DataFrame
@@ -513,7 +521,7 @@ def depth_interpolate(
         temp = temp.drop(columns=drop_cols, errors='ignore')
 
     # Interpolate missing values
-    temp = temp.interpolate(method=method, limit_direction=interpolation_direction)
+    temp = temp.interpolate(method=method, limit_direction=interpolation_direction, limit_area=limit_area)
 
     # Reindex back to the bins and reset index
     temp = temp.reindex(index=bins).reset_index()

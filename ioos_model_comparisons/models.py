@@ -265,16 +265,30 @@ def espc_ts(rename=False, chunks=None):
     # ds["water_temp"] = ds_ts["water_temp"]
     # ds["salinity"] = ds_ts["salinity"]
 
-    # The FMRC "best" aggregation hands back two identical time axes and puts
-    # water_temp on time1 while salinity stays on time. Left alone, a
-    # .sel(time=...) only collapses salinity and temperature keeps every
-    # forecast hour. Fold time1 back into time so one .sel reduces both.
+    # The FMRC "best" aggregation hands back two time axes and puts water_temp
+    # on time1 while salinity stays on time. Left alone, a .sel(time=...)
+    # only collapses salinity and temperature keeps every forecast hour. Fold
+    # time1 back into time so one .sel reduces both.
     if "time1" in ds.dims:
-        if not np.array_equal(ds["time1"].values, ds["time"].values):
-            raise ValueError(
-                "ESPC 'time' and 'time1' axes differ -- cannot fold them into "
-                "a single time dimension."
+        time_vals = ds["time"].values
+        time1_vals = ds["time1"].values
+        if not np.array_equal(time1_vals, time_vals):
+            # THREDDS occasionally publishes 'time' and 'time1' a step or two
+            # out of sync (e.g. one axis has a trailing forecast hour the
+            # other hasn't posted yet). Rather than fail outright, fold on
+            # whatever timestamps both axes actually share.
+            common = np.intersect1d(time_vals, time1_vals)
+            if common.size == 0:
+                raise ValueError(
+                    "ESPC 'time' and 'time1' axes share no timestamps -- "
+                    "cannot fold them into a single time dimension."
+                )
+            logger.warning(
+                "ESPC 'time' (%d) and 'time1' (%d) axes differ -- folding on "
+                "%d shared timestamp(s) and dropping the rest.",
+                time_vals.size, time1_vals.size, common.size,
             )
+            ds = ds.sel(time=common, time1=common)
         drop = [v for v in ("time_offset", "time1_offset", "time1_run")
                 if v in ds.variables]
         ds = ds.drop_vars(drop)
@@ -1630,13 +1644,18 @@ def eccofs(rename=False):
 
 # =============================================================================
 # ECCOFS full-depth (ROMS "his" product) — used where full water-column
-# resolution matters (e.g. Ocean Heat Content), trading away the "qck"
-# product's 3-hourly cadence for one full-depth (50 s-level) snapshot per
-# calendar day. Unlike "qck" (one file spans ~8 days), "his" is one file
-# per timestep (~4.3 GB each), so only the specific calendar-day files a
-# caller actually asks for get downloaded/cached — not the whole rolling
-# window. Depths are native ROMS s-levels, so this reuses the same s->z
-# interpolation machinery as the Doppio integration above.
+# resolution matters (temperature/salinity/current comparisons, glider
+# profile validation), trading away the "qck" product's 3-hourly cadence
+# for one full-depth (50 s-level) snapshot per calendar day. Unlike "qck"
+# (one file spans ~8 days), "his" is one file per timestep (~4.3 GB each),
+# so only the specific calendar-day files a caller actually asks for get
+# downloaded/cached — not the whole rolling window. Depths are native ROMS
+# s-levels, so this reuses the same s->z interpolation machinery as the
+# Doppio integration above.
+#
+# NOTE: Ocean Heat Content specifically does *not* need this — see
+# ECCOFSHeatContent below, which reads a precomputed 'ohc' field straight
+# out of the "avg" product instead of re-deriving it from "his".
 def _eccofs_his_index():
     """Return [(datetime, s3_key, size_bytes), ...] for the latest published
     ECCOFS cycle's own file set (sequence 0001-0003 = that cycle's 3-day
@@ -1782,8 +1801,10 @@ class ECCOFSFullDepth:
 
     Unlike ECCOFS (the "qck" product, used for temperature/salinity/
     currents comparisons), this resolves the full water column — needed
-    for an accurate Ocean Heat Content integral — at the cost of only one
-    snapshot per calendar day instead of qck's 3-hourly cadence.
+    for full-depth T/S comparisons and glider profile validation — at the
+    cost of only one snapshot per calendar day instead of qck's 3-hourly
+    cadence. For Ocean Heat Content specifically, prefer ECCOFSHeatContent
+    below instead of integrating this yourself.
 
     Always sourced from the single most-recently-published ECCOFS cycle
     (see _eccofs_his_index()) — .sel(time=D) returns whichever of that
@@ -1900,6 +1921,143 @@ class ECCOFSFullDepth:
         point = ds.isel(y=int(iy), x=int(ix))
         point.attrs["model"] = "ECCOFS"
         return point
+
+
+# =============================================================================
+# ECCOFS Ocean Heat Content — read directly from the "avg" (daily average)
+# product's precomputed 'ohc' field, rather than downloading the "his"
+# product and integrating temperature/density ourselves (as
+# ECCOFSFullDepth's docstring used to recommend).
+#
+# Confirmed directly by an ECCOFS developer (John Wilkin, Rutgers): 'avg'
+# carries a native 'ohc' variable — units kJ/cm^2, description "Ocean Heat
+# Content for T > 26C" — the same Leipper Hurricane Heat Potential
+# definition and units as calc.ocean_heat_content(), computed by ROMS on
+# its full 50 s-level resolution rather than first interpolated to fixed
+# z-levels the way ECCOFSFullDepth's temperature/salinity are. So this is
+# both more accurate and drastically cheaper: 'avg' files are netCDF4/HDF5
+# (unlike 'qck', which is netCDF-3 classic and forces a full-file
+# download — see the ECCOFS_BUCKET comment above), so h5py+s3fs can read
+# just the small 'ohc'/'lon_rho'/'lat_rho'/'mask_rho'/'ocean_time'
+# variables over HTTPS byte-range requests directly — a few MB and a few
+# seconds, instead of downloading the whole ~7 GB file. No local disk
+# cache is used (or needed) here; each read is only ever this cheap.
+def _eccofs_s3fs():
+    import s3fs
+
+    return s3fs.S3FileSystem(anon=True, default_block_size=8 * 1024 * 1024,
+                              default_cache_type='readahead')
+
+
+def _eccofs_avg_index():
+    """Same latest-cycle-only pattern as _eccofs_his_index(), for 'avg/'.
+
+    See _eccofs_his_index()'s docstring for why only the latest cycle is
+    used (apples-to-apples with RTOFS/ESPC/etc.'s own "latest run" THREDDS
+    behavior) and why each file's date comes from its filename.
+    """
+    s3 = _eccofs_s3_client()
+    paginator = s3.get_paginator("list_objects_v2")
+    objs = []
+    for page in paginator.paginate(Bucket=ECCOFS_BUCKET, Prefix="avg/"):
+        objs.extend(page.get("Contents", []))
+
+    pattern = re.compile(r"eccofs_avg_(\d{8})_(\d{4})\.nc$")
+    by_ref = {}
+    for obj in objs:
+        m = pattern.search(obj["Key"])
+        if m:
+            by_ref.setdefault(m.group(1), []).append((m.group(2), obj))
+    if not by_ref:
+        raise RuntimeError("No ECCOFS avg files found in S3 bucket.")
+    latest_ref = max(by_ref)
+
+    index = []
+    for seq, obj in sorted(by_ref[latest_ref], key=lambda e: int(e[0])):
+        t = pd.Timestamp(latest_ref) + pd.Timedelta(days=int(seq) - 1)
+        index.append((t, obj["Key"]))
+    return index
+
+
+def _eccofs_avg_ohc_at(key):
+    """Read just the 'ohc' field (+ its coordinates) from one ECCOFS avg
+    file, over HTTPS byte-range requests — no local download.
+    """
+    import h5py
+
+    fs = _eccofs_s3fs()
+    with fs.open(f"{ECCOFS_BUCKET}/{key}", "rb") as f:
+        h = h5py.File(f, "r")
+        ohc  = h["ohc"][0]    # drop the length-1 leading time dim
+        lon  = h["lon_rho"][:]
+        lat  = h["lat_rho"][:]
+        mask = h["mask_rho"][:]
+
+        t_raw = float(h["ocean_time"][0])
+        t_units = h["ocean_time"].attrs["units"]
+        if isinstance(t_units, bytes):
+            t_units = t_units.decode()
+        ref_str = t_units.split("since", 1)[1].strip()
+        time = pd.Timestamp(ref_str) + pd.Timedelta(seconds=t_raw)
+
+    ohc = np.where(mask > 0, ohc, np.nan)
+
+    ds = xr.Dataset(
+        {"ohc": (["y", "x"], ohc)},
+        coords={
+            "lon":  (["y", "x"], lon, {"units": "degrees_east"}),
+            "lat":  (["y", "x"], lat, {"units": "degrees_north"}),
+            "time": time,
+        },
+    )
+    ds.attrs["model"] = "ECCOFS"
+    return ds
+
+
+class ECCOFSHeatContent:
+    """ECCOFS Ocean Heat Content, read straight from the "avg" product's
+    precomputed 'ohc' field — see the module comment above for why this is
+    preferred over ECCOFSFullDepth + calc.ocean_heat_content() for OHC.
+
+    .sel(time=...) returns an in-memory xarray.Dataset with just 'ohc' on
+    the curvilinear (2-D lon/lat, y/x) grid — no temperature/salinity/
+    density, since none of that is needed once 'ohc' is already computed.
+
+    Examples
+    --------
+    >>> ec = ECCOFSHeatContent()
+    >>> ds = ec.sel(time=datetime(2026, 7, 29))
+    >>> ds['ohc']
+    """
+
+    def __init__(self):
+        self._index = _eccofs_avg_index()
+        self._cache = {}
+        self.attrs = {"model": "ECCOFS"}
+
+    def sel(self, time=None, method="nearest", **kwargs):
+        """Return the latest cycle's 'ohc' field nearest *time*.
+
+        Logs a warning when *time* falls more than 12 hours outside the
+        latest cycle's own coverage — see ECCOFSFullDepth.sel()'s docstring
+        for why (same reasoning, same threshold).
+        """
+        if time is None:
+            raise ValueError("time is required")
+        target = pd.Timestamp(time)
+        ts, key = min(self._index, key=lambda item: abs((item[0] - target).total_seconds()))
+        if abs((ts - target).total_seconds()) > 12 * 3600:
+            logger.warning(
+                "ECCOFS avg: %s is outside the latest cycle's coverage — using nearest available, %s (%s)",
+                target, ts, key,
+            )
+
+        if key not in self._cache:
+            self._cache[key] = _eccofs_avg_ohc_at(key)
+
+        ds = self._cache[key]
+        ds.attrs["model"] = "ECCOFS"
+        return ds
 
 
 if __name__ == '__main__':

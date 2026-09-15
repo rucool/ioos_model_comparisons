@@ -49,6 +49,8 @@ class SceneOptions:
     no_mongo: bool = False
     force_auto: bool = False
     no_plots: bool = False
+    no_gliders: bool = False
+    glider_hours: int = 120       # track history drawn; matches configs.search_hours
     verbose: bool = True          # batch prints its own one-line-per-day summary
 
 
@@ -120,6 +122,9 @@ def process_scene(sst, age, actual_time, *, extent, out_dir, opts=None,
     across a batch.
     """
     import ioos_model_comparisons.configs as conf
+    import re
+
+    import matplotlib.patheffects as pe
     import matplotlib.pyplot as plt
     from cool_maps.plot import add_features, add_ticks
 
@@ -305,8 +310,8 @@ def process_scene(sst, age, actual_time, *, extent, out_dir, opts=None,
                   + (f", displacement {disp['median_km']:.0f} km" if disp else "") + "]")
 
     # Each model's own 200m/15C isotherm, as stored by plotting.py's
-    # _save_isotherm_lines() against the MAB region -- shown on the SST panel
-    # only (below), one color per model, and only if MongoDB actually has
+    # _save_isotherm_lines() against the MAB region -- shown on both panels
+    # (below), one color per model, and only if MongoDB actually has
     # something for this day; there is no on-disk fallback for these.
     model_isotherms = {}
     if not opts.no_mongo:
@@ -319,7 +324,35 @@ def process_scene(sst, age, actual_time, *, extent, out_dir, opts=None,
                 say(f"Model 200m isotherms from mongo: {', '.join(sorted(model_isotherms))}")
         except Exception as exc:
             say(f"WARNING: could not fetch model isotherms from MongoDB: {exc}")
-    ISOTHERM_COLORS = ['orange', 'dodgerblue', 'lime', 'purple', 'gold', 'deeppink', 'saddlebrown']
+    # Active gliders from the IOOS Glider DAC, fetched once so both panels
+    # show the same tracks. Presentation only: a DAC outage must not cost the
+    # day's wall, so any failure just leaves the maps without gliders.
+    gliders = pd.DataFrame()
+    if not opts.no_plots and not opts.no_gliders:
+        try:
+            from ioos_model_comparisons.platforms import get_active_gliders
+            gliders = get_active_gliders(
+                bbox=list(extent),
+                t0=actual_time - pd.Timedelta(hours=opts.glider_hours),
+                t1=actual_time, parallel=False)
+            if not gliders.empty:
+                # The DAC search matches any deployment that ever touched the
+                # box, and the data request isn't clipped, so Gulf of Mexico
+                # gliders come back too — keep only positions on this map.
+                gliders = gliders[gliders["lon"].between(extent[0], extent[1])
+                                  & gliders["lat"].between(extent[2], extent[3])]
+                say(f"Gliders: {gliders.index.get_level_values(0).nunique()} on the "
+                    f"map in the last {opts.glider_hours} h")
+        except Exception as exc:
+            say(f"WARNING: could not fetch gliders: {exc}")
+            gliders = pd.DataFrame()
+
+    # Same model -> color mapping as the Argo and glider profile comparisons
+    # (scripts/profiles/), so a model reads the same everywhere. Models that
+    # never appear there fall back to the extra colors, in order.
+    MODEL_COLORS = {"ESPC": "green", "RTOFS": "red", "RTOFS-P": "orange",
+                    "CMEMS": "magenta", "ECCOFS": "darkorange"}
+    FALLBACK_COLORS = ['dodgerblue', 'purple', 'gold', 'saddlebrown', 'deeppink']
 
     def build_map(field_kind):
         fig, ax = plt.subplots(figsize=(14, 8),
@@ -335,13 +368,6 @@ def process_scene(sst, age, actual_time, *, extent, out_dir, opts=None,
                               vmin=20, vmax=29, transform=conf.projection["data"])
             cb_label = "Sea Water Temperature (°C)"
             title = f"GOES-19 SST  {actual_time:%Y-%m-%d %H:%M UTC}   {title_tail}"
-            if filled_frac:
-                # stipple filled pixels: the front moves 10-20 km/day, so
-                # stale fill is least reliable exactly where it is changing
-                ax.contourf(sst["lon"], sst["lat"],
-                            np.where(age.values > 0, 1.0, np.nan),
-                            levels=[0.5, 1.5], colors="none", hatches=["...."],
-                            transform=conf.projection["data"])
         else:
             h = ax.pcolormesh(sla["longitude"], sla["latitude"], sla,
                               cmap="RdBu_r", vmin=-0.6, vmax=0.6,
@@ -353,6 +379,15 @@ def process_scene(sst, age, actual_time, *, extent, out_dir, opts=None,
                      label=cb_label)
         plot_front(ax, trace, transform=conf.projection["data"],
                    wall_kw=dict(label="Digitized north wall"))
+        # White track with a black outline: readable on turbo and on RdBu_r's
+        # white centre alike, and never mistakable for the black wall line.
+        for g, track in gliders.groupby(level=0):
+            ax.plot(track["lon"], track["lat"], color="white", lw=2.2, zorder=30,
+                    path_effects=[pe.Stroke(linewidth=4, foreground="black"), pe.Normal()],
+                    transform=conf.projection["data"])
+            ax.plot(track["lon"].iloc[-1], track["lat"].iloc[-1], marker="^", ms=10,
+                    mec="black", ls="none", zorder=31, transform=conf.projection["data"],
+                    label=re.sub(r"-\d{8}T\d{4}$", "", g))
         # Rings are drawn on the SLA panel only. They are derived from the
         # sea-level field, so that is where they are interpretable; on the SST
         # figure they clutter the thermal front without adding information,
@@ -361,13 +396,16 @@ def process_scene(sst, age, actual_time, *, extent, out_dir, opts=None,
         if eddies and field_kind == "sla":
             plot_eddies(ax, eddies, min_days=opts.min_eddy_days,
                         transform=conf.projection["data"])
+        # Same color per model on both panels, so the flip-comparison holds.
+        unknown = [m for m in sorted(model_isotherms) if m.upper() not in MODEL_COLORS]
+        for model_name, lines in sorted(model_isotherms.items()):
+            color = MODEL_COLORS.get(model_name.upper()) or \
+                FALLBACK_COLORS[unknown.index(model_name) % len(FALLBACK_COLORS)]
+            for i, l in enumerate(lines):
+                ax.plot(l[:, 0], l[:, 1], "-", color=color, lw=1.75, zorder=15,
+                        transform=conf.projection["data"],
+                        label=f"{model_name} 15°C (200m)" if i == 0 else None)
         if field_kind == "sst":
-            for m_i, (model_name, lines) in enumerate(sorted(model_isotherms.items())):
-                color = ISOTHERM_COLORS[m_i % len(ISOTHERM_COLORS)]
-                for i, l in enumerate(lines):
-                    ax.plot(l[:, 0], l[:, 1], "-", color=color, lw=1.75, zorder=15,
-                            transform=conf.projection["data"],
-                            label=f"{model_name} 15°C (200m)" if i == 0 else None)
             first_bad = True
             for l, s in zip(trace.wall, trace.support):
                 if s.all():
@@ -379,11 +417,6 @@ def process_scene(sst, age, actual_time, *, extent, out_dir, opts=None,
             ax.plot(trace.anchors["lon"], trace.anchors["lat"], color="0.35",
                     lw=1, ls="--", transform=conf.projection["data"],
                     label="gradient anchors")
-            if disp is not None and disp["worst_lon"] is not None and disp["local_km"] > 50:
-                ax.plot(disp["worst_lon"], disp["worst_lat"], "o", mfc="none",
-                        mec="yellow", mew=2.5, ms=18, zorder=25,
-                        transform=conf.projection["data"],
-                        label=f"largest local change ({disp['local_km']:.0f} km)")
         ax.legend(loc="lower left", fontsize=7, ncol=2, framealpha=0.85,
                   borderpad=0.4, columnspacing=1.0)
         ax.set_title(title, fontsize=14, fontweight="bold")

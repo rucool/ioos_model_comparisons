@@ -509,11 +509,32 @@ def get_ohc(bbox=None, time=None):
     else:
         date = time
 
-    # noaacwOHCna covers Apr 2020–Jan 2024; noaacwOHC14na covers Jan 2024–present.
-    dataset_id = "noaacwOHCna" if date < dt.date(2024, 1, 15) else "noaacwOHC14na"
-
     lat_min, lat_max = min(lats), max(lats)
     lon_min, lon_max = min(lons), max(lons)
+
+    # CoastWatch publishes this OHC product as separate per-basin datasets.
+    # Each basin has a legacy dataset (Apr 2020-Jan 2024) and a "14"-prefixed
+    # one (Jan 2024-present). "na" (northwest Atlantic) is native -180/180;
+    # "np" (north Pacific) is native 0-360, so its query longitudes and the
+    # returned coordinate need converting.
+    if -100 <= lon_min and lon_max <= 0:
+        basin = "na"
+    else:
+        # Re-check in 0-360 terms in case the bbox was given in -180/180
+        # (e.g. Hawaii's [-167, -138]) but actually falls in the Pacific.
+        lon_min_360 = lon_min % 360
+        lon_max_360 = lon_max % 360
+        if 100 <= lon_min_360 and lon_max_360 <= 280:
+            basin = "np"
+        else:
+            print(f"No NESDIS OHC dataset covers lon [{lon_min}, {lon_max}] — defaulting to Atlantic.")
+            basin = "na"
+
+    prefix = "noaacwOHC14" if date >= dt.date(2024, 1, 15) else "noaacwOHC"
+    dataset_id = f"{prefix}{basin}"
+
+    if basin == "np":
+        lon_min, lon_max = lon_min % 360, lon_max % 360
 
     # Use noon as the target time; ERDDAP rounds to the nearest available step.
     time_str = f"{date}T12:00:00Z"
@@ -527,13 +548,28 @@ def get_ohc(bbox=None, time=None):
         f"[({lon_min}):1:({lon_max})]"
     )
 
+    # CoastWatch's ERDDAP blocks requests that don't send a browser-like
+    # User-Agent (returns 403 even though the data is public).
+    headers = {"User-Agent": "Mozilla/5.0"}
+
     try:
-        response = requests.get(url, timeout=60)
+        response = requests.get(url, timeout=60, headers=headers)
         response.raise_for_status()
-        return xr.open_dataset(io.BytesIO(response.content))
+        # .load() so the sortby() below (needed for the np basin) doesn't
+        # operate on a still-lazy scipy-backed array, which errors on the
+        # fancy indexing sortby requires.
+        ds = xr.open_dataset(io.BytesIO(response.content)).load()
     except requests.exceptions.HTTPError:
         print("No data available for this time period.")
         return
+
+    if basin == "np":
+        # Convert the returned coordinate back to -180/180 to match the rest
+        # of the codebase's convention.
+        ds = ds.assign_coords(longitude=((ds.longitude + 180) % 360) - 180)
+        ds = ds.sortby("longitude")
+
+    return ds
 
 def get_goes(satellite='goes16'):
     """
