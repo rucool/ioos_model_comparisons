@@ -295,39 +295,41 @@ def plot_glider_profiles(id, gliders):
             for name, pdf in tdf.groupby(['profile_id', 'time', 'lon', 'lat']):
                 if not pdf.empty:
                     print(f'plotting profile {name}')
-                    pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
-                    if glider_depth_method == 'interpolate':
-                        tmp_depth = depth_interpolate(pdf.select_dtypes(exclude=['object']), depth_var='depth', bins=bins)
-                    else:
-                        tmp_depth = depth_bin(pdf.select_dtypes(exclude=['object']), depth_var='depth', aggregation='mean', bins=bins)
-                    binned.append(tmp_depth)
-                    pid = name[0]
-                    time_glider = name[1] 
-                    lon_glider = name[2].round(2)
-                    lat_glider = name[3].round(2)
-                    lon_track.append(lon_glider)
-                    lat_track.append(lat_glider)
-                    
-                    print(f"Glider: {id}, Profile ID: {pid}, Time: {time_glider}")
 
                     # Filter salinity and temperature that are more than 4 standard deviations
-                    # from the mean
+                    # from the mean before computing density/binning, so the averaged
+                    # profile isn't built from scans that the raw scatter plot excludes.
                     try:
                         pdf = pdf[np.abs(stats.zscore(pdf['salinity'])) < 4]  #  salinity
                         pdf = pdf[np.abs(stats.zscore(pdf['temperature'])) < 4]  #  temperature
                     except pandas.errors.IndexingError:
                         pass
 
-                    # Save as Pd.Series for easier recalling of columns 
+                    pdf['density'] = density(pdf['temperature'].values, -pdf['depth'].values, pdf['salinity'].values, pdf['lat'].values, pdf['lon'].values)
+                    if glider_depth_method == 'interpolate':
+                        tmp_depth = depth_interpolate(pdf.select_dtypes(exclude=['object']), depth_var='depth', bins=bins, limit_area='inside')
+                    else:
+                        tmp_depth = depth_bin(pdf.select_dtypes(exclude=['object']), depth_var='depth', aggregation='mean', bins=bins)
+                    binned.append(tmp_depth)
+                    pid = name[0]
+                    time_glider = name[1]
+                    lon_glider = name[2].round(2)
+                    lat_glider = name[3].round(2)
+                    lon_track.append(lon_glider)
+                    lat_track.append(lat_glider)
+
+                    print(f"Glider: {id}, Profile ID: {pid}, Time: {time_glider}")
+
+                    # Save as Pd.Series for easier recalling of columns
                     depth_glider = pdf['depth']
                     temp_glider = pdf['temperature']
                     salinity_glider = pdf['salinity']
                     density_glider = pdf['density']
 
                     # Plot glider profiles
-                    tax.plot(temp_glider, depth_glider, '.', color='cyan', linestyle='None', label='_nolegend_')
-                    sax.plot(salinity_glider, depth_glider, '.', color='cyan', linestyle='None', label='_nolegend_')
-                    dax.plot(density_glider, depth_glider, '.', color='cyan', linestyle='None', label='_nolegend_')
+                    tax.plot(temp_glider, depth_glider, '.', color='cyan', markeredgecolor='black', markeredgewidth=0.4, linestyle='None', label='_nolegend_')
+                    sax.plot(salinity_glider, depth_glider, '.', color='cyan', markeredgecolor='black', markeredgewidth=0.4, linestyle='None', label='_nolegend_')
+                    dax.plot(density_glider, depth_glider, '.', color='cyan', markeredgecolor='black', markeredgewidth=0.4, linestyle='None', label='_nolegend_')
 
                     try:
                         maxd.append(np.nanmax(depth_glider))
