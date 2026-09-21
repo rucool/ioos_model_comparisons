@@ -129,7 +129,7 @@ def map_add_argo(ax, df, transform=proj['data'], linestyle='None'):
         h = ax.plot(group.lon.values, group.lat.values,
                 marker=m, linestyle=linestyle,
                 markersize=7, markeredgecolor='black',
-                color=custom_cmap.colors[n],
+                color=custom_cmap.colors[n % len(custom_cmap.colors)],
                 label=argo_id,
                 transform=transform,
                 zorder=10000)
