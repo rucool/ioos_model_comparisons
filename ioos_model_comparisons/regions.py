@@ -424,6 +424,36 @@ def region_config(regions=None, model=None):
             figsize = (10.5, 7.5)
             )
     
+    key = "sargasso"
+    if key in regions:
+        # Sargasso Sea -- open ocean east of the Mid/South Atlantic Bight
+        # shelf, so East Coast glider searches that stop at the shelf break
+        # (mab/sab cut off around -63) miss gliders that have moved offshore.
+        name = "Sargasso Sea"
+        folder = "sargasso_sea"
+        extent = [-74, -40, 20, 38]
+        sea_water_temperature = [
+            dict(depth=0, limits=[20, 30, .5]),
+            dict(depth=150, limits=[15, 25, .5]),
+            ]
+        salinity = [
+            dict(depth=0, limits=[36, 37.2, .1]),
+            dict(depth=150, limits=[36, 37.2, .1]),
+            ]
+        sea_surface_height = [
+            dict(depth=0, limits=[-.6, .7, .1])
+            ]
+        salinity_max = None
+        ocean_heat_content = dict(
+            limits= [0, 160, 10]
+            )
+        currents = dict(bool=False)
+        eez = False
+        figure = dict(
+            legend = dict(columns=5),
+            figsize = (12, 7)
+            )
+
     key = "west_florida_shelf"
     if key in regions:
         name = "West Florida Shelf"
