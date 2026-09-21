@@ -74,7 +74,7 @@ spatial_interp = False
 workers = 4
 
 # Region selection
-conf.regions = ['caribbean', 'gom', 'mab', 'sab']
+conf.regions = ['caribbean', 'gom', 'mab', 'sab', 'sargasso']
 # conf.regions = ['mab']
 
 # Model selection
@@ -115,17 +115,18 @@ t1 = date_list[-1]
 vars = ['time', 'latitude', 'longitude', 'depth', 'temperature', 'salinity',
         'density', 'profile_id']
 
+# Fixed search extent covering the Gulf of Mexico, Caribbean, and East Coast
+# out into the Sargasso Sea, used for every glider search regardless of region.
+search_extent = [-99, -48, 5, 43]
+
 region_gliders = []
-for region in conf.regions:
-    print('Region:', region)
-    extent = region_config(region)["extent"]
-    gliders = get_active_gliders(extent, t0, t1, 
-                            variables=vars,
-                            timeout=timeout, 
-                            parallel=False).reset_index()
-    gliders['region'] = region
-    region_gliders.append(gliders)
-    
+gliders = get_active_gliders(search_extent, t0, t1,
+                        variables=vars,
+                        timeout=timeout,
+                        parallel=False).reset_index()
+gliders['region'] = 'all'
+region_gliders.append(gliders)
+
 try:
     redwing = get_glider_by_id('redwing-20251011T1511', start=t0, end=t1)
     redwing.reset_index(inplace=True)
@@ -138,8 +139,8 @@ except Exception as e:
 
 gliders = pd.concat(region_gliders)
 
-# Remove redwing-20251011T1511 and region ='mab' if exists
-gliders = gliders[~((gliders['glider'] == 'redwing-20251011T1511') & (gliders['region'] == 'mab'))]
+# Remove redwing-20251011T1511 from the general search if it also shows up there
+gliders = gliders[~((gliders['glider'] == 'redwing-20251011T1511') & (gliders['region'] == 'all'))]
 
 def pick_region_map(regions, point):
     distances = []
