@@ -1,6 +1,7 @@
 import datetime as dt
 from datetime import datetime, timedelta
 import os
+import re
 import warnings
 from itertools import cycle
 from pathlib import Path
@@ -281,8 +282,11 @@ def map_add_gliders(ax, df, transform=proj['data'], color='white'):
         #         markersize=7, label=g, transform=transform, zorder=10000)
         ax.plot(new_df['lon'], new_df['lat'], color=color,
                 linewidth=3, transform=transform, zorder=10000)
+        # Strip the trailing deployment timestamp (e.g. "-20260907T0000") so
+        # the legend just shows the glider id, not the full dataset name.
+        label = re.sub(r'-\d{8}T\d{4}$', '', g)
         ax.plot(q['lon'], q['lat'], marker='^', markeredgecolor='black',
-                markersize=9, label=g, transform=transform, zorder=10000)
+                markersize=9, label=label, transform=transform, zorder=10000)
         # map_add_legend(ax)
 
 def map_add_gliders_single_color(ax, df, transform=proj['data'], color='white', size=8):

@@ -42,6 +42,7 @@ plot_rtofs = True
 plot_espc = True
 plot_cmems = True
 plot_nesdis = True
+plot_eccofs = True
 plot_para = False
 # Set path to save plots
 path_save = (conf.path_plots / "maps")
@@ -53,9 +54,33 @@ path_save = (conf.path_plots / "maps")
 ATLANTIC_REGIONS = ['mab', 'sab', 'gom', 'caribbean', 'tropical_western_atlantic', 'windward']
 PACIFIC_REGIONS  = ['hawaii', 'mexico_pacific']
 
-conf.days = .5
+# ECCOFS's curvilinear grid only spans the Atlantic/Intra-Americas Seas
+# (Grand Banks to the Orinoco river mouth) — matches ECCOFS_EXCLUDED_REGIONS
+# in rtofs-gofs-cmems-amseas.py. Only tropical_western_atlantic/hawaii/
+# mexico_pacific are reachable from this script's own region lists; the rest
+# are kept so this stays in sync if regions are ever added here.
+ECCOFS_EXCLUDED_REGIONS = {
+    'tropical_western_atlantic',
+    'mexico_pacific',
+    'hawaii',
+    'wmo_v_south',
+    'philippines_sea',
+    'guam',
+    'fiji',
+}
+
+# ECCOFS only publishes one full-depth ("his") nowcast per calendar day (00Z)
+# — see ECCOFSFullDepth in models.py — so evaluating it at every 6-hourly
+# ctime would just re-plot the same snapshot up to 4x per day.
+ECCOFS_HOUR = 0
+
+
+def _is_eccofs_hour(ctime) -> bool:
+    return pd.Timestamp(ctime).hour == ECCOFS_HOUR
+
+
+conf.days = 1
 conf.regions = ATLANTIC_REGIONS + PACIFIC_REGIONS
-conf.regions =  ['caribbean']
 
 conf.argo = True
 conf.gliders = True
@@ -75,6 +100,7 @@ date_start = today - dt.timedelta(days=conf.days)
 freq = '6H'
 # Create dates that we want to plot
 date_list = pd.date_range(date_start, date_end, freq=freq)
+# date_list = pd.DatetimeIndex(['2026-09-16 00:00:00']) .
 
 search_start = date_list[0] - dt.timedelta(hours=conf.search_hours)
 
@@ -92,6 +118,26 @@ def _group_extent(regions):
         extent_df.latmin.min(),
         extent_df.latmax.max()
         ]
+
+def _subset_curvilinear(data, extent):
+    """Subset a curvilinear-grid dataset (2-D lon/lat, y/x dims) to a
+    bounding-box extent — used for ECCOFS, whose ROMS grid isn't a simple
+    1-D lon/lat like ESPC/CMEMS. Returns the smallest isel rectangle that
+    contains every point within extent; falls back to the full grid if none
+    are found.
+    """
+    lon = data['lon'].values
+    lat = data['lat'].values
+    lonmin, lonmax, latmin, latmax = extent
+    mask = (lon >= lonmin) & (lon <= lonmax) & (lat >= latmin) & (lat <= latmax)
+    eta_i, xi_i = np.where(mask)
+    if len(eta_i) == 0:
+        return data
+    return data.isel(
+        y=slice(int(eta_i.min()), int(eta_i.max()) + 1),
+        x=slice(int(xi_i.min()),  int(xi_i.max())  + 1),
+    )
+
 
 # Global extent across every region — used for Argo/glider/CMEMS/bathy, none
 # of which care about the RTOFS east/west tile split.
@@ -231,6 +277,16 @@ if plot_cmems:
     cds = c()
     cds = cds.get_combined_subset(global_extent[:2], global_extent[2:])
 
+if plot_eccofs:
+    from ioos_model_comparisons.models import ECCOFSHeatContent
+
+    # Reads ECCOFS's own precomputed 'ohc' field straight out of the "avg"
+    # product (a few MB over HTTPS byte-range requests) rather than
+    # downloading the ~4.3GB/day "his" file and re-deriving OHC from raw
+    # temperature/salinity ourselves — see ECCOFSHeatContent's docstring in
+    # models.py.
+    ec_full = ECCOFSHeatContent()
+
 plot_hurricanes = True
 # ctimes within this many hours of now use the real-time NHC feed;
 # older ctimes fall back to the IBTrACS archive automatically.
@@ -349,6 +405,9 @@ def _expected_plot_keys(ctime, region) -> set:
         model_pairs.append(('rtofs', 'cmems'))
     if plot_rtofs and plot_nesdis:
         model_pairs.append(('rtofs', 'nesdis'))
+    if (plot_rtofs and plot_eccofs and _is_eccofs_hour(ctime)
+            and region['folder'] not in ECCOFS_EXCLUDED_REGIONS):
+        model_pairs.append(('rtofs', 'eccofs'))
     if plot_rtofs and plot_para:
         model_pairs.append(('rtofs', 'rtofs'))
 
@@ -453,6 +512,17 @@ def plot_ctime(ctime):
     else:
         ndt_flag = False
 
+    if plot_eccofs and _is_eccofs_hour(ctime):
+        try:
+            ect = ec_full.sel(time=ctime)
+            print(f"ECCOFS: True")
+            ect_flag = True
+        except Exception as e:
+            print(f"ECCOFS: False - {e}")
+            ect_flag = False
+    else:
+        ect_flag = False
+
     _storms, _forecasts = _get_storms_for_time(ctime)
 
     search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
@@ -478,6 +548,9 @@ def plot_ctime(ctime):
             rdt_flag = False
 
         configs = apply_colorbar_overrides(r, region_config(r))
+
+        # ECCOFS's grid doesn't usefully cover every region — see ECCOFS_EXCLUDED_REGIONS
+        region_ect_flag = ect_flag and configs['folder'] not in ECCOFS_EXCLUDED_REGIONS
 
         # Save the extent of the region being plotted to a variable.
         extent = configs['extent']
@@ -631,6 +704,14 @@ def plot_ctime(ctime):
                 lat=slice(extent_data[2], extent_data[3])
             ).squeeze()
 
+        if region_ect_flag:
+            # ECCOFS's 2-D lon/lat curvilinear grid can't use .sel(lon=slice(...))
+            # like the 1-D-coordinate models above — bounding-box isel instead.
+            # ECCOFSHeatContent already hands back a precomputed 'ohc' field
+            # (see models.py), so — unlike RTOFS/ESPC/CMEMS/parallel above —
+            # there's no density/ocean_heat_content calc to do here.
+            ect_slice = _subset_curvilinear(ect, extent_data)
+
         # Subset downloaded Argo data to this region and time
         if not argo_data.empty:
             lon = argo_data['lon']
@@ -677,6 +758,11 @@ def plot_ctime(ctime):
                 plot_ohc(rds_slice, nds_slice, extent, configs['name'],
                          storms=_storms, forecasts=_forecasts, **kwargs)
                 pending_logs.append(_ohc_record(configs, ts_dt, 'rtofs', 'nesdis'))
+
+            if rdt_flag and region_ect_flag:
+                plot_ohc(rds_slice, ect_slice, extent, configs['name'],
+                         storms=_storms, forecasts=_forecasts, **kwargs)
+                pending_logs.append(_ohc_record(configs, ts_dt, 'rtofs', 'eccofs'))
 
             if rdt_flag and rdtp_flag:
                 plot_ohc(rds_slice, rdsp_slice, extent, configs['name'],
