@@ -410,6 +410,14 @@ def _ohc_record(region, ts_dt, m1, m2):
             "variable": "ohc", "depth": 0, "model1": m1, "model2": m2}
 
 
+def _ohc_png(folder, ctime, m2):
+    """Path plot_ohc() writes for RTOFS vs m2 (mirrors its filename logic)."""
+    t = pd.to_datetime(ctime)
+    m2 = 'rtofs-p' if m2 == 'rtofs' else m2
+    return (path_save / folder / 'ocean_heat_content' / t.strftime('%Y') / t.strftime('%m')
+            / f"{folder}_{t.strftime('%Y-%m-%dT%H%M%SZ')}_heat_content_rtofs-{m2}.png")
+
+
 def _expected_plot_keys(ctime, region) -> set:
     """Return the set of (region, iso_ts, plot_type, variable, depth, m1, m2) tuples
     expected for this (ctime, region) — no file I/O.
@@ -478,8 +486,17 @@ def pre_check_date_list(date_list, overwrite=False) -> pd.DatetimeIndex:
                 needed_dates.append(ctime)
         print(f"Pre-check (MongoDB): {skipped}/{len(date_list)} timestamp(s) fully done — skipping.")
     else:
-        print("MongoDB unavailable — processing all timestamps.")
-        needed_dates = list(date_list)
+        print("MongoDB unavailable — falling back to checking files on disk.")
+        for ctime in date_list:
+            missing = any(
+                not _ohc_png(region_config(item)['folder'], ctime, key[6]).is_file()
+                for item in conf.regions
+                for key in _expected_plot_keys(
+                    ctime, apply_colorbar_overrides(item, region_config(item)))
+            )
+            if missing:
+                needed_dates.append(ctime)
+        print(f"Pre-check (disk): {len(date_list) - len(needed_dates)}/{len(date_list)} timestamp(s) fully done — skipping.")
 
     print(f"Pre-check: {len(needed_dates)}/{len(date_list)} timestamp(s) queued.")
     return pd.DatetimeIndex(needed_dates)
@@ -589,6 +606,15 @@ def plot_ctime(ctime):
 
         # ECCOFS's grid doesn't usefully cover every region — see ECCOFS_EXCLUDED_REGIONS
         region_ect_flag = ect_flag and configs['folder'] not in ECCOFS_EXCLUDED_REGIONS
+
+        # Skip the slicing/density/OHC math when every plot this region would
+        # make for this hour is already on disk.
+        m2s = [m for m, on in (('espc', gdt_flag), ('cmems', cdt_flag),
+                               ('nesdis', ndt_flag), ('eccofs', region_ect_flag),
+                               ('rtofs', rdtp_flag)) if rdt_flag and on]
+        if not m2s or (not kwargs['overwrite']
+                       and all(_ohc_png(configs['folder'], ctime, m).is_file() for m in m2s)):
+            continue
 
         # Save the extent of the region being plotted to a variable.
         extent = configs['extent']
