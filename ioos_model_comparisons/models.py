@@ -175,7 +175,7 @@ class RTOFS():
 
 def gofs(rename=False):
     url = "https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0"
-    ds = xr.open_dataset(url, drop_variables="tau")
+    ds = _open_cf_dataset_sanitize_time(url, drop_variables="tau")
     ds.attrs['model'] = 'GOFS'
     if rename:
         ds = ds.rename(
@@ -195,8 +195,8 @@ def espc_uv_archive(rename=False, year=None):
     url_v = f"https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/v3z/{year}"
 
     # Open only selected variables
-    ds_u = xr.open_dataset(url_u, drop_variables="tau")
-    ds_v = xr.open_dataset(url_v, drop_variables="tau")
+    ds_u = _open_cf_dataset_sanitize_time(url_u, drop_variables="tau")
+    ds_v = _open_cf_dataset_sanitize_time(url_v, drop_variables="tau")
 
     # Manually combine variables into one dataset (no merge)
     ds = xr.Dataset()
@@ -221,7 +221,7 @@ def espc_uv(rename=False):
     # url_ts = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_ts3z/FMRC_ESPC-D-V02_ts3z_best.ncd"
 
     # Open only selected variables
-    ds_uv = xr.open_dataset(url_uv, drop_variables="tau")[["water_u", "water_v"]]
+    ds_uv = _open_cf_dataset_sanitize_time(url_uv, drop_variables="tau")[["water_u", "water_v"]]
     # ds_ts = xr.open_dataset(url_ts, drop_variables="tau")#[["water_temp", 'salinity']]
 
     ds = ds_uv
@@ -245,6 +245,30 @@ def espc_uv(rename=False):
 
     return ds
 
+def _open_cf_dataset_sanitize_time(url, drop_variables=None, chunks=None):
+    # THREDDS FMRC aggregations occasionally leak an unmasked fill value (e.g. ~-6.4e270) into the time axis, which blows up CF decoding for the whole dataset.
+    kwargs = dict(decode_times=False)
+    if drop_variables is not None:
+        kwargs["drop_variables"] = drop_variables
+    if chunks:
+        kwargs["chunks"] = chunks
+    ds = xr.open_dataset(url, **kwargs)
+
+    for time_dim in ("time", "time1"):
+        if time_dim in ds.variables:
+            raw = ds[time_dim].values
+            valid = np.isfinite(raw) & (np.abs(raw) < 1e10)
+            if not valid.all():
+                logger.warning(
+                    "%s: '%s' axis has %d invalid timestamp(s) -- dropping "
+                    "them before decoding.",
+                    url, time_dim, int((~valid).sum()),
+                )
+                ds = ds.isel({time_dim: valid})
+
+    return xr.decode_cf(ds)
+
+
 def espc_ts(rename=False, chunks=None):
     # url_uv = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_uv3z/FMRC_ESPC-D-V02_uv3z_best.ncd"
     url_ts = "https://tds.hycom.org/thredds/dodsC/FMRC_ESPC-D-V02_ts3z/FMRC_ESPC-D-V02_ts3z_best.ncd"
@@ -252,10 +276,7 @@ def espc_ts(rename=False, chunks=None):
     # Open only selected variables
     # ds_uv = xr.open_dataset(url_uv, drop_variables="tau")[["water_u", "water_v"]]
 
-    if chunks:
-        ds_ts = xr.open_dataset(url_ts, drop_variables="tau", chunks=chunks)
-    else:
-        ds_ts = xr.open_dataset(url_ts, drop_variables="tau")#[["water_temp", 'salinity']]
+    ds_ts = _open_cf_dataset_sanitize_time(url_ts, drop_variables="tau", chunks=chunks)
 
     ds = ds_ts
     # Manually combine variables into one dataset (no merge)
@@ -320,8 +341,8 @@ def espc_ts_archive(rename=False, year=None):
     url_t = f'https://tds.hycom.org/thredds/dodsC/ESPC-D-V02/t3z/{year}'
 
     # Open only selected variables
-    ds_t = xr.open_dataset(url_t, drop_variables="tau")
-    ds_s = xr.open_dataset(url_s, drop_variables="tau")
+    ds_t = _open_cf_dataset_sanitize_time(url_t, drop_variables="tau")
+    ds_s = _open_cf_dataset_sanitize_time(url_s, drop_variables="tau")
 
     # Manually combine variables into one dataset (no merge)
     ds = xr.Dataset()
@@ -366,7 +387,7 @@ class ESPC:
         # Lazy load and store each dataset in a dictionary
         for var, url in datasets.items():
             print(f"Loading {var} dataset...")
-            self.datasets[var] = xr.open_dataset(url, drop_variables='tau', chunks={"MT": 1})  # Lazy load by default
+            self.datasets[var] = _open_cf_dataset_sanitize_time(url, drop_variables='tau', chunks={"MT": 1})  # Lazy load by default
 
 
     def get_variable(self, var_name):
@@ -1704,6 +1725,25 @@ def _eccofs_his_index():
     return index
 
 
+def prune_eccofs_his_cache(index=None):
+    """Delete cached "his" files that don't belong to the latest cycle.
+
+    *index* is an already-built _eccofs_his_index() result, if the caller
+    has one handy (avoids an extra S3 listing); otherwise this builds one
+    itself. Shared by ECCOFSFullDepth.__init__ and the harvest script
+    (scripts/harvest/grab_eccofs.py) so both prune the same way.
+    """
+    index = index if index is not None else _eccofs_his_index()
+    current_keys = {os.path.basename(k) for _, k, _ in index}
+    removed = []
+    for f in (_eccofs_cache_dir() / "his").glob("eccofs_his_*.nc"):
+        if f.name not in current_keys:
+            logger.info(f"ECCOFS his: removing stale cached file {f} (reference date no longer in S3 bucket)")
+            f.unlink(missing_ok=True)
+            removed.append(f)
+    return removed
+
+
 def ensure_eccofs_his_cached(key, size=None):
     """Ensure a single ECCOFS "his" file is downloaded to the local cache.
 
@@ -1858,11 +1898,7 @@ class ECCOFSFullDepth:
 
         # Only the latest cycle's files are ever wanted again — drop any
         # cached files left over from a now-superseded older cycle.
-        current_keys = {os.path.basename(k) for _, k, _ in self._index}
-        for f in (_eccofs_cache_dir() / "his").glob("eccofs_his_*.nc"):
-            if f.name not in current_keys:
-                logger.info(f"ECCOFS his: removing stale cached file {f} (reference date no longer in S3 bucket)")
-                f.unlink(missing_ok=True)
+        prune_eccofs_his_cache(self._index)
 
         logger.info("ECCOFS his index built: %d snapshot(s), %s to %s",
                     len(self._index), self._index[0][0], self._index[-1][0])

@@ -334,7 +334,9 @@ def _archive_storms_at(ctime):
             if not times:
                 continue
             dates = [pd.Timestamp(d) for d in times]
-            if not (min(dates) <= ctime <= max(dates)):
+            # Allow one best-track step past the last fix so a storm doesn't vanish
+            # between its final observation and the next plotted hour.
+            if not (min(dates) <= ctime <= max(dates) + pd.Timedelta(hours=6)):
                 continue
             idx = [i for i, d in enumerate(dates) if d <= ctime]
             if not idx:
@@ -347,12 +349,36 @@ def _archive_storms_at(ctime):
                 name=storm.name,
                 basin=storm.basin,
             )
+            # Forecast is optional (raises for IBTrACS-sourced storms and invests);
+            # still draw the track without a cone rather than dropping the storm.
+            try:
+                fct = storm.get_nhc_forecast_dict(ctime)
+            except Exception:
+                fct = {}
             active_stms.append(s)
-            active_fcts.append(storm.get_nhc_forecast_dict(ctime))
+            active_fcts.append(fct)
         except Exception:
             continue
 
     return active_stms, active_fcts
+
+
+def _realtime_storms():
+    rt = _load_realtime()
+    stms, fcts = [], []
+    for key in rt.list_active_storms(basin='all'):
+        storm = rt.get_storm(key)
+        fct = {}
+        # Invests have no NHC forecast, and a missing .fst shouldn't hide the
+        # other storms' tracks.
+        if not getattr(storm, 'invest', False):
+            try:
+                fct = storm.get_forecast_realtime(True)
+            except Exception as e:
+                print(f"Warning: no forecast for {key} ({e}); plotting track only")
+        stms.append(storm)
+        fcts.append(fct)
+    return stms, fcts
 
 
 def _get_storms_for_time(ctime):
@@ -363,12 +389,12 @@ def _get_storms_for_time(ctime):
     age_hours = (now - ctime).total_seconds() / 3600
     try:
         if age_hours <= _REALTIME_WINDOW_HOURS:
-            rt = _load_realtime()
-            keys = rt.list_active_storms(basin='north_atlantic')
-            stms = [rt.get_storm(k) for k in keys]
-            fcts = [s.get_forecast_realtime(True) for s in stms]
-            if stms:
-                return stms, fcts
+            try:
+                stms, fcts = _realtime_storms()
+                if stms:
+                    return stms, fcts
+            except Exception as e:
+                print(f"Warning: realtime hurricane fetch failed for {ctime}: {e}")
         # Archive fallback: ctime is old, or realtime returned no storms
         return _archive_storms_at(ctime)
     except Exception as e:
@@ -499,18 +525,27 @@ def plot_ctime(ctime):
     else:
         cdt_flag = False
 
+    # NESDIS publishes OHC as separate per-basin (NA/NP) datasets, and
+    # get_ohc() defaults to an Atlantic bbox when none is given — so fetch
+    # explicitly per basin (only the ones actually needed by conf.regions),
+    # same split as the RTOFS east/west tiles above.
+    nds_by_basin = {}
     if plot_nesdis:
-        try:
-            nds = get_ohc(time=ctime)
-            nds.attrs['model'] = 'NESDIS'
-            nds = nds.rename({'longitude': 'lon', 'latitude': 'lat'})
-            print(f"NESDIS: True")
-            ndt_flag = True
-        except (requests.exceptions.HTTPError, Exception) as e:
-            print(f"NESDIS: False - {e}")
-            ndt_flag = False
-    else:
-        ndt_flag = False
+        if any(r in ATLANTIC_REGIONS for r in conf.regions):
+            try:
+                _nds = get_ohc(bbox=atlantic_extent, time=ctime)
+                _nds.attrs['model'] = 'NESDIS'
+                nds_by_basin['atlantic'] = _nds.rename({'longitude': 'lon', 'latitude': 'lat'})
+            except (requests.exceptions.HTTPError, Exception) as e:
+                print(f"NESDIS (atlantic): False - {e}")
+        if any(r in PACIFIC_REGIONS for r in conf.regions):
+            try:
+                _nds = get_ohc(bbox=pacific_extent, time=ctime)
+                _nds.attrs['model'] = 'NESDIS'
+                nds_by_basin['pacific'] = _nds.rename({'longitude': 'lon', 'latitude': 'lat'})
+            except (requests.exceptions.HTTPError, Exception) as e:
+                print(f"NESDIS (pacific): False - {e}")
+        print(f"NESDIS: {sorted(nds_by_basin.keys()) or False}")
 
     if plot_eccofs and _is_eccofs_hour(ctime):
         try:
@@ -546,6 +581,9 @@ def plot_ctime(ctime):
                 rdt_flag = False
         else:
             rdt_flag = False
+
+        nds_grp = nds_by_basin.get('pacific' if is_pacific else 'atlantic')
+        ndt_flag = nds_grp is not None
 
         configs = apply_colorbar_overrides(r, region_config(r))
 
@@ -699,7 +737,7 @@ def plot_ctime(ctime):
                                 vectorize=True)
 
         if ndt_flag:
-            nds_slice = nds.sel(
+            nds_slice = nds_grp.sel(
                 lon=slice(extent_data[0], extent_data[1]),
                 lat=slice(extent_data[2], extent_data[3])
             ).squeeze()

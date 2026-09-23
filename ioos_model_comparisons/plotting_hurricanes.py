@@ -188,6 +188,8 @@ def plot_storms(ax, storms, forecasts, zorder=0, proj=ccrs.PlateCarree()):
                 
             #Plot cone
             forecast_dict = forecasts[storm_idx]
+            if not forecast_dict:
+                continue
             
             # try:
             #Fix longitudes for cone if crossing dateline
