@@ -768,6 +768,23 @@ def categorical_cmap(nc, nsc, cmap="tab10", continuous=False):
     return cmap
 
 
+def safe_float(value):
+    """Coerce value to a plain float for storage (e.g. MongoDB via db.py's
+    log_ohc_metrics), or None if it's missing, NaN, or not numeric at all —
+    e.g. a model's OHC variable that was never computed this run because its
+    plot_<model> flag was off, so the name doesn't exist in scope. Pass such
+    a variable via locals().get('ohc_eccofs') rather than referencing it
+    directly, which would raise NameError instead of landing here.
+    """
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if v != v else v  # v != v is True only for NaN
+
+
 def sound_speed(temperature, depth, salinity, latitude, longitude):
     """
     Calculates sound speed given practical salinity, temperature, depth, 

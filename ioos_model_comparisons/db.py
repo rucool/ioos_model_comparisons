@@ -223,6 +223,104 @@ def fetch_completed_plot_keys(script, timestamps, db_name=_PLOTS_DB, coll_name=_
         return None
 
 
+_OHC_DB   = "hurricanes"
+_OHC_COLL = "ohc_metrics"
+_OHC_KEYS = ["platform_type", "platform_id", "date"]
+# One column per source currently computed by the profile-comparison scripts'
+# ohc_string caption (daily_glider_profiles_comparisons_*.py,
+# argo_profile_model_comparisons*.py) — this just persists what they already
+# compute instead of throwing it away as plot-caption text. Built for Lev's
+# request: a Platform ID / date / OHC-at-platform / OHC-at-model(s) /
+# OHC-NESDIS export table.
+OHC_MODEL_FIELDS = ["rtofs", "rtofs_parallel", "espc", "cmems", "eccofs", "nesdis"]
+
+
+def ensure_ohc_index(db_name=_OHC_DB, coll_name=_OHC_COLL):
+    """Create the unique compound index on the OHC metrics collection (idempotent)."""
+    client = _get_client()
+    if client is None:
+        return
+    try:
+        import pymongo
+        coll = client[db_name][coll_name]
+        coll.create_index(
+            [(k, pymongo.ASCENDING) for k in _OHC_KEYS],
+            unique=True,
+            background=True,
+        )
+        logger.debug(f"OHC metrics index ensured on {db_name}.{coll_name}")
+    except Exception as exc:
+        logger.warning(f"ensure_ohc_index failed: {exc}")
+
+
+_ohc_index_ensured = False
+
+
+def log_ohc_metrics(records, db_name=_OHC_DB, coll_name=_OHC_COLL):
+    """Batch-upsert daily per-platform OHC numbers into MongoDB.
+
+    Each record is a dict with keys: platform_type ("argo"/"glider"),
+    platform_id, date ("YYYY-MM-DD"), region, lat, lon, ohc_platform (OHC
+    computed from the platform's own T/S profile), and ohc_<model> for
+    whichever of OHC_MODEL_FIELDS that script computes (rtofs,
+    rtofs_parallel, espc, cmems, eccofs, nesdis) — omit a field entirely
+    rather than passing None/NaN if that comparison wasn't made for this
+    region/run. Upserts on (platform_type, platform_id, date), so a rerun
+    for the same platform/day overwrites rather than duplicates. Silently
+    skips if MongoDB is unavailable.
+    """
+    if not records:
+        return
+    client = _get_client()
+    if client is None:
+        return
+    global _ohc_index_ensured
+    if not _ohc_index_ensured:
+        ensure_ohc_index(db_name, coll_name)
+        _ohc_index_ensured = True
+    try:
+        import pymongo
+        now = datetime.datetime.utcnow()
+        ops = []
+        for rec in records:
+            filt = {k: rec[k] for k in _OHC_KEYS}
+            update = {k: v for k, v in rec.items() if k not in _OHC_KEYS}
+            update["updated_at"] = now
+            ops.append(pymongo.UpdateOne(filt, {"$set": update}, upsert=True))
+        client[db_name][coll_name].bulk_write(ops, ordered=False)
+        logger.debug(f"Logged {len(ops)} OHC metric record(s) to MongoDB")
+    except Exception as exc:
+        logger.warning(f"log_ohc_metrics failed: {exc}")
+
+
+def fetch_ohc_metrics(date_from=None, date_to=None, platform_type=None,
+                       db_name=_OHC_DB, coll_name=_OHC_COLL):
+    """Return OHC metric documents (without _id) matching the given filters,
+    sorted by date descending then platform_id. date_from/date_to are
+    inclusive "YYYY-MM-DD" strings. Returns [] if MongoDB is unavailable."""
+    client = _get_client()
+    if client is None:
+        return []
+    try:
+        query = {}
+        if date_from or date_to:
+            date_filter = {}
+            if date_from:
+                date_filter["$gte"] = date_from
+            if date_to:
+                date_filter["$lte"] = date_to
+            query["date"] = date_filter
+        if platform_type:
+            query["platform_type"] = platform_type
+        cursor = client[db_name][coll_name].find(
+            query, {"_id": 0}
+        ).sort([("date", -1), ("platform_id", 1)])
+        return list(cursor)
+    except Exception as exc:
+        logger.warning(f"fetch_ohc_metrics failed: {exc}")
+        return []
+
+
 def needs_replot(key, completed, current_has_argo, current_has_gliders):
     """Return True if the plot identified by *key* should be generated this run.
 

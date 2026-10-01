@@ -37,9 +37,10 @@ from erddapy import ERDDAP
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
 from cool_maps.plot import get_bathymetry
-from ioos_model_comparisons.calc import lon180to360, lon360to180, density, ocean_heat_content
+from ioos_model_comparisons.calc import lon180to360, lon360to180, density, ocean_heat_content, safe_float
 from ioos_model_comparisons.models import CMEMS, espc_ts, espc_ts_archive, rtofs
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import log_ohc_metrics
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
@@ -464,6 +465,24 @@ def process_argo():
                 ohc_string += f"RTOFS: {ohc_rtofs:.4f}"
 
             plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
+
+            # Persist the same numbers as a row instead of only a plot
+            # caption — see db.log_ohc_metrics (built for the Platform
+            # ID/date/OHC-at-platform/OHC-at-model(s)/OHC-NESDIS export
+            # table). This script doesn't compute RTOFS-Parallel/ECCOFS/
+            # NESDIS at all, so those three stay blank for OSMC rows.
+            log_ohc_metrics([{
+                "platform_type": "argo",
+                "platform_id": str(wmo),
+                "date": pd.to_datetime(tstr).strftime("%Y-%m-%d"),
+                "region": region["folder"],
+                "lat": safe_float(lat),
+                "lon": safe_float(lon),
+                "ohc_platform": safe_float(np.nanmean(ohc_float)),
+                "ohc_rtofs": safe_float(ohc_rtofs),
+                "ohc_espc": safe_float(ohc_espc),
+                "ohc_cmems": safe_float(ohc_cmems),
+            }])
 
             plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()

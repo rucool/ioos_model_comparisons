@@ -9,14 +9,16 @@ import scipy.stats as stats
 import xarray as xr
 from ioos_model_comparisons.calc import (
     # depth_interpolate,
-    lon180to360, 
-    lon360to180, 
-    difference, 
+    lon180to360,
+    lon360to180,
+    difference,
     density,
-    ocean_heat_content
+    ocean_heat_content,
+    safe_float,
     )
 from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_ohc
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import log_ohc_metrics
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
 from gsw import z_from_p
@@ -37,11 +39,11 @@ plot_rtofs = True
 plot_espc = True
 plot_cmems = True
 plot_para = False
+plot_eccofs = True
 
-# argos = ["4902350", "4903250", "6902854", "4903224", "4903227"]
-# argos = [4903227]
-# conf.regions = ['caribbean-leeward'] # For debug purposes
-days = 7
+# Set to a list of WMO ids to plot only those floats, or None to plot all
+argos = None
+days = 2
 dpi = conf.dpi
 vars = ['platform_number', 'time', 'longitude', 'latitude', 'pres', 'temp', 'psal']
 
@@ -68,7 +70,13 @@ if plot_cmems:
     from ioos_model_comparisons.models import CMEMS
     cobj = CMEMS()
     # cds = cobj.data.sel(depth=depths)
-    
+
+if plot_eccofs:
+    from ioos_model_comparisons.models import ECCOFSFullDepth
+    # Full-depth (his) product, not qck -- a 3-level profile would be far
+    # too coarse next to Argo's dozens of samples on the same plot.
+    ecobj = ECCOFSFullDepth()
+
 # Create a date list ending today and starting x days in the past
 date_end = pd.Timestamp.utcnow().tz_localize(None)
 date_start = (date_end - pd.Timedelta(days=days)).floor('1d')
@@ -80,6 +88,7 @@ then = pd.Timestamp(then.strftime('%Y-%m-%d')) # convert back to timestamp
 # Get extent for all configured regions to download argo/glider data one time
 extent_list = []
 conf.regions = ['caribbean', 'gom', 'sab', 'mab', 'tropical_western_atlantic']
+
 for region in conf.regions:
     extent_list.append(region_config(region)["extent"])
 
@@ -116,6 +125,23 @@ floats['depth'] = -z_from_p(floats['pres (decibar)'], floats['lat'])
 # Mask argo float based off of the maximum depth
 depth_mask = floats['depth'] <= depth
 floats = floats[depth_mask]
+
+# Restrict to specific floats, if requested
+if argos:
+    argos = [str(a) for a in argos]
+    floats = floats[floats.index.get_level_values('argo').isin(argos)]
+
+# Pre-fetch ECCOFS his files for every distinct calendar day among the
+# loaded Argo profiles, before process_argo() gets dispatched across
+# per-region workers -- otherwise multiple workers could race to each
+# download the same day's ~4.3 GB file concurrently on a cold cache.
+if plot_eccofs and not floats.empty:
+    for day in floats.index.get_level_values('time').normalize().unique():
+        try:
+            ecobj.sel(time=day)
+            print(f"ECCOFS his pre-fetched: {day.date()}")
+        except Exception as e:
+            print(f"ECCOFS his pre-fetch failed for {day.date()}: {e}")
 
 levels = [-8000, -1000, -100, 0]
 colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
@@ -302,10 +328,17 @@ def process_argo(region):
             leg_str = f'Argo #{wmo}\n'
             leg_str += f'ARGO: { tstr }\n'
 
-            # nesdis = get_ohc(extent, pd.to_datetime(tstr).date())   
-            # nesdis = nesdis.squeeze()
-            # ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
-            # ohc_nesdis = ohc_nesdis.ohc.values
+            # Re-enabled for Lev's OHC export table (db.log_ohc_metrics below)
+            # — gliders' equivalent script already computes this the same way.
+            try:
+                nesdis = get_ohc(extent, pd.to_datetime(tstr).date())
+            except:
+                nesdis = None
+
+            if nesdis:
+                nesdis = nesdis.squeeze()
+                ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
+                ohc_nesdis = ohc_nesdis.ohc.values
             
             if plot_espc:
                 try:
@@ -467,10 +500,37 @@ def process_argo(region):
                     cmems_flag = True
                 except KeyError as error:
                     print(f"CMEMS: False - {error}")
-                    cmems_flag = False 
+                    cmems_flag = False
             else:
                 cmems_flag = False
-       
+
+            if plot_eccofs:
+                try:
+                    # ECCOFS
+                    edsi = ecobj.get_point(lon, lat, ctime)
+
+                    # Calculate density for eccofs profile
+                    edsi['density'] = density(edsi.temperature, -edsi.depth, edsi.salinity, edsi.lat, edsi.lon)
+
+                    elon = edsi.lon.data.round(2)
+                    elat = edsi.lat.data.round(2)
+
+                    # Calculate ocean heat content for profile
+                    ohc_eccofs = ocean_heat_content(
+                        edsi['depth'].values,
+                        edsi['temperature'].values,
+                        edsi['density'].values
+                        )
+
+                    elabel = f"ECCOFS [{elon:.2f}, {elat:.2f}]"
+                    leg_str += f'ECCOFS: {pd.to_datetime(edsi.time.data).strftime(date_fmt)}\n'
+                    eccofs_flag = True
+                except (KeyError, ValueError) as error:
+                    print(f"ECCOFS: False - {error}")
+                    eccofs_flag = False
+            else:
+                eccofs_flag = False
+
         # Plot the argo profile
         if not profile_exist:
             fig = plt.figure(constrained_layout=True, figsize=(16, 6))
@@ -515,8 +575,15 @@ def process_argo(region):
             if rtofsp_flag:
                 ax1.plot(pdsi['temperature'], pdsi['depth'], linestyle='-',  marker='o', color='orange', label=plabel)
                 ax2.plot(pdsi['salinity'], pdsi['depth'], linestyle='-', marker='o', color='orange', label=plabel)
-                ax3.plot(pdsi['density'], pdsi['depth'], linestyle='-',  marker='o',color='orange', label=plabel)    
-                
+                ax3.plot(pdsi['density'], pdsi['depth'], linestyle='-',  marker='o',color='orange', label=plabel)
+
+            # ECCOFS
+            if eccofs_flag:
+                ax1.plot(edsi['temperature'], edsi['depth'], linestyle='-',  marker='o', color='darkorange', label=elabel)
+                ax2.plot(edsi['salinity'], edsi['depth'], linestyle='-', marker='o', color='darkorange', label=elabel)
+                ax3.plot(edsi['density'], edsi['depth'], linestyle='-',  marker='o',color='darkorange', label=elabel)
+
+
             try:
                 # Get min and max of each plot. Add a delta to each for x limits
                 tmin, tmax = line_limits(ax1, delta=.5)
@@ -622,13 +689,44 @@ def process_argo(region):
                     ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
             except:
                 pass
-            
-            # try:
-            #     ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
-            # except:
-            #     pass   
-            
+
+            try:
+                if np.isnan(ohc_eccofs):
+                    ohc_string += 'ECCOFS: N/A,  '
+                else:
+                    ohc_string += f"ECCOFS: {ohc_eccofs:.4f},  "
+            except:
+                pass
+
+            if nesdis:
+                try:
+                    ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
+                except:
+                    pass
+
             plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
+
+            # Persist the same numbers as a row instead of only a plot
+            # caption — see db.log_ohc_metrics (built for the Platform
+            # ID/date/OHC-at-platform/OHC-at-model(s)/OHC-NESDIS export
+            # table). locals().get() on each model's OHC variable rather
+            # than referencing it directly, since it won't exist at all
+            # when that model's plot_<model> flag is off.
+            log_ohc_metrics([{
+                "platform_type": "argo",
+                "platform_id": str(wmo),
+                "date": pd.to_datetime(tstr).strftime("%Y-%m-%d"),
+                "region": region["folder"],
+                "lat": safe_float(alat),
+                "lon": safe_float(alon),
+                "ohc_platform": safe_float(np.nanmean(locals().get("ohc_float")) if locals().get("ohc_float") is not None else None),
+                "ohc_rtofs": safe_float(locals().get("ohc_rtofs")),
+                "ohc_rtofs_parallel": safe_float(locals().get("ohc_rtofsp")),
+                "ohc_espc": safe_float(locals().get("ohc_espc")),
+                "ohc_cmems": safe_float(locals().get("ohc_cmems")),
+                "ohc_eccofs": safe_float(locals().get("ohc_eccofs")),
+                "ohc_nesdis": safe_float(locals().get("ohc_nesdis")),
+            }])
  
 
             plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)

@@ -33,7 +33,7 @@ from gsw import z_from_p
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
 from cool_maps.plot import get_bathymetry
-from ioos_model_comparisons.calc import lon180to360, lon360to180, density, ocean_heat_content
+from ioos_model_comparisons.calc import lon180to360, lon360to180, density, ocean_heat_content, safe_float
 from ioos_model_comparisons.models import CMEMS, espc_ts
 from ioos_model_comparisons.platforms import (
     ARGO_DATA_QC_VARIABLES,
@@ -41,8 +41,10 @@ from ioos_model_comparisons.platforms import (
     ARGO_LOCATION_QC_VARIABLES,
     ARGO_PROFILE_QC_VARIABLES,
     get_argo_floats_by_time,
+    get_ohc,
 )
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import log_ohc_metrics
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
@@ -56,7 +58,7 @@ dpi = conf.dpi
 plot_espc = True
 plot_cmems = True
 
-float_id = 5904628  # Set to None to plot all floats
+float_id = None  # Set to None to plot all floats
 sal_xlim =None   # Set to None to auto-scale salinity axis
 temp_xlim = None      # Set to None to auto-scale temperature axis
 density_xlim = None  # Set to None to auto-scale density axis
@@ -298,6 +300,19 @@ def process_argo(region_key):
         leg_str = f'Argo #{wmo}\n'
         leg_str += f'ARGO: {tstr}\n'
 
+        # Added for Lev's OHC export table (db.log_ohc_metrics below) —
+        # get_ohc() auto-picks the na/np CoastWatch basin, so no special-
+        # casing is needed for Fiji/Guam's Pacific extent here.
+        try:
+            nesdis = get_ohc(extent, pd.to_datetime(tstr).date())
+        except:
+            nesdis = None
+
+        if nesdis:
+            nesdis = nesdis.squeeze()
+            ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
+            ohc_nesdis = ohc_nesdis.ohc.values
+
         # ── ESPC ──────────────────────────────────────────────────────
         espc_flag = False
         gdsi = None
@@ -434,7 +449,31 @@ def process_argo(region_key):
         except Exception:
             pass
 
+        if nesdis:
+            try:
+                ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
+            except:
+                pass
+
         plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
+
+        # Persist the same numbers as a row instead of only a plot caption —
+        # see db.log_ohc_metrics (built for the Platform ID/date/OHC-at-
+        # platform/OHC-at-model(s)/OHC-NESDIS export table). locals().get()
+        # on each model's OHC variable rather than referencing it directly,
+        # since it may not exist at all if that model's try block above failed.
+        log_ohc_metrics([{
+            "platform_type": "argo",
+            "platform_id": str(wmo),
+            "date": pd.to_datetime(tstr).strftime("%Y-%m-%d"),
+            "region": region["folder"],
+            "lat": safe_float(alat),
+            "lon": safe_float(alon),
+            "ohc_platform": safe_float(np.nanmean(locals().get("ohc_float")) if locals().get("ohc_float") is not None else None),
+            "ohc_espc": safe_float(locals().get("ohc_espc")),
+            "ohc_cmems": safe_float(locals().get("ohc_cmems")),
+            "ohc_nesdis": safe_float(locals().get("ohc_nesdis")),
+        }])
 
         plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
         plt.close()

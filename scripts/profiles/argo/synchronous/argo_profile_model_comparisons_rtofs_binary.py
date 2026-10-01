@@ -46,20 +46,22 @@ from gsw import z_from_p
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
 from cool_maps.plot import get_bathymetry
-from ioos_model_comparisons.calc import lon180to360, lon360to180, density, ocean_heat_content
+from ioos_model_comparisons.calc import lon180to360, lon360to180, density, ocean_heat_content, safe_float
 from ioos_model_comparisons.models import CMEMS, espc_ts, espc_ts_archive
 from ioos_model_comparisons.platforms import (
     ARGO_GOOD_QC_FLAGS,
     get_argo_floats_by_time,
+    get_ohc,
 )
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import log_ohc_metrics
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
 save_dir = conf.path_plots / 'profiles' / 'argo'
 
 # RTOFS binary pre-processed NetCDF directory (created by grab_rtofs_archv_aws.py)
-RTOFS_DATA_DIR = Path("/Volumes/home/hurricaneadm/data/rtofs_archv")
+RTOFS_DATA_DIR = Path("/home/hurricaneadm/data/rtofs_archv")
 
 # Max age difference between an Argo profile and the nearest RTOFS file (hours)
 RTOFS_MAX_HOURS = 12
@@ -73,7 +75,7 @@ plot_espc = True
 plot_cmems = True
 plot_rtofs = True
 
-float_id = [2902818]  # Set to a WMO number or list of WMO numbers to plot only those float(s); None to plot all
+float_id = None  # Set to a WMO number or list of WMO numbers to plot only those float(s); None to plot all
 sal_xlim = None   # Set to None to auto-scale salinity axis
 temp_xlim = None  # Set to None to auto-scale temperature axis
 density_xlim = None  # Set to None to auto-scale density axis
@@ -88,7 +90,7 @@ REGION_MAP_PROJECTION = {
 
 DATA_PROJECTION = ccrs.PlateCarree()
 
-conf.regions = ['guam', 'hawaii']
+conf.regions = ['guam', 'hawaii', 'fiji']
 
 # ── Date range ──────────────────────────────────────────────────────────────
 
@@ -559,6 +561,19 @@ def process_argo(region_key):
             cmems_flag, cdsi, clabel, ohc_cmems = rec['cmems_flag'], rec['cdsi'], rec['clabel'], rec['ohc_cmems']
             rtofs_flag, rdsi, rlabel, ohc_rtofs = rec['rtofs_flag'], rec['rdsi'], rec['rlabel'], rec['ohc_rtofs']
 
+            # Added for Lev's OHC export table (db.log_ohc_metrics below) —
+            # get_ohc() auto-picks the na/np CoastWatch basin, so no special-
+            # casing is needed for this script's Pacific extents here.
+            try:
+                nesdis = get_ohc(extent, pd.to_datetime(tstr).date())
+            except:
+                nesdis = None
+
+            if nesdis:
+                nesdis = nesdis.squeeze()
+                ohc_nesdis = nesdis.sel(longitude=lon, latitude=lat, method='nearest')
+                ohc_nesdis = ohc_nesdis.ohc.values
+
             # ── Figure ────────────────────────────────────────────────────────
             fig = plt.figure(constrained_layout=True, figsize=(16, 6))
             widths = [1, 1, 1, 1.5]
@@ -659,7 +674,32 @@ def process_argo(region_key):
             else:
                 ohc_string += f"RTOFS: {ohc_rtofs:.4f}"
 
+            if nesdis:
+                try:
+                    ohc_string += f",  NESDIS: {ohc_nesdis:.4f}"
+                except:
+                    pass
+
             plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
+
+            # Persist the same numbers as a row instead of only a plot
+            # caption — see db.log_ohc_metrics (built for the Platform
+            # ID/date/OHC-at-platform/OHC-at-model(s)/OHC-NESDIS export
+            # table). This script doesn't compute RTOFS-Parallel/ECCOFS, so
+            # those two stay blank for these rows.
+            log_ohc_metrics([{
+                "platform_type": "argo",
+                "platform_id": str(wmo),
+                "date": pd.to_datetime(tstr).strftime("%Y-%m-%d"),
+                "region": region["folder"],
+                "lat": safe_float(lat),
+                "lon": safe_float(lon),
+                "ohc_platform": safe_float(np.nanmean(ohc_float)),
+                "ohc_rtofs": safe_float(ohc_rtofs),
+                "ohc_espc": safe_float(ohc_espc),
+                "ohc_cmems": safe_float(ohc_cmems),
+                "ohc_nesdis": safe_float(locals().get("ohc_nesdis")),
+            }])
 
             plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()

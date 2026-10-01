@@ -19,10 +19,12 @@ from ioos_model_comparisons.calc import (density,
                                          depth_bin,
                                          depth_interpolate,
                                          difference,
-                                         lon180to360
+                                         lon180to360,
+                                         safe_float,
                                          )
 from ioos_model_comparisons.platforms import get_active_gliders, get_ohc, get_glider_by_id
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import log_ohc_metrics
 import pandas
 import matplotlib.pyplot as plt
 import re
@@ -777,8 +779,33 @@ def plot_glider_profiles(id, gliders):
                 ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
             except:
                 pass
-            
+
         plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
+
+        # Persist the same numbers as a row instead of only a plot caption —
+        # see db.log_ohc_metrics (built for the Platform ID/date/OHC-at-
+        # platform/OHC-at-model(s)/OHC-NESDIS export table). locals().get()
+        # on each model's OHC variable rather than referencing it directly,
+        # since it won't exist at all when that model's plot_<model> flag is off.
+        try:
+            glider_ohc_mean = np.nanmean(ohc_glider)
+        except Exception:
+            glider_ohc_mean = None
+        log_ohc_metrics([{
+            "platform_type": "glider",
+            "platform_id": glid,
+            "date": t0.strftime("%Y-%m-%d") if hasattr(t0, "strftime") else str(t0),
+            "region": found[1] if 'redwing' not in id else "redwing",
+            "lat": safe_float(mlat),
+            "lon": safe_float(mlon),
+            "ohc_platform": safe_float(glider_ohc_mean),
+            "ohc_rtofs": safe_float(locals().get("ohc_rtofs")),
+            "ohc_rtofs_parallel": safe_float(locals().get("ohc_rtofsp")),
+            "ohc_espc": safe_float(locals().get("ohc_espc")),
+            "ohc_cmems": safe_float(locals().get("ohc_cmems")),
+            "ohc_eccofs": safe_float(locals().get("ohc_eccofs")),
+            "ohc_nesdis": safe_float(locals().get("ohc_nesdis")),
+        }])
 
         plt.savefig(fullfile, dpi=configs.dpi, bbox_inches='tight', pad_inches=0.1)
         plt.close()

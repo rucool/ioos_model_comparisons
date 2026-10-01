@@ -9,14 +9,16 @@ import scipy.stats as stats
 import xarray as xr
 from ioos_model_comparisons.calc import (
     # depth_interpolate,
-    lon180to360, 
-    lon360to180, 
-    difference, 
+    lon180to360,
+    lon360to180,
+    difference,
     density,
-    ocean_heat_content
+    ocean_heat_content,
+    safe_float,
     )
 from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_ohc
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.db import log_ohc_metrics
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
 from gsw import z_from_p
@@ -303,10 +305,20 @@ def process_argo(region):
             leg_str = f'Argo #{wmo}\n'
             leg_str += f'ARGO: { tstr }\n'
 
-            # nesdis = get_ohc(extent, pd.to_datetime(tstr).date())   
-            # nesdis = nesdis.squeeze()
-            # ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
-            # ohc_nesdis = ohc_nesdis.ohc.values
+            # Re-enabled for Lev's OHC export table (db.log_ohc_metrics below)
+            # — gliders' equivalent script already computes this the same way.
+            # This region's extent wraps the antimeridian in a form get_ohc()
+            # may not handle; the bare except below degrades to NESDIS: N/A
+            # rather than crashing the run if so.
+            try:
+                nesdis = get_ohc(extent, pd.to_datetime(tstr).date())
+            except:
+                nesdis = None
+
+            if nesdis:
+                nesdis = nesdis.squeeze()
+                ohc_nesdis = nesdis.sel(longitude=alon, latitude=alat, method='nearest')
+                ohc_nesdis = ohc_nesdis.ohc.values
             
             if plot_espc:
                 try:
@@ -625,13 +637,35 @@ def process_argo(region):
             except:
                 pass
             
-            # try:
-            #     ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
-            # except:
-            #     pass   
-            
+            if nesdis:
+                try:
+                    ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
+                except:
+                    pass
+
             plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
- 
+
+            # Persist the same numbers as a row instead of only a plot
+            # caption — see db.log_ohc_metrics (built for the Platform
+            # ID/date/OHC-at-platform/OHC-at-model(s)/OHC-NESDIS export
+            # table). locals().get() on each model's OHC variable rather
+            # than referencing it directly, since it won't exist at all
+            # when that model's plot_<model> flag is off.
+            log_ohc_metrics([{
+                "platform_type": "argo",
+                "platform_id": str(wmo),
+                "date": pd.to_datetime(tstr).strftime("%Y-%m-%d"),
+                "region": region["folder"],
+                "lat": safe_float(alat),
+                "lon": safe_float(alon),
+                "ohc_platform": safe_float(np.nanmean(locals().get("ohc_float")) if locals().get("ohc_float") is not None else None),
+                "ohc_rtofs": safe_float(locals().get("ohc_rtofs")),
+                "ohc_rtofs_parallel": safe_float(locals().get("ohc_rtofsp")),
+                "ohc_espc": safe_float(locals().get("ohc_espc")),
+                "ohc_cmems": safe_float(locals().get("ohc_cmems")),
+                "ohc_eccofs": safe_float(locals().get("ohc_eccofs")),
+                "ohc_nesdis": safe_float(locals().get("ohc_nesdis")),
+            }])
 
             plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
             plt.close()
