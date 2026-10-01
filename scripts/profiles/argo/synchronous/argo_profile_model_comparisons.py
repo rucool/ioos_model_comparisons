@@ -41,6 +41,11 @@ plot_cmems = True
 plot_para = False
 plot_eccofs = True
 
+# Set True to regenerate every plot even if its PNG already exists for that
+# float/day — otherwise an already-plotted float/day is skipped (see
+# profile_exist below).
+force_replot = False
+
 # Set to a list of WMO ids to plot only those floats, or None to plot all
 argos = None
 days = 2
@@ -268,10 +273,15 @@ def process_argo(region):
         else:
             print(f"Processing ARGO {wmo} profile that occured at {ctime}")
             # Profile does not exist yet
-            profile_exist = False   
+            profile_exist = False
 
-
-        if not (profile_exist) or not (profile_diff_exist):
+        # profile_diff_exist is tied to the difference-plot feature below,
+        # which is entirely commented out — diff_file is therefore never
+        # actually written, so profile_diff_exist was always False and this
+        # check always reprocessed every float/day regardless of
+        # profile_exist. force_replot is the explicit, intentional version
+        # of that; profile_exist alone now drives the normal skip.
+        if force_replot or not profile_exist:
             # # Calculate depth from pressure and lat
             df = df.assign(depth=-z_from_p(df['pres (decibar)'].values, df['lat'].values))
 
@@ -531,8 +541,13 @@ def process_argo(region):
             else:
                 eccofs_flag = False
 
-        # Plot the argo profile
-        if not profile_exist:
+        # Plot the argo profile. Without force_replot, this must stay
+        # conditioned on profile_exist alone — the outer block can be
+        # entered with profile_exist True (force_replot path), and if this
+        # didn't also check force_replot, no fig/axes would exist here and
+        # the plt.savefig() below would silently save whatever figure was
+        # last left open by a previous float.
+        if force_replot or not profile_exist:
             fig = plt.figure(constrained_layout=True, figsize=(16, 6))
             widths = [1, 1, 1, 1.5]
             heights = [1, 2, 1]
@@ -734,8 +749,18 @@ def process_argo(region):
             
             # Create a symlink directory
             if ctime > then:
-                os.symlink(full_file, symlink_dir / save_str)
-                
+                symlink_path = symlink_dir / save_str
+                # Reprocessing a profile whose png already existed (e.g. only
+                # its difference plot was missing) hits this again on a
+                # symlink already created by the earlier run — symlink()
+                # doesn't overwrite, so guard it the same way the glider
+                # scripts already do.
+                if not symlink_path.exists():
+                    try:
+                        os.symlink(full_file, symlink_path)
+                    except FileExistsError:
+                        pass
+
                 # Update locations.json
                 locations_file = symlink_dir / 'locations.json'
                 import json

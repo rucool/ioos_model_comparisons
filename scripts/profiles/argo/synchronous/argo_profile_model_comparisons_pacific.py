@@ -737,7 +737,17 @@ def process_argo(region):
 
                 # Create a symlink directory
                 if ctime > then:
-                    os.symlink(full_file, symlink_dir / save_str)
+                    symlink_path = symlink_dir / save_str
+                    # Reprocessing a profile whose png already existed (e.g.
+                    # only its difference plot was missing) hits this again
+                    # on a symlink already created by the earlier run —
+                    # symlink() doesn't overwrite, so guard it the same way
+                    # the glider scripts already do.
+                    if not symlink_path.exists():
+                        try:
+                            os.symlink(full_file, symlink_path)
+                        except FileExistsError:
+                            pass
 
                     locations_file = symlink_dir / 'locations.json'
                     locations = {}
