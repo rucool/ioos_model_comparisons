@@ -1,5 +1,6 @@
 import datetime as dt
 import inspect
+import io
 import multiprocessing
 from collections import namedtuple
 from pprint import pprint
@@ -9,6 +10,7 @@ from urllib.error import URLError
 import httpx
 import numpy as np
 import pandas as pd
+import requests
 from erddapy import ERDDAP
 from joblib import Parallel, delayed
 from numpy import isin
@@ -510,11 +512,14 @@ def get_ohc(bbox=None, time=None):
     lat_min, lat_max = min(lats), max(lats)
     lon_min, lon_max = min(lons), max(lons)
 
-    # CoastWatch publishes this OHC product as separate per-basin THREDDS
-    # aggregations. Each basin has a "Daily"-composite dataset (Apr 2020-Jan
-    # 2024) and a "14Day"-composite one (Jan 2024-present). "NA" (northwest
-    # Atlantic) is native -180/180; "NP" (north Pacific) is native 0-360, so
-    # its query longitudes and the returned coordinate need converting.
+    # CoastWatch publishes this OHC product as separate per-basin datasets,
+    # on two servers (ERDDAP griddap and a THREDDS/OpenDAP aggregation) —
+    # each has gone down independently at different times, so this tries one
+    # and falls back to the other rather than depending on either alone.
+    # Each basin has a "Daily"-composite dataset (Apr 2020-Jan 2024) and a
+    # "14Day"-composite one (Jan 2024-present). "NA" (northwest Atlantic) is
+    # native -180/180; "NP" (north Pacific) is native 0-360, so its query
+    # longitudes and the returned coordinate need converting.
     if -100 <= lon_min and lon_max <= 0:
         basin = "NA"
     else:
@@ -528,41 +533,71 @@ def get_ohc(bbox=None, time=None):
             print(f"No NESDIS OHC dataset covers lon [{lon_min}, {lon_max}] — defaulting to Atlantic.")
             basin = "NA"
 
-    product = "14DayAgg" if date >= dt.date(2024, 1, 15) else "DailyAgg"
-    dataset_id = f"OHC{basin}{product}"
+    is_14day = date >= dt.date(2024, 1, 15)
 
     if basin == "NP":
-        lon_min, lon_max = lon_min % 360, lon_max % 360
+        lon_min_360, lon_max_360 = lon_min % 360, lon_max % 360
+    else:
+        lon_min_360, lon_max_360 = lon_min, lon_max
 
-    # CoastWatch's ERDDAP griddap endpoint has been unreachable, so this goes
-    # straight at the aggregated THREDDS/OpenDAP dataset instead (same
-    # approach as get_goes() below) and slices it with xarray rather than an
-    # ERDDAP bracket query.
-    url = f"https://coastwatch.noaa.gov/thredds/dodsC/{dataset_id}"
+    def _from_erddap():
+        # Dataset IDs use lowercase basin suffixes here, unlike THREDDS's
+        # (see _from_thredds). Build the griddap URL directly rather than
+        # going through erddapy's griddap_initialize(), which hits the .dds
+        # metadata endpoint — that returns 403 on CoastWatch even though the
+        # data itself is public.
+        dataset_id = f"{'noaacwOHC14' if is_14day else 'noaacwOHC'}{basin.lower()}"
+        time_str = f"{date}T12:00:00Z"
+        url = (
+            f"https://coastwatch.noaa.gov/erddap/griddap/{dataset_id}.nc"
+            f"?ohc[({time_str})]"
+            f"[({lat_min}):1:({lat_max})]"
+            f"[({lon_min_360}):1:({lon_max_360})]"
+        )
+        # CoastWatch's ERDDAP blocks requests without a browser-like
+        # User-Agent (403, even though the data is public).
+        headers = {"User-Agent": "Mozilla/5.0"}
+        response = requests.get(url, timeout=60, headers=headers)
+        response.raise_for_status()
+        # .load() so the sortby() below (needed for the NP basin) doesn't
+        # operate on a still-lazy scipy-backed array, which errors on the
+        # fancy indexing sortby requires.
+        return xr.open_dataset(io.BytesIO(response.content)).load()
 
-    # Use noon as the target time; nearest available step is used since this
-    # is a daily/14-day composite, not necessarily an exact match.
-    target_time = pd.Timestamp(date) + pd.Timedelta(hours=12)
+    def _from_thredds():
+        dataset_id = f"OHC{basin}{'14DayAgg' if is_14day else 'DailyAgg'}"
+        url = f"https://coastwatch.noaa.gov/thredds/dodsC/{dataset_id}"
 
-    try:
+        # Use noon as the target time; nearest available step is used since
+        # this is a daily/14-day composite, not necessarily an exact match.
+        target_time = pd.Timestamp(date) + pd.Timedelta(hours=12)
+
         ds = xr.open_dataset(url)[['ohc']]
         ds = ds.sel(time=target_time, method='nearest', tolerance=pd.Timedelta(days=1))
 
         # Bounding-box subset by index position rather than .sel(slice(...)),
         # since we don't know this dataset's lat/lon storage order upfront.
         lat_idx = np.where((ds.latitude.values >= lat_min) & (ds.latitude.values <= lat_max))[0]
-        lon_idx = np.where((ds.longitude.values >= lon_min) & (ds.longitude.values <= lon_max))[0]
+        lon_idx = np.where((ds.longitude.values >= lon_min_360) & (ds.longitude.values <= lon_max_360))[0]
         if len(lat_idx) == 0 or len(lon_idx) == 0:
-            print("No data available for this bounding box.")
-            return
+            raise ValueError("No data available for this bounding box.")
         ds = ds.isel(
             latitude=slice(lat_idx.min(), lat_idx.max() + 1),
             longitude=slice(lon_idx.min(), lon_idx.max() + 1),
         )
-        ds = ds.load()
-    except Exception as e:
-        print(f"No data available for this time period: {e}")
-        return
+        return ds.load()
+
+    try:
+        ds = _from_erddap()
+    except Exception as erddap_exc:
+        try:
+            ds = _from_thredds()
+        except Exception as thredds_exc:
+            print(
+                f"No data available for this time period "
+                f"(ERDDAP: {erddap_exc}; THREDDS: {thredds_exc})"
+            )
+            return
 
     if basin == "NP":
         # Convert the returned coordinate back to -180/180 to match the rest
