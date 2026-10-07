@@ -21,7 +21,12 @@ elif platform == "darwin":
     # Windows...
 
 # Paths to data sources
-path_data = current_dir.with_name('data') # data path relative to the toolbox 
+if platform == "linux" or platform == "linux2":
+    # server
+    path_data = Path("/home/hurricaneadm/data")
+else:
+    # local
+    path_data = current_dir.with_name('data') # data path relative to the toolbox
 
 # Configurations for contour maps 
 regions = [
