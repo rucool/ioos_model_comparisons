@@ -351,7 +351,7 @@ def process_scene(sst, age, actual_time, *, extent, out_dir, opts=None,
     # (scripts/profiles/), so a model reads the same everywhere. Models that
     # never appear there fall back to the extra colors, in order.
     MODEL_COLORS = {"ESPC": "green", "RTOFS": "red", "RTOFS-P": "orange",
-                    "CMEMS": "magenta", "ECCOFS": "darkorange"}
+                    "CMEMS": "magenta", "ECCOFS": "white"}
     FALLBACK_COLORS = ['dodgerblue', 'purple', 'gold', 'saddlebrown', 'deeppink']
 
     def build_map(field_kind):

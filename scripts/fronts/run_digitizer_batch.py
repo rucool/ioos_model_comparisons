@@ -54,6 +54,8 @@ def parse_args():
                    help="skip the two per-day figures (overlays are still written, "
                         "since the editor needs them)")
     p.add_argument("--no-eddies", action="store_true", help="skip altimetry rings")
+    p.add_argument("--no-gliders", action="store_true",
+                   help="don't fetch or draw active glider tracks")
     p.add_argument("--no-eddy-coupling", action="store_true")
     p.add_argument("--no-mongo", action="store_true", help="files only")
     p.add_argument("--force-auto", action="store_true",
@@ -91,6 +93,7 @@ def main():
         max_displacement_km=args.max_displacement_km,
         max_local_west_km=args.max_local_west_km,
         min_eddy_days=args.min_eddy_days, no_eddies=args.no_eddies,
+        no_gliders=args.no_gliders,
         no_eddy_coupling=args.no_eddy_coupling, no_mongo=args.no_mongo,
         force_auto=args.force_auto, no_plots=args.no_plots,
         verbose=args.verbose)
