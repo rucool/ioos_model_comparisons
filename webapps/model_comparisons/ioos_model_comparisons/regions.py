@@ -21,6 +21,7 @@ def region_config(regions=None, model=None):
     # dict(depth=n, limits=[min, max, stride])  
 
     # Defaults
+    name = None  # set by whichever region block below matches
     eez = False
     ocean_heat_content = False
     salinity_max = False
@@ -1230,6 +1231,12 @@ def region_config(regions=None, model=None):
         figure = dict(
             legend=dict(columns=5),
             figsize=(14, 8)
+        )
+
+    if name is None:
+        raise ValueError(
+            f"Unknown region {regions!r}: no matching region is defined in "
+            f"regions.py (check spelling; keys use underscores, e.g. 'mexico_pacific')."
         )
 
     # Create subdirectory for data variables
