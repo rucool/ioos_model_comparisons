@@ -645,8 +645,18 @@ def plot_glider_profiles(id, gliders):
 
         # plt.figtext(0.15, 0.001, f'Depths interpolated to every {configs.stride}m', ha="center", fontsize=10, fontstyle='italic')
 
-        fig.tight_layout()
-        fig.subplots_adjust(top=0.9)
+        # Fixed axes positions on a fixed-size canvas (and no bbox_inches="tight"
+        # crop at save time) so every plot's axes sit in exactly the same place;
+        # otherwise the crop shifts with tick-label widths and plots "jump" when
+        # flipped through in a slideshow.
+        fig.set_layout_engine('none')
+        _b, _h = 0.20, 0.77
+        tax.set_position([0.075, _b, 0.19, _h])
+        sax.set_position([0.305, _b, 0.19, _h])
+        dax.set_position([0.535, _b, 0.19, _h])
+        ax4.set_position([0.775, 0.80, 0.215, 0.17])
+        mpax.set_position([0.81, 0.46, 0.165, 0.32])
+        lax.set_position([0.775, _b, 0.215, 0.18])
 
         ohc_string = 'Ocean Heat Content (kJ/cm^2) - '
         try:
@@ -695,7 +705,12 @@ def plot_glider_profiles(id, gliders):
             except:
                 pass
 
-        plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
+        # Large for slides, but shrink-to-fit so it never widens the saved
+        # image (bbox_inches="tight" would otherwise stretch the whitespace).
+        _ohc_txt = fig.text(0.5, 0.012, ohc_string, ha="center", va="bottom", fontsize=16, fontweight="bold")
+        _w = _ohc_txt.get_window_extent(fig.canvas.get_renderer()).width
+        if _w > 0.97 * fig.bbox.width:
+            _ohc_txt.set_fontsize(16 * 0.97 * fig.bbox.width / _w)
 
         # Persist the same numbers as a row instead of only a plot caption —
         # see db.log_ohc_metrics (built for the Platform ID/date/OHC-at-
@@ -722,7 +737,7 @@ def plot_glider_profiles(id, gliders):
             "ohc_nesdis": safe_float(locals().get("ohc_nesdis")),
         }])
 
-        plt.savefig(fullfile, dpi=configs.dpi, bbox_inches='tight', pad_inches=0.1)
+        plt.savefig(fullfile, dpi=configs.dpi)
         plt.close()
 
         # Save dated locations.json

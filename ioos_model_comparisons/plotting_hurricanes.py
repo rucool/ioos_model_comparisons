@@ -51,6 +51,25 @@ bbox_prop = {'facecolor':'white',
              'boxstyle':'round,pad=0.3'}
 
 
+def _in_view(ax, lon, lat, proj=ccrs.PlateCarree()):
+    """True if (lon, lat) falls inside the axes' current map extent.
+
+    Matplotlib text isn't reliably clipped to the axes, so labels for points
+    outside the plotted region would otherwise show up beside the map.
+    """
+    try:
+        x0, x1, y0, y1 = ax.get_extent(proj)
+    except Exception:
+        return True
+    if np.isnan(lon) or np.isnan(lat):
+        return False
+    if not (y0 <= lat <= y1):
+        return False
+    # Compare longitudes modulo 360 so antimeridian regions work
+    span = (x1 - x0) % 360 or 360
+    return ((lon - x0) % 360) <= span
+
+
 def plot_storms(ax, storms, forecasts, zorder=0, proj=ccrs.PlateCarree()):
     #Iterate over all storms
     for storm_idx, storm in enumerate(storms):
@@ -83,6 +102,7 @@ def plot_storms(ax, storms, forecasts, zorder=0, proj=ccrs.PlateCarree()):
                         fontsize=invest_prop['fontsize'],
                         clip_on=True,
                         bbox=bbox_prop)
+            a.set_visible(_in_view(ax, storm.lon[-1], storm.lat[-1]))
             
             a.set_path_effects(
                 [path_effects.Stroke(linewidth=0.5, foreground='w'), path_effects.Normal()]
@@ -132,14 +152,15 @@ def plot_storms(ax, storms, forecasts, zorder=0, proj=ccrs.PlateCarree()):
                     textcolor = 'w'
                     if (red*0.299 + green*0.587 + blue*0.114) > (160.0/255.0):
                         textcolor = 'k'
-                    ax.text(storm.lon[-1], storm.lat[-1], category, 
-                            fontsize=storm_prop['ms']*0.83,
-                            ha='center',
-                            va='center',
-                            color=textcolor,
-                            zorder=90,
-                            transform=proj,
-                            clip_on=True)
+                    if _in_view(ax, storm.lon[-1], storm.lat[-1]):
+                        ax.text(storm.lon[-1], storm.lat[-1], category, 
+                                fontsize=storm_prop['ms']*0.83,
+                                ha='center',
+                                va='center',
+                                color=textcolor,
+                                zorder=90,
+                                transform=proj,
+                                clip_on=True)
             else:
                 ax.plot(
                     storm.lon[-1],
@@ -178,6 +199,7 @@ def plot_storms(ax, storms, forecasts, zorder=0, proj=ccrs.PlateCarree()):
                         fontsize=storm_prop['fontsize'],
                         clip_on=True,
                         bbox=bbox_prop)
+            a.set_visible(_in_view(ax, storm.lon[-1], storm.lat[-1]))
             a.set_path_effects([path_effects.Stroke(linewidth=0.5,foreground='w'), path_effects.Normal()])
             
             #Plot previous track
@@ -256,7 +278,8 @@ def plot_storms(ax, storms, forecasts, zorder=0, proj=ccrs.PlateCarree()):
                         transform=proj,
                         clip_on=True)
 
-                if cone_prop['label_category'] and marker == 'o':
+                if (cone_prop['label_category'] and marker == 'o'
+                        and _in_view(ax, forecast_dict['lon'][idx], forecast_dict['lat'][idx])):
                     category = str(wind_to_category(forecast_dict['vmax'][idx]))
                     if category == "0": 
                         category = 'S'

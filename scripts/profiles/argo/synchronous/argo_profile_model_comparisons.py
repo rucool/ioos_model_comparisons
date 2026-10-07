@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import xarray as xr
+from matplotlib.lines import Line2D
 from ioos_model_comparisons.calc import (
     # depth_interpolate,
     lon180to360,
@@ -16,7 +17,11 @@ from ioos_model_comparisons.calc import (
     ocean_heat_content,
     safe_float,
     )
-from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_ohc
+from ioos_model_comparisons.platforms import (
+    ARGO_GOOD_QC_FLAGS,
+    get_argo_floats_by_time,
+    get_ohc,
+)
 from ioos_model_comparisons.regions import region_config
 from ioos_model_comparisons.db import log_ohc_metrics
 import ioos_model_comparisons.configs as conf
@@ -118,7 +123,8 @@ date_fmt = "%Y-%m-%dT%H:%MZ"
 floats = get_argo_floats_by_time(global_extent,
                                  date_start,
                                  date_end, 
-                                 variables=vars)
+                                 variables=vars,
+                                 include_qc=True)
 # print('Execution time in seconds: ' + str(time.time() - startTime))
 # search_window_t = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
 # search_window_t1 = ctime.strftime(tstr) 
@@ -134,7 +140,7 @@ floats = floats[depth_mask]
 # Restrict to specific floats, if requested
 if argos:
     argos = [str(a) for a in argos]
-    floats = floats[floats.index.get_level_values('argo').isin(argos)]
+    floats = floats[floats.index.get_level_values('argo').astype(str).isin(argos)]
 
 # Pre-fetch ECCOFS his files for every distinct calendar day among the
 # loaded Argo profiles, before process_argo() gets dispatched across
@@ -151,6 +157,85 @@ if plot_eccofs and not floats.empty:
 levels = [-8000, -1000, -100, 0]
 colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
 
+ARGO_TEMP_POINT_QC_COLUMNS = ('temp_qc',)
+ARGO_SALINITY_POINT_QC_COLUMNS = ('psal_qc',)
+ARGO_DENSITY_POINT_QC_COLUMNS = ('pres_qc', 'temp_qc', 'psal_qc')
+QC_FLAGGED_HANDLE = Line2D(
+    [0], [0],
+    linestyle='None',
+    marker='o',
+    markerfacecolor='none',
+    markeredgecolor='red',
+    markeredgewidth=1.5,
+    markersize=7,
+    label='Argo QC flagged (not in line)',
+)
+
+
+def normalize_qc_flag(value):
+    if pd.isna(value):
+        return None
+    value = str(value).strip()
+    return value or None
+
+
+def qc_flag_mask(df, columns):
+    columns = [column for column in columns if column in df.columns]
+    if not columns:
+        return pd.Series(False, index=df.index)
+
+    mask = pd.Series(False, index=df.index)
+    for column in columns:
+        flags = df[column].map(normalize_qc_flag)
+        mask |= flags.notna() & ~flags.isin(ARGO_GOOD_QC_FLAGS)
+    return mask.fillna(False)
+
+
+def profile_qc_value(df, column):
+    if column not in df.columns:
+        return 'NA'
+
+    values = [value for value in df[column].map(normalize_qc_flag).dropna().unique().tolist() if value]
+    if not values:
+        return 'NA'
+    if len(values) == 1:
+        return values[0]
+    return ','.join(values[:3]) + ('+' if len(values) > 3 else '')
+
+
+def annotate_flagged(ax, values, mask, unit, loc='upper left'):
+    """Label how many levels were QC-flagged and their value range, since
+    flagged values are hidden from the profile line and may fall outside the
+    axis limits."""
+    n = int(mask.sum())
+    if not n:
+        return
+    flagged = values[mask]
+    flagged = flagged[np.isfinite(flagged)]
+    rng = f'{flagged.min():.2f} to {flagged.max():.2f} {unit}' if len(flagged) else 'n/a'
+    x, y, va = (0.03, 0.97, 'top') if loc == 'upper left' else (0.03, 0.03, 'bottom')
+    ax.text(
+        x, y, f'{n}/{len(mask)} levels QC-flagged\n{rng}',
+        transform=ax.transAxes, ha='left', va=va, fontsize=9,
+        fontweight='bold', color='red', zorder=30,
+        bbox=dict(facecolor='white', edgecolor='red', alpha=0.9,
+                  boxstyle='round,pad=0.25'),
+    )
+
+
+def add_flagged_points(ax, x, y, mask):
+    if bool(mask.any()):
+        ax.scatter(
+            x[mask],
+            y[mask],
+            s=42,
+            facecolors='none',
+            edgecolors='red',
+            linewidths=1.5,
+            zorder=20,
+        )
+
+
 def line_limits(fax, delta=1):
     """Function to get the minimum and maximum of a series of lines from a
     Matplotlib axis.
@@ -162,9 +247,13 @@ def line_limits(fax, delta=1):
     Returns:
         _type_: _description_
     """
-    mins = [np.nanmin(line.get_xdata()) for line in fax.lines]
-    maxs = [np.nanmax(line.get_xdata()) for line in fax.lines]
-    return min(mins)-delta, max(maxs)+delta
+    # Ignore NaN/inf so QC-masked (all-NaN) lines can't break the limits.
+    xdata = [np.asarray(line.get_xdata(), dtype=float) for line in fax.lines]
+    xdata = [x[np.isfinite(x)] for x in xdata]
+    xdata = [x for x in xdata if x.size]
+    if not xdata:
+        return None, None  # let matplotlib autoscale
+    return min(x.min() for x in xdata)-delta, max(x.max() for x in xdata)+delta
 
 
 def process_argo(region):    
@@ -304,11 +393,22 @@ def process_argo(region):
                 )
             )
 
-            ohc_float = ocean_heat_content(
-                df['depth'],
-                df['temp (degree_Celsius)'],
-                df['density']
-                )
+            temp_flagged = qc_flag_mask(df, ARGO_TEMP_POINT_QC_COLUMNS)
+            salinity_flagged = qc_flag_mask(df, ARGO_SALINITY_POINT_QC_COLUMNS)
+            density_flagged = qc_flag_mask(df, ARGO_DENSITY_POINT_QC_COLUMNS)
+            any_flagged = bool(temp_flagged.any() or salinity_flagged.any() or density_flagged.any())
+
+            # OHC only from levels whose temperature and density passed QC;
+            # a bad salinity makes density (and so OHC) meaningless.
+            good = ~(temp_flagged | density_flagged)
+            if good.any():
+                ohc_float = ocean_heat_content(
+                    df.loc[good, 'depth'],
+                    df.loc[good, 'temp (degree_Celsius)'],
+                    df.loc[good, 'density']
+                    )
+            else:
+                ohc_float = np.array([np.nan])
 
             # Interpolate argo profile to configuration depths
             # df = depth_interpolate(df, 
@@ -541,6 +641,14 @@ def process_argo(region):
             else:
                 eccofs_flag = False
 
+            if any_flagged:
+                leg_str += (
+                    f'QC flagged pts T/S/D: '
+                    f'{int(temp_flagged.sum())}/{int(salinity_flagged.sum())}/{int(density_flagged.sum())}\n'
+                )
+            else:
+                leg_str += 'All levels passed QC (flag 1)\n'
+
         # Plot the argo profile. Without force_replot, this must stay
         # conditioned on profile_exist alone — the outer block can be
         # entered with profile_exist True (force_replot path), and if this
@@ -550,7 +658,7 @@ def process_argo(region):
         if force_replot or not profile_exist:
             fig = plt.figure(constrained_layout=True, figsize=(16, 6))
             widths = [1, 1, 1, 1.5]
-            heights = [1, 2, 1]
+            heights = [1.6, 2, 1]
 
             gs = fig.add_gridspec(3, 4, width_ratios=widths,
                                     height_ratios=heights)
@@ -565,9 +673,17 @@ def process_argo(region):
             ax6 = fig.add_subplot(gs[2, -1]) # Legend
 
             # ARGO 
-            ax1.plot(df['temp (degree_Celsius)'], df['depth'], 'b-o', label=alabel)
-            ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
-            ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
+            # QC-flagged levels are left out of the line (and so the axis
+            # limits) and drawn as red open circles instead.
+            ax1.plot(df['temp (degree_Celsius)'].mask(temp_flagged), df['depth'], 'b-o', label=alabel)
+            ax2.plot(df['psal (PSU)'].mask(salinity_flagged), df['depth'], 'b-o', label=alabel)
+            ax3.plot(df['density'].mask(density_flagged), df['depth'], 'b-o', label=alabel)
+            add_flagged_points(ax1, df['temp (degree_Celsius)'], df['depth'], temp_flagged)
+            add_flagged_points(ax2, df['psal (PSU)'], df['depth'], salinity_flagged)
+            add_flagged_points(ax3, df['density'], df['depth'], density_flagged)
+            annotate_flagged(ax1, df['temp (degree_Celsius)'], temp_flagged, '˚C', 'upper left')
+            annotate_flagged(ax2, df['psal (PSU)'], salinity_flagged, 'PSU', 'upper left')
+            annotate_flagged(ax3, df['density'], density_flagged, 'kg m-3', 'lower left')
 
             # ESPC
             if espc_flag:
@@ -655,8 +771,11 @@ def process_argo(region):
                         )
                 except shapely.errors.GEOSException:
                     pass
-        
+
             h, l = ax2.get_legend_handles_labels()  # get labels and handles from ax1
+            if any_flagged:
+                h.append(QC_FLAGGED_HANDLE)
+                l.append(QC_FLAGGED_HANDLE.get_label())
 
             ax6.legend(h, l, ncol=1, loc='center', fontsize=12)
             ax6.set_axis_off()
@@ -669,7 +788,7 @@ def process_argo(region):
                 if np.isnan(np.nanmean(ohc_float)):
                     ohc_string += 'Argo: N/A,  '
                 else:
-                    ohc_string += f"Argo: {np.nanmean(ohc_float):.4f},  "
+                    ohc_string += f"Argo: {np.nanmean(ohc_float):.2f},  "
             except:
                 pass
             
@@ -677,7 +796,7 @@ def process_argo(region):
                 if np.isnan(ohc_rtofs):
                     ohc_string += 'RTOFS: N/A,  '
                 else:
-                    ohc_string += f"RTOFS: {ohc_rtofs:.4f},  "
+                    ohc_string += f"RTOFS: {ohc_rtofs:.2f},  "
             except:
                 pass
 
@@ -685,7 +804,7 @@ def process_argo(region):
                 if np.isnan(ohc_rtofsp):
                     ohc_string += 'RTOFS (Parallel): N/A,  '
                 else:
-                    ohc_string += f"RTOFS (Parallel): {ohc_rtofsp:.4f},  "
+                    ohc_string += f"RTOFS (Parallel): {ohc_rtofsp:.2f},  "
             except:
                 pass
             
@@ -693,7 +812,7 @@ def process_argo(region):
                 if np.isnan(ohc_espc):
                     ohc_string += 'ESPC: N/A,  '
                 else:
-                    ohc_string += f"ESPC: {ohc_espc:.4f},  "
+                    ohc_string += f"ESPC: {ohc_espc:.2f},  "
             except:
                 pass
                 
@@ -701,7 +820,7 @@ def process_argo(region):
                 if np.isnan(ohc_cmems):
                     ohc_string += 'CMEMS: N/A,  '
                 else:
-                    ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
+                    ohc_string += f"CMEMS: {ohc_cmems:.2f},  "
             except:
                 pass
 
@@ -709,17 +828,17 @@ def process_argo(region):
                 if np.isnan(ohc_eccofs):
                     ohc_string += 'ECCOFS: N/A,  '
                 else:
-                    ohc_string += f"ECCOFS: {ohc_eccofs:.4f},  "
+                    ohc_string += f"ECCOFS: {ohc_eccofs:.2f},  "
             except:
                 pass
 
             if nesdis:
                 try:
-                    ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
+                    ohc_string += f"NESDIS: {ohc_nesdis:.2f},  "
                 except:
                     pass
 
-            plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
+            plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=12, fontweight='bold', color='black')
 
             # Persist the same numbers as a row instead of only a plot
             # caption — see db.log_ohc_metrics (built for the Platform

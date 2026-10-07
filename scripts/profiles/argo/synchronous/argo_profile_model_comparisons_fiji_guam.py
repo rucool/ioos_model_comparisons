@@ -100,7 +100,7 @@ QC_FLAGGED_HANDLE = Line2D(
     markeredgecolor='red',
     markeredgewidth=1.5,
     markersize=7,
-    label='Argo QC flagged',
+    label='Argo QC flagged (not in line)',
 )
 
 # ── Global argo fetch extent (covers Fiji platform zone + Guam) ─────────────
@@ -137,9 +137,13 @@ colors = ['cornflowerblue', cfeature.COLORS['water'], 'lightsteelblue']
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 def line_limits(fax, delta=1):
-    mins = [np.nanmin(line.get_xdata()) for line in fax.lines]
-    maxs = [np.nanmax(line.get_xdata()) for line in fax.lines]
-    return min(mins) - delta, max(maxs) + delta
+    # Ignore NaN/inf so QC-masked (all-NaN) lines can't break the limits.
+    xdata = [np.asarray(line.get_xdata(), dtype=float) for line in fax.lines]
+    xdata = [x[np.isfinite(x)] for x in xdata]
+    xdata = [x for x in xdata if x.size]
+    if not xdata:
+        return None, None  # let matplotlib autoscale
+    return min(x.min() for x in xdata)-delta, max(x.max() for x in xdata)+delta
 
 
 def normalize_qc_flag(value):
@@ -169,6 +173,26 @@ def profile_qc_value(df, column):
     if len(values) == 1:
         return values[0]
     return ','.join(values[:3]) + ('+' if len(values) > 3 else '')
+
+
+def annotate_flagged(ax, values, mask, unit, loc='upper left'):
+    """Label how many levels were QC-flagged and their value range, since
+    flagged values are hidden from the profile line and may fall outside the
+    axis limits."""
+    n = int(mask.sum())
+    if not n:
+        return
+    flagged = values[mask]
+    flagged = flagged[np.isfinite(flagged)]
+    rng = f'{flagged.min():.2f} to {flagged.max():.2f} {unit}' if len(flagged) else 'n/a'
+    x, y, va = (0.03, 0.97, 'top') if loc == 'upper left' else (0.03, 0.03, 'bottom')
+    ax.text(
+        x, y, f'{n}/{len(mask)} levels QC-flagged\n{rng}',
+        transform=ax.transAxes, ha='left', va=va, fontsize=9,
+        fontweight='bold', color='red', zorder=30,
+        bbox=dict(facecolor='white', edgecolor='red', alpha=0.9,
+                  boxstyle='round,pad=0.25'),
+    )
 
 
 def add_flagged_points(ax, x, y, mask):
@@ -289,7 +313,18 @@ def process_argo(region_key):
         density_flagged = qc_flag_mask(df, ARGO_DENSITY_POINT_QC_COLUMNS)
         any_flagged = bool(temp_flagged.any() or salinity_flagged.any() or density_flagged.any())
 
-        ohc_float = ocean_heat_content(df['depth'], df['temp (degree_Celsius)'], df['density'])
+        # OHC only from levels whose temperature and density passed QC;
+        # a bad salinity makes density (and so OHC) meaningless.
+        good = ~(temp_flagged | density_flagged)
+        if good.any():
+            ohc_float = ocean_heat_content(
+                df.loc[good, 'depth'],
+                df.loc[good, 'temp (degree_Celsius)'],
+                df.loc[good, 'density']
+            )
+        else:
+            ohc_float = np.array([np.nan])
+
 
         lon, lat = df['lon'].unique()[-1], df['lat'].unique()[-1]
         mlon360 = lon180to360(lon)
@@ -349,9 +384,17 @@ def process_argo(region_key):
                 print(f"CMEMS: False - {error}")
 
         # ── Figure ────────────────────────────────────────────────────────
+        if any_flagged:
+            leg_str += (
+                f'QC flagged pts T/S/D: '
+                f'{int(temp_flagged.sum())}/{int(salinity_flagged.sum())}/{int(density_flagged.sum())}\n'
+            )
+        else:
+            leg_str += 'All levels passed QC (flag 1)\n'
+
         fig = plt.figure(constrained_layout=True, figsize=(16, 6))
         widths = [1, 1, 1, 1.5]
-        heights = [1, 2, 1]
+        heights = [1.6, 2, 1]
         gs = fig.add_gridspec(3, 4, width_ratios=widths, height_ratios=heights)
 
         ax1 = fig.add_subplot(gs[:, 0])                        # Temperature
@@ -364,12 +407,15 @@ def process_argo(region_key):
         ax6 = fig.add_subplot(gs[2, -1])                       # Legend
 
         # Argo
-        ax1.plot(df['temp (degree_Celsius)'], df['depth'], 'b-o', label=alabel)
-        ax2.plot(df['psal (PSU)'], df['depth'], 'b-o', label=alabel)
-        ax3.plot(df['density'], df['depth'], 'b-o', label=alabel)
+        ax1.plot(df['temp (degree_Celsius)'].mask(temp_flagged), df['depth'], 'b-o', label=alabel)
+        ax2.plot(df['psal (PSU)'].mask(salinity_flagged), df['depth'], 'b-o', label=alabel)
+        ax3.plot(df['density'].mask(density_flagged), df['depth'], 'b-o', label=alabel)
         add_flagged_points(ax1, df['temp (degree_Celsius)'], df['depth'], temp_flagged)
         add_flagged_points(ax2, df['psal (PSU)'], df['depth'], salinity_flagged)
         add_flagged_points(ax3, df['density'], df['depth'], density_flagged)
+        annotate_flagged(ax1, df['temp (degree_Celsius)'], temp_flagged, '˚C', 'upper left')
+        annotate_flagged(ax2, df['psal (PSU)'], salinity_flagged, 'PSU', 'upper left')
+        annotate_flagged(ax3, df['density'], density_flagged, 'kg m-3', 'lower left')
 
         # ESPC
         if espc_flag:
@@ -431,31 +477,31 @@ def process_argo(region_key):
         ohc_string = 'Ocean Heat Content (kJ/cm^2) - '
         try:
             v = np.nanmean(ohc_float)
-            ohc_string += f"Argo: {v:.4f},  " if not np.isnan(v) else "Argo: N/A,  "
+            ohc_string += f"Argo: {v:.2f},  " if not np.isnan(v) else "Argo: N/A,  "
         except Exception:
             pass
         try:
             if np.isnan(ohc_espc):
                 ohc_string += 'ESPC: N/A,  '
             else:
-                ohc_string += f"ESPC: {ohc_espc:.4f},  "
+                ohc_string += f"ESPC: {ohc_espc:.2f},  "
         except Exception:
             pass
         try:
             if np.isnan(ohc_cmems):
                 ohc_string += 'CMEMS: N/A,  '
             else:
-                ohc_string += f"CMEMS: {ohc_cmems:.4f},  "
+                ohc_string += f"CMEMS: {ohc_cmems:.2f},  "
         except Exception:
             pass
 
         if nesdis:
             try:
-                ohc_string += f"NESDIS: {ohc_nesdis:.4f},  "
+                ohc_string += f"NESDIS: {ohc_nesdis:.2f},  "
             except:
                 pass
 
-        plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=10, fontstyle='italic')
+        plt.figtext(0.4, 0.001, ohc_string, ha="center", fontsize=12, fontweight='bold', color='black')
 
         # Persist the same numbers as a row instead of only a plot caption —
         # see db.log_ohc_metrics (built for the Platform ID/date/OHC-at-

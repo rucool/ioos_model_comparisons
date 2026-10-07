@@ -9692,3 +9692,138 @@ def plot_active_hurricanes(ax, time, extent, basin, linecolor='red', markersize=
             )
         except Exception as e:
             print(f"Error plotting storm {storm_id}: {e}")
+
+
+def plot_model_region_single(ds1, region,
+                             bathy=None,
+                             argo=None,
+                             gliders=None,
+                             eez=False,
+                             cols=6,
+                             transform=dict(map=proj['map'],
+                                            data=proj['data']
+                                            ),
+                             path_save=os.getcwd(),
+                             figsize=(11, 10),
+                             dpi=150,
+                             colorbar=True,
+                             overwrite=False,
+                             legend=True,
+                             variables=None,
+                             ):
+    """Single-model version of plot_model_region_comparison.
+
+    Same look as the standard two-panel comparison (title, bathymetry, argo/
+    glider assets, legend strip, horizontal colorbar) but with one map.
+    ``variables`` optionally restricts region['variables'] to a subset, e.g.
+    {'salinity': [dict(depth=150, limits=[35.6, 37.1, .1])]}.
+    """
+    time = pd.to_datetime(ds1.time.data)
+    extent = region['extent']
+    variables = variables or region['variables']
+
+    fig, _ = plt.subplot_mosaic(
+        "R\nL",
+        figsize=figsize,
+        layout="constrained",
+        subplot_kw={'projection': transform['map']},
+        gridspec_kw={"height_ratios": [5, 1]},
+    )
+    ax1, ax3 = fig.axes  # map, legend
+
+    ax1.set_extent(extent)
+    add_features(ax1)
+    if bathy:
+        try:
+            add_bathymetry(ax1,
+                           bathy.longitude.values,
+                           bathy.latitude.values,
+                           bathy.z.values,
+                           levels=(-1000, -100),
+                           zorder=1.5)
+        except ValueError:
+            print("Bathymetry deeper than specified levels.")
+    add_ticks(ax1, extent, label_left=True)
+
+    plot_regional_assets(ax1, argo=argo, gliders=gliders, transform=transform['data'])
+
+    ax1.set_title(f"{ds1.model} - {time}", fontsize=16, fontweight="bold")
+    txt = fig.suptitle("", fontsize=22, fontweight="bold")
+
+    h, l = ax1.get_legend_handles_labels()
+    if (len(h) > 0) & (len(l) > 0):
+        legend_ax = ax3.legend(h, l, ncol=cols, loc='center', fontsize=8)
+        t0 = []
+        if isinstance(argo, pd.DataFrame) and not argo.empty:
+            t0.append(argo.index.min()[1])
+        if isinstance(gliders, pd.DataFrame) and not gliders.empty:
+            t0.append(gliders.index.min()[1])
+        t0 = min(t0).strftime('%Y-%m-%d %H:00:00') if t0 else None
+        ax3.set_title(f'Glider/Argo Search Window: {t0} to {str(time)}',
+                      loc="center", fontsize=9, fontweight="bold", style='italic')
+        legend_ax._legend_box.sep = 1
+    ax3.set_axis_off()
+
+    if eez:
+        map_add_eez(ax1, zorder=10)
+
+    for k, v in variables.items():
+        var_str = ' '.join(k.split('_')).title()
+
+        for item in v:
+            depth = item['depth']
+            print(f"Plotting {k} @ {depth}")
+
+            try:
+                rsub = ds1[k].sel(depth=depth, method='nearest')
+            except Exception as e:
+                print(f"ERROR: Could not select {k} @ {depth}m: {e}")
+                continue
+
+            save_dir_final = path_save / f"{k}_{depth}m" / time.strftime('%Y/%m')
+            os.makedirs(save_dir_final, exist_ok=True)
+            sname = (f'{"-".join(region["folder"].split("_"))}_{time.strftime("%Y-%m-%dT%H%M%SZ")}'
+                     f'_{k}-{depth}m_{ds1.model.lower()}')
+            save_file = save_dir_final / f"{sname}.png"
+
+            if save_file.is_file() and not overwrite:
+                print(f"{save_file} exists. Overwrite: False. Skipping.")
+                continue
+
+            txt.set_text(f"{var_str} ({depth} m)\n")
+
+            vargs = {
+                'transform': transform['data'],
+                'transform_first': True,
+                'cmap': cmaps(ds1[k].name),
+                'extend': "both",
+            }
+            if 'limits' in item:
+                vargs['vmin'] = item['limits'][0]
+                vargs['vmax'] = item['limits'][1]
+                vargs['levels'] = np.arange(vargs['vmin'], vargs['vmax'], item['limits'][2])
+
+            if (rsub['lon'].ndim == 1) & (rsub['lat'].ndim == 1):
+                rlons, rlats = np.meshgrid(rsub['lon'], rsub['lat'])
+            else:
+                rlons, rlats = rsub['lon'], rsub['lat']
+            h1 = ax1.contourf(rlons, rlats, rsub.squeeze(), **vargs)
+
+            if colorbar:
+                cb = fig.colorbar(h1, ax=ax1, orientation="horizontal", shrink=.95, aspect=40)
+                cb.ax.tick_params(labelsize=12)
+                cb.set_label(f'{k.title()} ({rsub.units})', fontsize=12, fontweight="bold")
+
+            fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+
+            try:
+                h1.remove()
+            except Exception:
+                pass
+            if colorbar:
+                try:
+                    cb.remove()
+                except Exception:
+                    pass
+
+    plt.close(fig)
