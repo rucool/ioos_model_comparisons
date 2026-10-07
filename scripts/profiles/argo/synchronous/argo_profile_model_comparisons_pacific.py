@@ -48,6 +48,8 @@ plot_espc = True
 plot_cmems = True
 plot_para = False
 
+# Set to a list of WMO ids to plot only those floats, or None to plot all
+argos = None
 # argos = ["4902350", "4903250", "6902854", "4903224", "4903227"]
 # argos = [4903227]
 # conf.regions = ['caribbean-leeward'] # For debug purposes
