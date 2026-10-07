@@ -4358,8 +4358,12 @@ def plot_ohc(ds1, ds2, extent, region_name,
         map_add_eez(ax2, color='white', zorder=10)
 
     # Set title for each axes
-    ax1.set_title(f"{ds1.model.upper()} - {time.strftime(tstr_title)}", fontsize=16, fontweight='bold')
-    ax2.set_title(f"{ds2.model.upper()} - {time2.strftime(tstr_title)}", fontsize=16, fontweight='bold')
+    # Each subtitle shows the true time of its own data (e.g. NESDIS may be a
+    # day behind the requested time). Note tstr_title above is already a
+    # formatted string, so it can't be reused as a strftime format.
+    tfmt = '%Y-%m-%d %H:%M:%S'
+    ax1.set_title(f"{ds1.model.upper()} - {time.strftime(tfmt)}", fontsize=16, fontweight='bold')
+    ax2.set_title(f"{ds2.model.upper()} - {time2.strftime(tfmt)}", fontsize=16, fontweight='bold')
     fig.suptitle("Ocean Heat Content\n", fontweight="bold", fontsize=22)
 
     if storms and forecasts:

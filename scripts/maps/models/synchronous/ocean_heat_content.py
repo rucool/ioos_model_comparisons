@@ -91,6 +91,7 @@ kwargs = dict()
 kwargs['transform'] = conf.projection
 kwargs['dpi'] = conf.dpi
 kwargs['overwrite'] = False
+BASE_OVERWRITE = kwargs['overwrite']  # per-region overwrite is forced on for active storms
 
 # Get today and yesterday dates
 today = dt.date.today()
@@ -401,6 +402,49 @@ def _get_storms_for_time(ctime):
         print(f"Warning: hurricane fetch failed for {ctime}: {e}")
         return [], []
 
+
+_storm_cache = {}
+
+
+def _cached_storms_for_time(ctime):
+    """_get_storms_for_time memoized per ctime, so the pre-check and the plot
+    workers don't each hit the NHC feed again."""
+    if ctime not in _storm_cache:
+        _storm_cache[ctime] = _get_storms_for_time(ctime)
+    return _storm_cache[ctime]
+
+
+def _storm_regions(storms, forecasts, margin=1.0) -> set:
+    """Names (keys of conf.regions) of regions that contain any storm track or
+    forecast point. These get re-plotted even if a plot already exists, since
+    an earlier run may have been missing the storm (e.g. NHC feed was down).
+    """
+    pts = []
+    for s in storms:
+        try:
+            pts.extend(zip(np.atleast_1d(s.lon), np.atleast_1d(s.lat)))
+        except Exception:
+            continue
+    for f in forecasts:
+        try:
+            pts.extend(zip(np.atleast_1d(f['lon']), np.atleast_1d(f['lat'])))
+        except Exception:
+            continue
+    if not pts:
+        return set()
+
+    lons, lats = np.array(pts, dtype=float).T
+    lons = ((lons + 180) % 360) - 180
+
+    hits = set()
+    for r in conf.regions:
+        e = region_config(r)['extent']
+        in_box = ((e[0] - margin <= lons) & (lons <= e[1] + margin)
+                  & (e[2] - margin <= lats) & (lats <= e[3] + margin))
+        if in_box.any():
+            hits.add(r)
+    return hits
+
 # Formatter for time
 tstr = '%Y-%m-%d %H:%M:%S'
 
@@ -467,12 +511,26 @@ def pre_check_date_list(date_list, overwrite=False) -> pd.DatetimeIndex:
         return pd.DatetimeIndex(date_list)
 
     expected_by_ts = {}
+    storm_ts = set()
     for ctime in date_list:
         keys = set()
         for item in conf.regions:
             region = apply_colorbar_overrides(item, region_config(item))
             keys |= _expected_plot_keys(ctime, region)
         expected_by_ts[ctime] = keys
+        # Timestamps with an active storm in any region are always re-queued:
+        # an earlier run may have plotted them without the storm.
+        if keys and _storm_regions(*_cached_storms_for_time(ctime)):
+            storm_ts.add(ctime)
+    # Timestamps plotted with an earlier day's NESDIS data get redone once the
+    # real data is out.
+    nesdis_ts = {ct for ct in date_list
+                 if plot_nesdis and _nesdis_flag(ct).is_file() and _nesdis_now_available(ct)}
+    if nesdis_ts:
+        print(f"Pre-check: NESDIS now available for {len(nesdis_ts)} previously stale timestamp(s).")
+    storm_ts |= nesdis_ts
+    if storm_ts:
+        print(f"Pre-check: {len(storm_ts)} timestamp(s) have active storms — re-plotting those regions.")
 
     done_keys = fetch_completed_plot_keys(SCRIPT_ID, list(date_list))
 
@@ -480,7 +538,7 @@ def pre_check_date_list(date_list, overwrite=False) -> pd.DatetimeIndex:
     skipped = 0
     if done_keys is not None:
         for ctime in date_list:
-            if expected_by_ts[ctime].issubset(done_keys):
+            if ctime not in storm_ts and expected_by_ts[ctime].issubset(done_keys):
                 skipped += 1
             else:
                 needed_dates.append(ctime)
@@ -494,12 +552,46 @@ def pre_check_date_list(date_list, overwrite=False) -> pd.DatetimeIndex:
                 for key in _expected_plot_keys(
                     ctime, apply_colorbar_overrides(item, region_config(item)))
             )
-            if missing:
+            if missing or ctime in storm_ts:
                 needed_dates.append(ctime)
         print(f"Pre-check (disk): {len(date_list) - len(needed_dates)}/{len(date_list)} timestamp(s) fully done — skipping.")
 
     print(f"Pre-check: {len(needed_dates)}/{len(date_list)} timestamp(s) queued.")
     return pd.DatetimeIndex(needed_dates)
+
+
+def _get_nesdis(bbox, ctime, max_lookback_days=3):
+    """NESDIS OHC for ctime, or the most recent earlier day if ctime isn't
+    published yet (e.g. the 00Z after the last available day). The returned
+    dataset keeps its own time, which plot_ohc shows in the subtitle.
+    """
+    for back in range(max_lookback_days + 1):
+        ds = get_ohc(bbox=bbox, time=ctime - dt.timedelta(days=back))
+        if ds is not None:
+            ds.attrs['model'] = 'NESDIS'
+            # get_ohc's THREDDS fallback can itself return an earlier day, so
+            # judge staleness by the data's own date, not by how far we looked back.
+            data_date = pd.Timestamp(ds['time'].values.flat[0]).date()
+            ds.attrs['stale'] = int(data_date < pd.Timestamp(ctime).date())
+            if ds.attrs['stale']:
+                print(f"NESDIS: no data for {ctime}; using {data_date}.")
+            return ds.rename({'longitude': 'lon', 'latitude': 'lat'})
+    raise ValueError(f"no NESDIS OHC within {max_lookback_days} days of {ctime}")
+
+
+def _nesdis_flag(ctime):
+    """Marker file: this ctime's NESDIS plots were made from an earlier day's
+    data and should be redone once the real day is published. One file per
+    ctime so parallel workers never write the same file."""
+    return path_save / '.nesdis_stale' / pd.Timestamp(ctime).strftime('%Y%m%dT%H%M%SZ')
+
+
+def _nesdis_now_available(ctime) -> bool:
+    ext = atlantic_extent if any(r in ATLANTIC_REGIONS for r in conf.regions) else pacific_extent
+    try:
+        return not _get_nesdis(ext, ctime).attrs['stale']
+    except Exception:
+        return False
 
 
 # for ctime in date_list:
@@ -550,16 +642,12 @@ def plot_ctime(ctime):
     if plot_nesdis:
         if any(r in ATLANTIC_REGIONS for r in conf.regions):
             try:
-                _nds = get_ohc(bbox=atlantic_extent, time=ctime)
-                _nds.attrs['model'] = 'NESDIS'
-                nds_by_basin['atlantic'] = _nds.rename({'longitude': 'lon', 'latitude': 'lat'})
+                nds_by_basin['atlantic'] = _get_nesdis(atlantic_extent, ctime)
             except (requests.exceptions.HTTPError, Exception) as e:
                 print(f"NESDIS (atlantic): False - {e}")
         if any(r in PACIFIC_REGIONS for r in conf.regions):
             try:
-                _nds = get_ohc(bbox=pacific_extent, time=ctime)
-                _nds.attrs['model'] = 'NESDIS'
-                nds_by_basin['pacific'] = _nds.rename({'longitude': 'lon', 'latitude': 'lat'})
+                nds_by_basin['pacific'] = _get_nesdis(pacific_extent, ctime)
             except (requests.exceptions.HTTPError, Exception) as e:
                 print(f"NESDIS (pacific): False - {e}")
         print(f"NESDIS: {sorted(nds_by_basin.keys()) or False}")
@@ -575,7 +663,8 @@ def plot_ctime(ctime):
     else:
         ect_flag = False
 
-    _storms, _forecasts = _get_storms_for_time(ctime)
+    _storms, _forecasts = _cached_storms_for_time(ctime)
+    storm_regions = _storm_regions(_storms, _forecasts)
 
     search_window_t0 = (ctime - dt.timedelta(hours=conf.search_hours)).strftime(tstr)
     search_window_t1 = ctime.strftime(tstr)
@@ -601,6 +690,10 @@ def plot_ctime(ctime):
 
         nds_grp = nds_by_basin.get('pacific' if is_pacific else 'atlantic')
         ndt_flag = nds_grp is not None
+        # Previous run used an earlier day's NESDIS; replot just that pair now
+        # that this basin has the real day.
+        nds_refresh = (ndt_flag and not nds_grp.attrs.get('stale')
+                       and _nesdis_flag(ctime).is_file())
 
         configs = apply_colorbar_overrides(r, region_config(r))
 
@@ -609,10 +702,16 @@ def plot_ctime(ctime):
 
         # Skip the slicing/density/OHC math when every plot this region would
         # make for this hour is already on disk.
+        # Regions with an active storm are always re-plotted (overwrite) in case
+        # a previous run missed the storm.
+        kwargs['overwrite'] = BASE_OVERWRITE or r in storm_regions
+        if r in storm_regions:
+            print(f"Active storm in {r}: re-plotting {ctime}")
+
         m2s = [m for m, on in (('espc', gdt_flag), ('cmems', cdt_flag),
                                ('nesdis', ndt_flag), ('eccofs', region_ect_flag),
                                ('rtofs', rdtp_flag)) if rdt_flag and on]
-        if not m2s or (not kwargs['overwrite']
+        if not m2s or (not kwargs['overwrite'] and not nds_refresh
                        and all(_ohc_png(configs['folder'], ctime, m).is_file() for m in m2s)):
             continue
 
@@ -819,8 +918,9 @@ def plot_ctime(ctime):
                 pending_logs.append(_ohc_record(configs, ts_dt, 'rtofs', 'cmems'))
 
             if rdt_flag and ndt_flag:
+                nds_kwargs = {**kwargs, 'overwrite': kwargs['overwrite'] or nds_refresh}
                 plot_ohc(rds_slice, nds_slice, extent, configs['name'],
-                         storms=_storms, forecasts=_forecasts, **kwargs)
+                         storms=_storms, forecasts=_forecasts, **nds_kwargs)
                 pending_logs.append(_ohc_record(configs, ts_dt, 'rtofs', 'nesdis'))
 
             if rdt_flag and region_ect_flag:
@@ -853,6 +953,15 @@ def plot_ctime(ctime):
         except TopologicalError as error:
             print("Error: {error}")
             continue
+
+    # Remember whether this hour's NESDIS plots used stale data.
+    if plot_nesdis and nds_by_basin:
+        flag = _nesdis_flag(ctime)
+        if any(d.attrs.get('stale') for d in nds_by_basin.values()):
+            flag.parent.mkdir(parents=True, exist_ok=True)
+            flag.touch()
+        else:
+            flag.unlink(missing_ok=True)
 
     return pending_logs
 
