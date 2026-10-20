@@ -60,3 +60,16 @@ def test_healthz_ok_with_fresh_catalog(client, seed, monkeypatch):
 def test_ohc_table_columns_follow_db_fields(client):
     html = client.get("/ohc-table").get_data(as_text=True)
     assert "OHC RTOFS Parallel" in html and '"ohc_rtofs_parallel"' in html
+
+
+def test_storm_track_served_from_shared_cache(client, fake_mongo, app_module, monkeypatch):
+    import datetime as dt
+    from ioos_model_comparisons import storm_track
+    monkeypatch.setattr(storm_track, "storms_for_date",
+                        lambda d: (_ for _ in ()).throw(AssertionError("tropycal should not run")))
+    fake_mongo["hurricanes"]["storm_tracks"].insert_one({
+        "_id": "2025-09-01", "computed_at": dt.datetime(2025, 9, 2),
+        "storms": {"AL052025": {"name": "ERIN", "track": []}}})
+    app_module._storm_cache.clear()
+    r = client.get("/api/storm-track?date=2025-09-01")
+    assert r.status_code == 200 and r.get_json()["storms"]["AL052025"]["name"] == "ERIN"

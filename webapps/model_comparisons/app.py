@@ -246,6 +246,9 @@ def start_background_tasks():
         if _bg_started:
             return
         _threading.Thread(target=_glider_positions_loop, daemon=True).start()
+        # Keeps the last week of storm tracks current in MongoDB, so visitors
+        # never wait on tropycal (one worker does it; see storm_track.py).
+        storm_track.start_refresher()
         _bg_started = True
 
 
@@ -1466,13 +1469,13 @@ def api_storm_track():
 
     if date_str in _storm_cache:
         ts, cached = _storm_cache[date_str]
-        # Recent dates include live storms that change through the day.
-        ttl = 600 if storm_track.is_recent(date_obj) else _STORM_CACHE_TTL
+        # Short in-process layer over the shared MongoDB cache.
+        ttl = 300 if storm_track.is_recent(date_obj) else _STORM_CACHE_TTL
         if _time.time() - ts < ttl:
             return jsonify(cached)
 
     try:
-        storms = storm_track.storms_for_date(date_obj)
+        storms = storm_track.cached_storms_for_date(date_obj)
     except Exception as e:
         print(f"storm_track error for {date_str}: {e}")
         storms = {}

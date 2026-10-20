@@ -22,6 +22,15 @@ background every _REALTIME_TTL seconds; requests never wait on a refresh.
 
 Known gap: past West Pacific / Southern Hemisphere storms (older than
 REALTIME_DAYS) don't appear — they'd need the much heavier IBTrACS archive.
+
+Shared cache: computed payloads are stored per date in MongoDB
+hurricanes.storm_tracks, so every web worker (and restart) shares them.
+cached_storms_for_date() is what the web app calls. It serves the stored
+result immediately (recomputing a stale one in the background) and only
+computes synchronously for a date never computed before. start_refresher()
+keeps the last CACHE_DAYS days current every REFRESH_SECONDS; a lease
+document makes only one process do the work. Without MongoDB everything
+falls back to computing in-process, as before.
 """
 
 from __future__ import annotations
@@ -127,6 +136,163 @@ def realtime_storms():
 def is_recent(date_obj, today=None):
     today = today or dt.datetime.now(dt.timezone.utc).date()
     return (today - date_obj).days <= REALTIME_DAYS
+
+
+# --------------------------------------------------------------------------
+# Shared cache (MongoDB hurricanes.storm_tracks)
+# --------------------------------------------------------------------------
+CACHE_DAYS = 7              # days kept current by the background refresher
+REFRESH_SECONDS = 30 * 60   # how often the refresher runs
+FINAL_AFTER_DAYS = 30       # older dates are treated as final (never recomputed)
+_LEASE_ID = "_refresh_lease"
+_recomputing = set()        # dates being recomputed in the background (this process)
+_recompute_lock = threading.Lock()
+
+
+def _utcnow():
+    return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+
+
+def _today():
+    return _utcnow().date()
+
+
+def _collection():
+    try:
+        from ioos_model_comparisons.db import get_client
+        client = get_client()
+        return None if client is None else client["hurricanes"]["storm_tracks"]
+    except Exception:
+        return None
+
+
+def max_age_seconds(date_obj, today=None):
+    """How long a stored result for date_obj stays fresh (None = forever)."""
+    today = today or _today()
+    if is_recent(date_obj, today):
+        return REFRESH_SECONDS + 15 * 60     # live storms: refreshed every run
+    if (today - date_obj).days <= FINAL_AFTER_DAYS:
+        return 24 * 3600                     # best tracks still being revised
+    return None
+
+
+def _is_fresh(doc, date_obj):
+    max_age = max_age_seconds(date_obj)
+    return max_age is None or (_utcnow() - doc["computed_at"]).total_seconds() <= max_age
+
+
+def compute_and_store(date_obj, coll=None):
+    """Compute storms for date_obj and store them in the shared cache."""
+    storms = storms_for_date(date_obj)
+    coll = coll if coll is not None else _collection()
+    if coll is not None:
+        try:
+            key = date_obj.isoformat()
+            coll.replace_one({"_id": key}, {"_id": key, "storms": storms,
+                                            "computed_at": _utcnow()}, upsert=True)
+        except Exception as e:
+            print(f"storm_track: couldn't store storms for {date_obj}: {e}")
+    return storms
+
+
+def _recompute_in_background(date_obj):
+    with _recompute_lock:
+        if date_obj in _recomputing:
+            return
+        _recomputing.add(date_obj)
+
+    def run():
+        try:
+            compute_and_store(date_obj)
+        except Exception as e:
+            print(f"storm_track: background recompute for {date_obj} failed: {e}")
+        finally:
+            with _recompute_lock:
+                _recomputing.discard(date_obj)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def cached_storms_for_date(date_obj):
+    """{storm_id: payload} for date_obj, from the shared cache when possible.
+
+    Stored and fresh -> returned. Stored but stale -> returned immediately,
+    and recomputed in the background. Never computed (or no MongoDB) ->
+    computed now and stored."""
+    coll = _collection()
+    if coll is not None:
+        try:
+            doc = coll.find_one({"_id": date_obj.isoformat()})
+        except Exception:
+            doc = None
+        if doc is not None:
+            if not _is_fresh(doc, date_obj):
+                _recompute_in_background(date_obj)
+            return doc["storms"]
+    return compute_and_store(date_obj, coll)
+
+
+def _acquire_lease(coll, seconds):
+    """True if this process may run the refresh now (one process at a time)."""
+    now = _utcnow()
+    try:
+        from pymongo.errors import DuplicateKeyError
+    except Exception:  # pragma: no cover
+        DuplicateKeyError = Exception
+    try:
+        doc = coll.find_one_and_update(
+            {"_id": _LEASE_ID, "until": {"$lt": now}},
+            {"$set": {"until": now + dt.timedelta(seconds=seconds)}})
+        if doc is not None:
+            return True
+        coll.insert_one({"_id": _LEASE_ID, "until": now + dt.timedelta(seconds=seconds)})
+        return True
+    except DuplicateKeyError:
+        return False      # another process holds it
+    except Exception as e:
+        print(f"storm_track: lease check failed: {e}")
+        return False
+
+
+def refresh_recent(days=CACHE_DAYS, coll=None, today=None):
+    """Recompute the last `days` days that are stale. Returns dates refreshed."""
+    coll = coll if coll is not None else _collection()
+    today = today or _today()
+    done = []
+    for back in range(days):
+        date_obj = today - dt.timedelta(days=back)
+        if coll is not None:
+            doc = coll.find_one({"_id": date_obj.isoformat()}, {"computed_at": 1})
+            if doc is not None and _is_fresh(doc, date_obj) and not is_recent(date_obj, today):
+                continue
+        compute_and_store(date_obj, coll)
+        done.append(date_obj)
+    return done
+
+
+_refresher_started = False
+
+
+def start_refresher():
+    """Keep the last CACHE_DAYS days current in the shared cache. Safe to
+    call from every web worker: the lease lets one of them do the work."""
+    global _refresher_started
+    if _refresher_started:
+        return
+    _refresher_started = True
+
+    def loop():
+        while True:
+            try:
+                coll = _collection()
+                if coll is not None and _acquire_lease(coll, REFRESH_SECONDS - 60):
+                    refreshed = refresh_recent(coll=coll)
+                    print(f"storm_track: refreshed {len(refreshed)} day(s) of storms")
+            except Exception as e:
+                print(f"storm_track: refresher error: {e}")
+            _time.sleep(REFRESH_SECONDS)
+
+    threading.Thread(target=loop, daemon=True, name="storm-refresher").start()
 
 
 def active_storms_for_date(date_obj, lookback_days=5, lookahead_days=1):
