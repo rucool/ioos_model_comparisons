@@ -113,3 +113,33 @@ def test_unrecognized_returns_none(rel):
 def test_to_doc_profile_has_platform():
     d = fn.to_doc(fn.parse("profiles/argo/fiji/2026/04/24/5904628-profile-2026-04-24T2211Z.png"))
     assert d["platform"] == {"type": "argo", "id": "5904628"} and d["var_depth"] is None
+
+
+@pytest.mark.parametrize("rel,models", [
+    ("maps/hawaii/currents_200m/2025/08/hawaii_2025-08-25T180000Z_currents-200m_rtofs (west coast)-vs-espc.png",
+     ("rtofs", "espc")),
+    ("maps/mexico_pacific/currents_100m/2024/09/mexico_pacific_2024-09-25T000000Z_currents-100m_rtofs (west coast)-vs-cmems.png",
+     ("rtofs", "cmems")),
+    ("maps/mid_atlantic_bight/temperature_30m/2024/10/mid-atlantic-bight_2024-10-29T120000Z_temperature-30m_rtofs-vs-rtofs (parallel).png",
+     ("rtofs", "rtofs-p")),
+    ("maps/hawaii/temperature_0m/2025/08/hawaii_2025-08-25T000000Z_temperature-0m_rtofs (west coast)-vs-GOES16.png",
+     ("rtofs", "goes16")),
+    ("maps/hawaii/ocean_heat_content/2025/08/hawaii_2025-08-25T000000Z_heat_content_rtofs (west coast)-espc.png",
+     ("rtofs", "espc")),
+])
+def test_legacy_model_names_map_to_current_models(rel, models):
+    """Older plots used model attributes like "RTOFS (West Coast)"; they are the
+    same comparisons the portal shows, so the catalog files them that way."""
+    m = fn.parse(rel)
+    assert m is not None and m.models == models
+    assert fn.build(m) == rel
+
+
+@pytest.mark.parametrize("rel", [
+    "maps/south_atlantic_bight/temperature_200m/2022/11/currents_overlay/south-atlantic-bight_2022-11-06T180000Z_temperature-200m_rtofs-vs-gofs.png",
+    "maps/caribbean/salinity_max/2024/02/caribbean_2024-02-05T120000Z_salinity_max_rtofs-gofs-depth.png",
+    "maps/maps/gulf_of_mexico/salinity_150m/2024/06/gulf-of-mexico_2024-06-03T000000Z_salinity-150m_rtofs-vs-gofs.png",
+    "profiles/argo/assimilation/argo_3902345-2026-07-05-4day-profile-comparisons-rtofs-binary-nearest.png",
+])
+def test_products_the_portal_never_showed_stay_uncataloged(rel):
+    assert fn.parse(rel) is None

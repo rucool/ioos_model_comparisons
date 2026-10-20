@@ -36,7 +36,16 @@ TS_FMT = "%Y-%m-%dT%H%M%SZ"
 _MODEL_TOKENS = [
     "rtofs-p", "rtofs", "espc", "cmems", "copernicus", "eccofs", "nesdis",
     "amseas", "cnaps", "doppio", "gofs", "lusitania",
+    "rtofs (parallel)", "rtofs (west coast)",
 ]
+
+# Older plots were named from model attributes that have since been renamed
+# (e.g. "RTOFS (West Coast)" before the west domain was labelled plain RTOFS).
+# The file names keep the old token; the catalog records the current model.
+LEGACY_MODEL_ALIASES = {
+    "rtofs (west coast)": "rtofs",
+    "rtofs (parallel)": "rtofs-p",
+}
 
 
 def register_model_tokens(tokens):
@@ -85,23 +94,24 @@ class FigureMeta:
 # --------------------------------------------------------------------------
 _TS = r"\d{4}-\d{2}-\d{2}T\d{6}Z"
 _YM = r"(?P<y>\d{4})/(?P<mo>\d{2})/"
-_TOK = r"[A-Za-z0-9-]+"
+_TOK = r"(?:rtofs \((?:west coast|parallel)\)|[A-Za-z0-9-]+)"
+_TOK_LAZY = r"(?:rtofs \((?:west coast|parallel)\)|[A-Za-z0-9-]+?)"
 
 _RE_MAP = re.compile(
     rf"^maps/(?P<folder>[^/]+)/(?P<var>temperature|salinity)_(?P<d>\d+)m/{_YM}"
-    rf"(?P<slug>[^/]+)_(?P<ts>{_TS})_(?P=var)-(?P=d)m_(?P<m1>{_TOK}?)-vs-(?P<m2>{_TOK})\.png$")
+    rf"(?P<slug>[^/]+)_(?P<ts>{_TS})_(?P=var)-(?P=d)m_(?P<m1>{_TOK_LAZY})-vs-(?P<m2>{_TOK})\.png$")
 _RE_MAP_SINGLE = re.compile(
     rf"^maps/(?P<folder>[^/]+)/(?P<var>temperature|salinity)_(?P<d>\d+)m/{_YM}"
     rf"(?P<slug>[^/]+)_(?P<ts>{_TS})_(?P=var)-(?P=d)m_(?P<m1>[A-Za-z0-9]+(?:-p)?)\.png$")
 _RE_CURRENTS = re.compile(
     rf"^maps/(?P<folder>[^/]+)/currents_(?P<d>\d+)m/(?:{_YM})?"
-    rf"(?P<slug>[^/]+)_(?P<ts>{_TS})_currents-(?P=d)m_(?P<m1>{_TOK}?)-vs-(?P<m2>{_TOK})\.png$")
+    rf"(?P<slug>[^/]+)_(?P<ts>{_TS})_currents-(?P=d)m_(?P<m1>{_TOK_LAZY})-vs-(?P<m2>{_TOK})\.png$")
 _RE_OHC = re.compile(
     rf"^maps/(?P<folder>[^/]+)/ocean_heat_content/{_YM}"
-    rf"(?P<slug>[^/]+)_(?P<ts>{_TS})_heat_content_(?P<models>[a-z0-9-]+)\.png$")
+    rf"(?P<slug>[^/]+)_(?P<ts>{_TS})_heat_content_(?P<models>[a-z0-9() -]+)\.png$")
 _RE_OHC_COMBINED = re.compile(
     rf"^maps/(?P<folder>[^/]+)/ocean_heat_content/{_YM}"
-    rf"(?P<slug>[^/]+)_(?P<ts>{_TS})_ohc_(?P<models>[a-z0-9-]+)\.png$")
+    rf"(?P<slug>[^/]+)_(?P<ts>{_TS})_ohc_(?P<models>[a-z0-9() -]+)\.png$")
 _RE_GLIDER = re.compile(
     r"^profiles/(?P<group>gliders|gulf_gliders)/(?P<y>\d{4})/(?P<md>\d{2}-\d{2})/"
     r"(?P<id>[^/]+?)_(?P<d0>\d{8})_to_(?P<d1>\d{8})_(?P<depth>\d+)m\.png$")
@@ -134,7 +144,8 @@ def split_models(joined: str) -> tuple | None:
 
 
 def _norm_model(tok: str) -> str:
-    return tok.lower()
+    t = tok.lower()
+    return LEGACY_MODEL_ALIASES.get(t, t)
 
 
 # --------------------------------------------------------------------------
@@ -182,15 +193,16 @@ def _parse(p: str) -> FigureMeta | None:
         for rx, prod in ((_RE_OHC, "ohc"), (_RE_OHC_COMBINED, "ohc_combined")):
             m = rx.match(p)
             if m:
-                models = split_models(m["models"])
-                if not models:
+                raw = split_models(m["models"])
+                if not raw:
                     return None
+                models = tuple(_norm_model(t) for t in raw)
                 if prod == "ohc" and len(models) == 1:
                     prod = "ohc_single"
                 return FigureMeta(
                     family="ohc", product=prod, region=m["folder"], variable="ocean_heat_content",
                     depth=None, valid_time=_ts(m["ts"]), models=models,
-                    extra={"slug": m["slug"]})
+                    extra={"slug": m["slug"], "tokens": list(raw)})
         return None
 
     if p.startswith("profiles/"):
@@ -254,10 +266,10 @@ def build(meta: FigureMeta) -> str:
     if meta.product in ("ohc", "ohc_single"):
         slug = x.get("slug") or meta.region
         return (f"maps/{meta.region}/ocean_heat_content/{ym}"
-                f"{slug}_{ts}_heat_content_{'-'.join(meta.models)}.png")
+                f"{slug}_{ts}_heat_content_{'-'.join(x.get('tokens') or meta.models)}.png")
     if meta.product == "ohc_combined":
         return (f"maps/{meta.region}/ocean_heat_content/{ym}"
-                f"{x['slug']}_{ts}_ohc_{'-'.join(meta.models)}.png")
+                f"{x['slug']}_{ts}_ohc_{'-'.join(x.get('tokens') or meta.models)}.png")
     if meta.product == "glider_profile":
         d1 = x.get("d1") or (t + _dt.timedelta(days=1)).strftime("%Y%m%d")
         year = x.get("dir_year") or t.strftime("%Y")
