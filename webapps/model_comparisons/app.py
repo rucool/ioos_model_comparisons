@@ -1452,9 +1452,10 @@ def api_glider_tracks():
 
 @app.route("/api/storm-track")
 def api_storm_track():
-    """Storms active near a given date (Atlantic + East Pacific, v1 — see
+    """Storms active near a given date (archive: Atlantic + East Pacific; for
+    the last few days also live NHC/JTWC storms in every basin — see
     storm_track.py), with track history trimmed through that date and, where
-    an NHC forecast advisory exists for it, a forecast-cone polygon."""
+    a forecast advisory exists for it, the forecast points and cone."""
     date_str = request.args.get("date")
     if not date_str:
         return jsonify({"error": "date is required"}), 400
@@ -1465,7 +1466,9 @@ def api_storm_track():
 
     if date_str in _storm_cache:
         ts, cached = _storm_cache[date_str]
-        if _time.time() - ts < _STORM_CACHE_TTL:
+        # Recent dates include live storms that change through the day.
+        ttl = 600 if storm_track.is_recent(date_obj) else _STORM_CACHE_TTL
+        if _time.time() - ts < ttl:
             return jsonify(cached)
 
     try:

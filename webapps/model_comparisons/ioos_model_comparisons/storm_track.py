@@ -8,23 +8,26 @@ just live ones. That's enough to cover "which storm, and what did its
 forecast look like, on day X" uniformly for historical and recent dates
 without a separate live-NHC-scraping code path.
 
-Basins: north_atlantic + east_pacific only (v1) — covers Gulf of Mexico,
+Archive basins: north_atlantic + east_pacific — covers Gulf of Mexico,
 Caribbean, Mid/South Atlantic Bight, Tropical Western Atlantic, West Florida
-Shelf, Mexico Pacific, and Hawaii's approach. Guam/Fiji (west/south Pacific)
-show no storms for now; tropycal's non-HURDAT2 basins are less mature and
-those two regions need this least.
+Shelf, Mexico Pacific, and Hawaii's approach.
 
-Known gap: best-track finalization lags a storm actively in progress by up
-to a day or two, so a storm from the last day or so may not appear yet. The
-Profiles tab is an archive-browsing tool ("Navigate Days"), not a live
-tracker, so this is an acceptable v1 limitation rather than a live
-tropycal.realtime path (see scripts/tools/overview_powerpoint.py for how
-that would look if it's ever needed).
+Live storms: for dates within REALTIME_DAYS of today, storms from tropycal's
+real-time feed are added — every basin NHC or JTWC tracks (West Pacific
+typhoons near Guam, South Pacific/Indian cyclones, invests), and storms still
+in progress whose best track hasn't been finalized yet. Same approach as the
+OHC maps (scripts/maps/models/synchronous/ocean_heat_content.py). The feed
+takes ~30 s to load, so it is loaded once and then refreshed in the
+background every _REALTIME_TTL seconds; requests never wait on a refresh.
+
+Known gap: past West Pacific / Southern Hemisphere storms (older than
+REALTIME_DAYS) don't appear — they'd need the much heavier IBTrACS archive.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import threading
 import time as _time
 import warnings
 
@@ -34,6 +37,11 @@ BASINS = ("north_atlantic", "east_pacific")
 _BASIN_CACHE_TTL = 12 * 3600  # seconds — long-lived; rebuilt lazily, not on a timer
 
 _basin_cache = {}  # basin_name -> (timestamp, TrackDataset)
+
+REALTIME_DAYS = 2          # dates this recent also get live storms (all basins)
+_REALTIME_TTL = 30 * 60    # seconds between background refreshes of the live feed
+_realtime = {"ts": 0.0, "storms": None, "refreshing": False}  # storms: [(storm, forecast)]
+_realtime_lock = threading.Lock()
 
 # Saffir-Simpson category -> label. -1/0 come from tropycal's wind_to_category().
 _CATEGORY_LABELS = {
@@ -62,6 +70,65 @@ def _get_basin(basin_name):
     return dataset
 
 
+def _load_realtime_storms():
+    """[(RealtimeStorm, forecast dict or None)] for every active NHC/JTWC storm.
+    Forecasts are fetched here, once per refresh, not per web request."""
+    from tropycal import realtime  # deferred: heavy import
+
+    out = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        rt = realtime.Realtime(jtwc=True)
+        for key in rt.list_active_storms(basin="all"):
+            try:
+                storm = rt.get_storm(key)
+            except Exception as e:
+                print(f"storm_track: couldn't load live storm {key}: {e}")
+                continue
+            forecast = None
+            if not getattr(storm, "invest", False):  # invests have no advisories
+                try:
+                    # No argument: tropycal 1.3's first parameter is an SSL
+                    # certificate path, so passing True breaks every JTWC fetch.
+                    forecast = storm.get_forecast_realtime() or None
+                except Exception as e:
+                    print(f"storm_track: no live forecast for {key} ({e}); track only")
+            out.append((storm, forecast))
+    return out
+
+
+def _refresh_realtime():
+    try:
+        _realtime["storms"] = _load_realtime_storms()
+    except Exception as e:
+        print(f"storm_track: live storm feed failed: {e}")
+        if _realtime["storms"] is None:
+            _realtime["storms"] = []  # retry after _REALTIME_TTL rather than on every request
+    finally:
+        _realtime["ts"] = _time.time()
+        _realtime["refreshing"] = False
+
+
+def realtime_storms():
+    """[(storm, forecast)] from the live feed. The first call in a process
+    loads it (concurrent first callers wait for that one load); later calls
+    return the last list immediately and refresh it in the background once
+    it is older than _REALTIME_TTL."""
+    with _realtime_lock:
+        if _realtime["storms"] is None:
+            _refresh_realtime()
+            return _realtime["storms"]
+        if _time.time() - _realtime["ts"] > _REALTIME_TTL and not _realtime["refreshing"]:
+            _realtime["refreshing"] = True
+            threading.Thread(target=_refresh_realtime, daemon=True).start()
+        return _realtime["storms"]
+
+
+def is_recent(date_obj, today=None):
+    today = today or dt.datetime.now(dt.timezone.utc).date()
+    return (today - date_obj).days <= REALTIME_DAYS
+
+
 def active_storms_for_date(date_obj, lookback_days=5, lookahead_days=1):
     """Storms from BASINS whose track overlapped a window around date_obj.
 
@@ -70,7 +137,10 @@ def active_storms_for_date(date_obj, lookback_days=5, lookahead_days=1):
     un-filtered world view (confirmed: no per-region selection exists there
     any more), so date overlap is the only filter that makes sense here.
 
-    Returns a list of (basin_name, Storm) tuples.
+    Returns a list of (basin_name, Storm, forecast-or-None) tuples; forecast is
+    None for archive storms (looked up per date in storm_payload). For recent
+    dates, live-feed storms are merged in and replace the archive copy of the
+    same storm.
     """
     time_start = dt.datetime.combine(date_obj, dt.time.min) - dt.timedelta(days=lookback_days)
     time_end = dt.datetime.combine(date_obj, dt.time.min) + dt.timedelta(days=lookahead_days)
@@ -103,10 +173,19 @@ def active_storms_for_date(date_obj, lookback_days=5, lookahead_days=1):
                         continue
                     if max(storm_times) < time_start or min(storm_times) > time_end:
                         continue
-                    found.append((basin_name, storm))
+                    found.append((basin_name, storm, None))
                 except Exception as e:
                     print(f"storm_track: error checking storm {storm_id}: {e}")
                     continue
+
+    if is_recent(date_obj):
+        by_id = {entry[1].id: entry for entry in found}
+        for storm, forecast in realtime_storms():
+            times = storm.dict.get("time") or []
+            if not times or max(times) < time_start or min(times) > time_end:
+                continue
+            by_id[storm.id] = (storm.basin, storm, forecast or {})
+        found = list(by_id.values())
 
     return found
 
@@ -173,7 +252,7 @@ def _cone_polygon(forecast, basin_name, storm_name):
         plt.close(fig)
 
 
-def storm_payload(storm, basin_name, date_obj):
+def storm_payload(storm, basin_name, date_obj, forecast=None):
     """JSON-ready dict for one storm, trimmed to track points through date_obj."""
     d = storm.dict
     cutoff = dt.datetime.combine(date_obj, dt.time.max)
@@ -192,13 +271,16 @@ def storm_payload(storm, basin_name, date_obj):
     peak_vmax = max((p["vmax"] for p in track if p["vmax"] is not None), default=0)
     category = wind_to_category(peak_vmax)
 
-    forecast = _get_forecast(storm, date_obj)
+    if forecast is None:            # archive storm: NHC advisory nearest date_obj
+        forecast = _get_forecast(storm, date_obj)
 
     return {
         "name": storm.name,
         "basin": basin_name,
+        "invest": bool(getattr(storm, "invest", False)),
         "category": category,
-        "category_label": _CATEGORY_LABELS.get(category, "Unknown"),
+        "category_label": ("Invest" if getattr(storm, "invest", False)
+                           else _CATEGORY_LABELS.get(category, "Unknown")),
         "color": get_colors_sshws(peak_vmax),
         "track": track,
         "forecast": _forecast_points(forecast) if forecast else [],
@@ -209,8 +291,8 @@ def storm_payload(storm, basin_name, date_obj):
 def storms_for_date(date_obj):
     """{storm_id: storm_payload} for every storm active near date_obj."""
     out = {}
-    for basin_name, storm in active_storms_for_date(date_obj):
-        payload = storm_payload(storm, basin_name, date_obj)
+    for basin_name, storm, forecast in active_storms_for_date(date_obj):
+        payload = storm_payload(storm, basin_name, date_obj, forecast)
         if payload:
             out[storm.id] = payload
     return out
