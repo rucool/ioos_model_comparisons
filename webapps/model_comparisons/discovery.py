@@ -13,7 +13,8 @@ this region/variable/time?", "what's the newest date with Argo profiles?"):
 DISCOVERY_BACKEND (environment) picks:
   legacy   (default) legacy only
   shadow   answer from legacy, but also query the catalog and log any
-           difference to the "discovery.shadow" logger — run this for a while
+           difference as a WARNING from the "discovery.shadow" logger (lands in
+           the uwsgi log; grep it for "differs") — run this for a while
            after the backfill to confirm the catalog is complete
   auto     catalog, falling back to legacy per request when MongoDB is down,
            a query fails, or the catalog is stale (site.yml stale_after_hours)
@@ -115,9 +116,9 @@ def run(name, catalog_fn, legacy_fn, compare=None):
             other = catalog_fn()
             a, b = (compare(result), compare(other)) if compare else (result, other)
             if a != b:
-                shadow_log.info("%s differs: legacy=%r catalog=%r", name, a, b)
+                shadow_log.warning("%s differs: legacy=%r catalog=%r", name, a, b)
         except Exception as e:
-            shadow_log.info("%s: catalog error %s", name, e)
+            shadow_log.warning("%s: catalog error %s", name, e)
     return result
 
 

@@ -87,7 +87,7 @@ def test_shadow_logs_differences(client, seed, rsps, monkeypatch, caplog):
     seed(GOM + "rtofs-vs-espc.png")
     for suffix in ("rtofs-vs-espc", "rtofs-vs-cmems", "rtofs-vs-eccofs", "rtofs-vs-GOES16", "rtofs-vs-GOES19"):
         rsps.add(responses.HEAD, BASE + GOM + suffix + ".png", status=404)
-    with caplog.at_level("INFO", logger="discovery.shadow"):
+    with caplog.at_level("WARNING", logger="discovery.shadow"):
         data = _maps(client).get_json()
     assert data["espc"]["available"] is False  # legacy is authoritative in shadow mode
     assert any("map_panels differs" in r.message for r in caplog.records)

@@ -141,6 +141,9 @@ esac
 
 # ---------------------------------------------------------------- install
 [ -n "$ZIP" ] && [ -f "$ZIP" ] || { echo "usage: $0 model_comparisons-<version>.zip"; exit 2; }
+if [ -n "$VASSAL_INI" ] && [ ! -w "$VASSAL_INI" ]; then
+  echo "!! cannot write $VASSAL_INI (needed to reload uwsgi): run as its owner, or with sudo"; exit 2
+fi
 NAME="$(unzip -Z1 "$ZIP" | head -1 | cut -d/ -f1)"
 case "$NAME" in model_comparisons-*) ;; *) echo "!! $ZIP is not a release zip (top folder: $NAME)"; exit 2;; esac
 VERSION="$(unzip -p "$ZIP" "$NAME/VERSION" | tr -d '[:space:]')"
