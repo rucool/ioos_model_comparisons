@@ -40,6 +40,10 @@ conda activate hurricanes
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
+# Use this checkout's package, not whatever version is installed in the conda
+# env, so a separate catalog-only clone works without touching the checkout
+# the plot crons run from.
+export PYTHONPATH="$repo${PYTHONPATH:+:$PYTHONPATH}"
 args=("$@")
 [ ${#args[@]} -eq 0 ] && args=(--recent-months 2)
 python $repo/scripts/tools/index_figures.py "${args[@]}" >> $logfile 2>&1
