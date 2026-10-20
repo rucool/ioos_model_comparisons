@@ -64,13 +64,22 @@ The new release finds figures exactly the old way until `DISCOVERY_BACKEND`
 is changed (see the rollout below), so this first deploy changes how the
 code is managed, not what the site shows.
 
-## Updating the plot host
+## The plot host
 
-On the plot host (`/home/hurricaneadm/scripts/ioos_model_comparisons`):
-- `git pull`;
-- once, `conda activate hurricanes && pip install pyyaml pydantic`.
+The plot host is the Linux server where the plotting cron jobs run as
+`hurricaneadm` and write PNGs into `/www/web/rucool/hurricane/model_comparisons/`.
+The toolbox checkout is `/home/hurricaneadm/scripts/temp/ioos_model_comparisons`.
+Note that some older cron wrappers still point at
+`~/scripts/ioos_model_comparisons` or `~/scripts/hurricanes`.
 
-The cron wrappers pick up the new code on their next run.
+The figure indexer can run from its own clone, e.g. `~/scripts/figure_catalog`;
+`index_figures.sh` uses its own checkout's code. That way the catalog doesn't
+require updating the toolbox. To update the toolbox itself:
+1. `git pull` there.
+2. Install `pyyaml` and `pydantic` once into its conda env, `model_comps`.
+   Some older wrappers still activate `hurricanes`.
+3. Set up CMEMS credentials first: `copernicusmarine login`, or
+   `CMEMS_USERNAME`/`CMEMS_PASSWORD`. The code no longer contains them.
 
 ## The figure catalog: rollout
 
@@ -79,7 +88,7 @@ The cron wrappers pick up the new code on their next run.
 | 1. See what would be indexed | plot host | `python scripts/tools/index_figures.py --survey` |
 | 2. Backfill the archive (metadata only, about 1 KB per figure) | plot host | `scripts/shell/index_figures.sh --full` |
 | 3. Keep it current | plot host crontab | `*/30` `index_figures.sh`; weekly `index_figures.sh --mark-missing` |
-| 4. Plot scripts register as they save | plot host | `git pull` (hooks in `plotting.py` and the profile scripts); install `pyyaml` and `pydantic` in the `hurricanes` env first |
+| 4. Optional: plot scripts register as they save | plot host | update the toolbox checkout (see above); until then the 30-minute indexer catches everything |
 | 5. Compare old and new discovery | baffin `.env` | `DISCOVERY_BACKEND=shadow`, then watch the `discovery.shadow` log for differences |
 | 6. Switch | baffin `.env` | `DISCOVERY_BACKEND=auto` (catalog, with automatic fallback to the old discovery when MongoDB is down or the catalog is stale) |
 

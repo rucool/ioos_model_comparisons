@@ -4,11 +4,15 @@
 # their own figures as they save them; this is the safety net for anything
 # they missed, and the source of profile positions from locations.json.
 #
-#   */30 * * * *  /home/hurricaneadm/scripts/ioos_model_comparisons/scripts/shell/index_figures.sh
-#   30 4 * * 0    /home/hurricaneadm/scripts/ioos_model_comparisons/scripts/shell/index_figures.sh --mark-missing
+#   */30 * * * *  /home/hurricaneadm/scripts/figure_catalog/scripts/shell/index_figures.sh
+#   30 4 * * 0    /home/hurricaneadm/scripts/figure_catalog/scripts/shell/index_figures.sh --mark-missing
 #
+# (figure_catalog = a clone used only for this; it runs against its own code,
+# so the toolbox checkout the plot crons use doesn't need updating.)
 # With no arguments it indexes the last 2 months; pass any index_figures.py
 # arguments to override (one-time backfill: --full; preview: --survey).
+# Conda env: model_comps (the toolbox env), or set CONDA_ENV in the crontab
+# line; it needs pymongo, pyyaml and pydantic.
 PATH=/bin:/usr/bin;
 PATH="/home/hurricaneadm/miniconda3/bin:$PATH"
 logdir=$HOME/logs/model_comparisons/index_figures
@@ -36,7 +40,7 @@ if [ -z "$MONGODB_URI" ]; then
 fi
 
 source ~/miniconda3/etc/profile.d/conda.sh
-conda activate hurricanes
+conda activate "${CONDA_ENV:-model_comps}"
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
