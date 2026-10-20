@@ -1,0 +1,47 @@
+# Region 'gom'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 4
+name: Gulf of Mexico
+folder: gulf_of_mexico
+extent: [-99, -78, 18, 33]
+figure:
+  legend:
+    columns: 10
+  figsize: [12.125, 7.5]
+sea_surface_height: []
+eez: false
+variables:
+  salinity:
+  - depth: 0
+    limits: [32.0, 36.6, 0.1]
+  - depth: 150
+    limits: [35.6, 37.1, 0.1]
+  - depth: 200
+    limits: [35.7, 37.1, 0.1]
+  temperature:
+  - depth: 0
+    limits: [26.0, 32.0, 0.5]
+  - depth: 150
+    limits: [14, 26, 0.5]
+  - depth: 200
+    limits: [12, 23, 0.5]
+currents:
+  bool: true
+  depths: [0]
+  limits: [0, 1.5, 0.1]
+  coarsen:
+    rtofs: 7
+    espc: 8
+    hafs: 7
+    cmems: 8
+  kwargs:
+    ptype: streamplot
+    color: black
+    density: 3
+salinity_max:
+  figsize: [14, 6.5]
+  limits: [36, 37, 0.1]
+ocean_heat_content:
+  limits: [0, 160, 10]

@@ -92,15 +92,11 @@ currents_only = False
 # back to qck's nearest available level — at the cost of only one ECCOFS
 # snapshot per calendar day, so multiple 6-hourly ctimes on the same day
 # will show an identical ECCOFS panel.
-ECCOFS_EXCLUDED_REGIONS = {
-    'tropical_western_atlantic',
-    'mexico_pacific',
-    'hawaii',
-    'wmo_v_south',
-    'philippines_sea',
-    'guam',
-    'fiji',
-}
+# Region folders ECCOFS is never compared in — from comparisons.yml
+# (rtofs-vs-eccofs.regions.exclude), shared with the portal.
+from ioos_model_comparisons.registry import load_registry  # noqa: E402
+ECCOFS_EXCLUDED_REGIONS = set(
+    load_registry().comparisons["rtofs-vs-eccofs"].regions.exclude or [])
 
 # ECCOFS only publishes one nowcast per calendar day (00Z) — see
 # ECCOFSFullDepth in models.py — so evaluating it at every 6-hourly ctime
@@ -952,14 +948,14 @@ def _expected_outputs(ctime, region) -> set:
                 d = base / f"currents_{depth}m" / t.strftime('%Y/%m')
                 _need(d / f'{folder}_{tstr}_currents-{depth}m_{m1}-vs-{m2}.png')
 
-    # ── plot_sst (no .png extension — matches how plot_sst saves) ────────────
+    # ── plot_sst ──────────────────────────────────────────────────────────────
     # Skipped entirely under --currents-only.
     if plot_rtofs and not currents_only:
         sst_tags = ((['GOES16'] if sst_sorted_16 is not None else []) +
                     (['GOES19'] if sst_sorted_19 is not None else []))
         for satellite_tag in sst_tags:
             d = base / "temperature_0m" / t.strftime('%Y/%m')
-            _need(d / f'{dashed}_{tstr}_temperature-0m_rtofs-vs-{satellite_tag}')
+            _need(d / f'{dashed}_{tstr}_temperature-0m_rtofs-vs-{satellite_tag}.png')
 
     return needed
 

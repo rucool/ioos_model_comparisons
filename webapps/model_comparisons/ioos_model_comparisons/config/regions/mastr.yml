@@ -1,0 +1,29 @@
+# Region 'mastr'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 0
+name: Yucatan/Mastr
+folder: mastr
+extent: [-89, -84, 17.75, 22]
+figure:
+  legend:
+    columns: 8
+  figsize: [10, 7]
+sea_surface_height: []
+eez: true
+variables:
+  salinity:
+  - depth: 150
+    limits: [35.6, 37.1, 0.1]
+  temperature: []
+currents:
+  bool: true
+  depths: [0]
+  limits: [0, 1.5, 0.1]
+  coarsen:
+    rtofs: 5
+    espc: 6
+  kwargs:
+    ptype: streamplot
+    color: black

@@ -1,0 +1,9 @@
+# Copy to scripts/release/deploy.conf (git-ignored) and fill in from baffin.
+# Every value here is a guess until checked on the server.
+
+DEPLOY_HOST=baffin                      # ssh host (an ~/.ssh/config alias is fine)
+DEPLOY_APP_ROOT=/path/to/model_comparisons_app   # will hold releases/, venvs/, shared/, current
+DEPLOY_VASSAL_INI=/etc/uwsgi/vassals/aquaman.ini # touched to make the uwsgi Emperor reload
+DEPLOY_PYTHON=python3                   # interpreter for release venvs (baffin's was 3.14 in Aug 2026)
+HEALTH_URL=https://<portal host>/ioos-model-comparisons/healthz  # nginx serves the app under this prefix
+KEEP_RELEASES=5

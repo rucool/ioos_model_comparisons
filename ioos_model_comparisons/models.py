@@ -72,30 +72,38 @@ def amseas(rename=False):
     return ds
 
 
+def rtofs_source(source='east'):
+    """(url, model_attr, stream, version) for an RTOFS source, from rtofs.yml.
+
+    source: 'east' / 'west' (operational stream) or 'parallel' /
+    'parallel-west' (parallel stream, where configured). An RTOFS upgrade is an
+    rtofs.yml edit — see docs/rtofs_upgrade.md.
+    """
+    from ioos_model_comparisons.registry import load_registry
+
+    reg = load_registry()
+    stream_name, _, domain = source.partition('-') if source.startswith('parallel') else ('operational', '', source)
+    domain = domain or 'east'
+    try:
+        stream = reg.rtofs_stream(stream_name)
+        url = stream.thredds[domain]
+    except KeyError:
+        raise ValueError(f"unknown RTOFS source {source!r} (rtofs.yml defines: " +
+                         ", ".join(f"{s}:{','.join(v.thredds)}" for s, v in reg.rtofs.streams.items()) + ")")
+    return url, stream.model_attr, stream_name, reg.rtofs_version_at(stream_name)
+
+
 def rtofs(rename=None, source='east', chunks=None):
-    if source == 'east':
-        url = "https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_scraped"
-        model = 'RTOFS'
-    elif source == 'west':
-        url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_west_scraped'
-        model = 'RTOFS'
-    elif source == 'parallel':
-        url = 'https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_parallel_scraped'
-        model = 'RTOFS-P'
+    from ioos_model_comparisons.registry import load_registry
+
+    url, model, stream, version = rtofs_source(source)
 
     if chunks:
         ds = xr.open_dataset(url, chunks={"MT":1})  # <--- key change
     else:
         ds = xr.open_dataset(url)
 
-    ds = ds.rename({
-        'Longitude': 'lon', 
-        'Latitude': 'lat',
-        'MT': 'time',
-        'Depth': 'depth',
-        'X': 'x', 
-        'Y': 'y'
-    })
+    ds = ds.rename(load_registry().rtofs.rename)
     ds = ds.set_coords(['lon', 'lat'])
 
     # The scraped THREDDS aggregations occasionally contain duplicate
@@ -106,6 +114,9 @@ def rtofs(rename=None, source='east', chunks=None):
         ds = ds.drop_duplicates('time', keep='last')
 
     ds.attrs['model'] = model
+    ds.attrs['rtofs_stream'] = stream
+    if version:
+        ds.attrs['rtofs_version'] = version
     return ds
 
 class RTOFS():
@@ -119,9 +130,9 @@ class RTOFS():
         self.grid_lats = self.data.lat.values[:,0]
 
     def load(self):
-        url = "https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_scraped"
+        url, model, _stream, _version = rtofs_source('east')
         ds = xr.open_dataset(url).set_coords(['lon', 'lat'])
-        ds.attrs['model'] = 'RTOFS'
+        ds.attrs['model'] = model
         return ds
 
     def subset(self, extent):
@@ -599,16 +610,27 @@ class CMEMS:
     Class for handling CMEMS data with lazy loading and subsetting for specific times and regions.
     '''
 
-    def __init__(self, username='maristizabalvar', password='MariaCMEMS2018') -> None:
+    def __init__(self, username=None, password=None) -> None:
         '''
         Initialize the CMEMS instance with user credentials.
+
+        Credentials resolve in this order: the arguments, then the
+        CMEMS_USERNAME/CMEMS_PASSWORD environment variables (including a repo
+        .env, via env.load_env), then the copernicusmarine toolbox's own
+        resolution (COPERNICUSMARINE_SERVICE_USERNAME/PASSWORD or the file
+        written by `copernicusmarine login`). Never hardcode them here.
 
         Args:
         - username (str): CMEMS username.
         - password (str): CMEMS password.
         '''
-        self.username = username or os.getenv('CMEMS_USERNAME')
-        self.password = password or os.getenv('CMEMS_PASSWORD')
+        from ioos_model_comparisons.env import load_env
+        load_env()
+        self.username = username or os.getenv('CMEMS_USERNAME') or None
+        self.password = password or os.getenv('CMEMS_PASSWORD') or None
+        if not (self.username and self.password):
+            logger.info("CMEMS_USERNAME/CMEMS_PASSWORD not set; falling back "
+                        "to copernicusmarine's stored credentials")
         self.datasets = {}  # Store datasets lazily in a dictionary
         self._load_data()
 

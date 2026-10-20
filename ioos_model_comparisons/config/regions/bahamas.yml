@@ -1,0 +1,42 @@
+# Region 'bahamas'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 20
+name: Bahamas
+folder: bahamas
+extent: [-82.5, -63, 16, 31]
+figure:
+  legend:
+    columns: 8
+  figsize: [12, 8]
+sea_surface_height:
+- depth: 0
+  limits: [-0.6, 0.7, 0.1]
+eez: false
+variables:
+  salinity:
+  - depth: 0
+    limits: [34.5, 36.8, 0.1]
+  - depth: 150
+    limits: [35.5, 37.1, 0.1]
+  temperature:
+  - depth: 0
+    limits: [24.0, 31.0, 0.5]
+  - depth: 150
+    limits: [18, 25, 0.5]
+currents:
+  bool: true
+  depths: [0]
+  limits: [0, 1.5, 0.1]
+  coarsen:
+    rtofs: 7
+    espc: 8
+  kwargs:
+    ptype: streamplot
+    color: black
+salinity_max:
+  figsize: [14, 6.5]
+  limits: [36, 37.5, 0.1]
+ocean_heat_content:
+  limits: [0, 160, 10]

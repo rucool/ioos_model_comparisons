@@ -37,6 +37,7 @@ import copernicusmarine as cm
 import cartopy.mpl.ticker as cticker
 import cmocean.cm as cmo
 from matplotlib.colors import Normalize
+from ioos_model_comparisons.env import cmems_credentials
 
 try:
     from bs4 import BeautifulSoup
@@ -1694,8 +1695,8 @@ def main():
                     output_filename="cmems_temp_download.nc",
                     output_directory=data_dir,
                     force_download=True,  # Added to ensure fresh data
-                    username="maristizabalvar",
-                    password="MariaCMEMS2018"
+                    username=cmems_credentials()[0],
+                    password=cmems_credentials()[1]
                 )
 
                 # Process CMEMS data

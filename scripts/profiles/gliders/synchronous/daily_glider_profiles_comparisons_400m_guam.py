@@ -33,6 +33,7 @@ from ioos_model_comparisons.calc import (density,
                                          lon180to360,
                                          safe_float,
                                          )
+from ioos_model_comparisons import catalog
 from ioos_model_comparisons.platforms import get_active_gliders, get_ohc
 from ioos_model_comparisons.regions import region_config
 from ioos_model_comparisons.db import log_ohc_metrics
@@ -699,6 +700,7 @@ def plot_glider_profiles(id, gliders):
         }])
 
         plt.savefig(fullfile, dpi=configs.dpi)
+        catalog.register_figure(fullfile, platform={"lat": mlat, "lon": mlon})
         plt.close()
 
         # Save locations.json

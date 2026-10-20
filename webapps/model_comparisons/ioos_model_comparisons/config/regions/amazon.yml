@@ -1,0 +1,33 @@
+# Region 'amazon'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 13
+name: Amazon Plume
+folder: amazon_plume
+extent: [-70, -43, 0, 20]
+figure:
+  legend:
+    columns: 9
+  figsize: [13, 9]
+sea_surface_height:
+- depth: 0
+  limits: [-0.6, 0.7, 0.1]
+eez: false
+variables:
+  salinity:
+  - depth: 0
+    limits: [33.8, 37.1, 0.1]
+  - depth: 150
+  temperature:
+  - depth: 0
+  - depth: 150
+currents:
+  bool: true
+  depths: [0, 160, 200]
+  coarsen:
+    rtofs: 5
+    espc: 6
+  kwargs:
+    ptype: streamplot
+    color: black

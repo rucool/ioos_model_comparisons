@@ -1,0 +1,68 @@
+# Portal (webapps/model_comparisons) lists that used to be hand-typed in
+# app.py. Regions are referenced by their regions.py key; display names and
+# folders come from the region config, so a rename there flows through here.
+
+# Regions with published RTOFS-vs-model comparison maps (Maps Archive and
+# Overview), in display order. Not derivable from regions.py: many configured
+# regions (Amazon Plume, Loop Current Eddy, ...) have no published imagery.
+map_regions:
+  - caribbean
+  - gom
+  - sab
+  - mab
+  - west_florida_shelf
+  - windward
+  - tropical_western_atlantic
+  - mexico_pacific
+  - hawaii
+  - guam
+  - fiji
+
+# Adaptive Sampling Guidance tab.
+adaptive_sampling:
+  regions:            # label -> [url folder, display name used in file names]
+    Caribbean: [caribbean, Caribbean]
+    US East Coast: [east_coast, US East Coast]
+    Eastern Gulf of Mexico: [gom_east, Eastern Gulf of Mexico]
+    Western Gulf of Mexico: [gom_west, Western Gulf of Mexico]
+    Tropical Western Atlantic: [tropical_western_atlantic, Tropical Western Atlantic]
+  variables:          # label -> [url folder, panel subfolder, file-name code]
+    Ocean Heat Content: [ocean_heat_content, three_panel, ohc]
+    Sea Surface Salinity: [sea_surface_salinity, three_panel, sss]
+    Speed: [speed, three_panel_diff, speed]
+  models:             # label -> url folder
+    ESPC: espc
+    Copernicus: copernicus
+
+# Folders the Argo profile pipelines publish into, with the box drawn on the
+# Profiles map. `extent_from: <region key>` reuses that region's extent;
+# `extent: [lonmin, lonmax, latmin, latmax]` is explicit. `label` defaults to
+# the region's display name.
+argo_regions:
+  mid_atlantic_bight: {extent_from: mab}
+  south_atlantic_bight:
+    label: South Atlantic Bight
+    extent: [-82.25, -63.75, 24.75, 42.25]   # taller than the sab map region
+  gulf_of_mexico: {extent_from: gom}
+  caribbean: {extent_from: caribbean}
+  tropical_western_atlantic: {extent_from: tropical_western_atlantic}
+  west_florida_shelf: {extent_from: west_florida_shelf}
+  guam: {extent_from: guam}
+  # The Fiji-area Argo pipeline publishes to "fiji" (FVON's Fiji folder is
+  # "south_pacific" — a different pipeline). Antimeridian extent (lonmax>180).
+  fiji: {extent_from: fiji}
+  hawaii: {extent_from: hawaii}
+  mexico_pacific: {extent_from: mexico_pacific}
+
+# Areas the glider profile scripts search (boxes on the Profiles map only).
+glider_regions:
+  east_coast:
+    label: Gulf / Caribbean / US East Coast / Sargasso Sea
+    extent: [-99, -48, 5, 43]
+  guam: {extent_from: guam}
+  hawaii: {extent_from: hawaii}
+  mexico_pacific: {extent_from: mexico_pacific}
+
+# Folders the FVON pipelines publish into, and display-key -> folder aliases.
+fvon_regions: [bahamas, south_pacific]
+fvon_folder_map: {fiji: south_pacific}

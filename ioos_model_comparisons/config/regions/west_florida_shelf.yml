@@ -1,0 +1,46 @@
+# Region 'west_florida_shelf'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 10
+name: West Florida Shelf
+folder: west_florida_shelf
+extent: [-87.5, -80, 22.5, 30.5]
+figure:
+  legend:
+    columns: 5
+  figsize: [10, 7.75]
+sea_surface_height:
+- depth: 0
+  limits: [-0.6, 0.7, 0.1]
+eez: false
+variables:
+  salinity:
+  - depth: 0
+    limits: [34.5, 36.5, 0.1]
+  - depth: 100
+    limits: [36.1, 36.5, 0.025]
+  - depth: 200
+    limits: [35.6, 37, 0.1]
+  temperature:
+  - depth: 0
+    limits: [27.0, 30.25, 0.25]
+  - depth: 100
+    limits: [18.0, 27.5, 0.5]
+  - depth: 200
+    limits: [13, 23.0, 1.0]
+currents:
+  bool: true
+  depths: [0]
+  limits: [0, 1.5, 0.1]
+  coarsen:
+    rtofs: 11
+    espc: 12
+  kwargs:
+    ptype: streamplot
+    color: black
+salinity_max:
+  figsize: [14, 8]
+  limits: [36, 37, 0.1]
+ocean_heat_content:
+  limits: [0, 160, 10]

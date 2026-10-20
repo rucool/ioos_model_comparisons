@@ -16,6 +16,7 @@ from ioos_model_comparisons.calc import (
     ocean_heat_content,
     safe_float,
     )
+from ioos_model_comparisons import catalog
 from ioos_model_comparisons.platforms import get_argo_floats_by_time, get_ohc
 from ioos_model_comparisons.regions import region_config
 from ioos_model_comparisons.db import log_ohc_metrics
@@ -672,6 +673,7 @@ def process_argo(region):
             }])
 
             plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            catalog.register_figure(full_file, platform={"lat": alat, "lon": alon})
             plt.close()
             
             # Create a symlink directory

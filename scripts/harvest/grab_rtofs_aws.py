@@ -6,51 +6,38 @@ import os
 from datetime import datetime, timedelta
 import requests
 
-# Base URL adjustments
-prod_url = 'https://noaa-nws-rtofs-pds.s3.amazonaws.com'
-para_url = 'https://noaa-nws-rtofs-pds.s3.amazonaws.com/rtofs.parallel.v2.3'
+from ioos_model_comparisons.registry import load_registry
 
+# Sources, destinations and the file list all come from
+# ioos_model_comparisons/config/rtofs.yml — an RTOFS upgrade (e.g. a new
+# parallel version) is an edit there, not here. See docs/rtofs_upgrade.md.
+#
 # AWS is the preferred source, but it occasionally lags or is missing files.
 # NOMADS mirrors the same rtofs.YYYYMMDD/<file> layout for the operational
 # (prod) run and is used as a fallback. There is no NOMADS equivalent of the
 # parallel run, so the fallback only applies when prod=True.
-nomads_url = 'https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod'
-
-# Local directory adjustments
 #
-# East and West files are kept in separate directory trees (as they were
-# before East/West were merged into this one script). The THREDDS scraped
-# aggregation that builds rtofs_us_east_scraped globs everything sitting in
-# rtofs_ddir/rtofs.YYYYMMDD/ that looks like an hvr file - it isn't strict
+# East and West files are kept in separate directory trees. The THREDDS
+# scraped aggregation that builds rtofs_us_east_scraped globs everything
+# sitting in rtofs.YYYYMMDD/ that looks like an hvr file - it isn't strict
 # about US_east vs US_west in the name - so if West files land in the same
 # folder as East, the aggregation picks up both and every timestep gets
 # double-counted (a nearest-neighbor .sel() then breaks on the non-unique
 # time index). Keeping West in its own tree is what avoids that.
-prod_ddir = Path('/home/hurricaneadm/data/rtofs/')
-prod_ddir_west = Path('/home/hurricaneadm/data/rtofs_west/')
-para_ddir = Path('/home/hurricaneadm/data/rtofs.parallel.v2.3/')
-para_ddir_west = Path('/home/hurricaneadm/data/rtofs_west.parallel.v2.3/')
-# prod_ddir = Path('/Users/mikesmith/data/rtofs')
-# prod_ddir_west = Path('/Users/mikesmith/data/rtofs_west')
-# para_ddir = Path('/Users/mikesmith/data/rtofs.parallel.v2.3/')
-# para_ddir_west = Path('/Users/mikesmith/data/rtofs_west.parallel.v2.3/')
+_cfg = load_registry().rtofs
+_prod = _cfg.streams["operational"]
+_para = _cfg.streams.get("parallel")
+
+prod_url = _prod.aws_url
+nomads_url = _prod.nomads_url
+prod_ddir = Path(_prod.data_dirs["east"])
+prod_ddir_west = Path(_prod.data_dirs["west"])
+para_url = _para.aws_url if _para else None
+para_ddir = Path(_para.data_dirs["east"]) if _para else None
+para_ddir_west = Path(_para.data_dirs["west"]) if _para else None
 
 # File names to download
-fnames2grab = [
-    'rtofs_glo_3dz_f006_6hrly_hvr_US_east.nc',
-    'rtofs_glo_3dz_f012_6hrly_hvr_US_east.nc',
-    'rtofs_glo_3dz_f018_6hrly_hvr_US_east.nc',
-    'rtofs_glo_3dz_f024_6hrly_hvr_US_east.nc',
-    'rtofs_glo_3dz_f006_6hrly_hvr_US_west.nc',
-    'rtofs_glo_3dz_f012_6hrly_hvr_US_west.nc',
-    'rtofs_glo_3dz_f018_6hrly_hvr_US_west.nc',
-    'rtofs_glo_3dz_f024_6hrly_hvr_US_west.nc',
-    'rtofs_glo_2ds_f006_diag.nc',
-    'rtofs_glo_2ds_f012_diag.nc',
-    'rtofs_glo_2ds_f018_diag.nc',
-    'rtofs_glo_2ds_f024_diag.nc',
-
-]
+fnames2grab = list(_cfg.files)
 
 def generate_date_strs(days=2):
     """
@@ -73,7 +60,7 @@ def download_file(url, destination, retries=3):
     attempt = 0
     while attempt < retries:
         try:
-            with requests.get(url, stream=True) as r:
+            with requests.get(url, stream=True, timeout=(10, 300)) as r:
                 r.raise_for_status()
                 total_size = int(r.headers.get('content-length', 0))
 
@@ -135,4 +122,5 @@ if __name__ == "__main__":
     date_strs = generate_date_strs(days)
     for date_str in date_strs:
         download_rtofs_data(date_str, prod=True)
-        download_rtofs_data(date_str, prod=False)
+        if para_url:  # no parallel stream configured -> nothing to grab
+            download_rtofs_data(date_str, prod=False)

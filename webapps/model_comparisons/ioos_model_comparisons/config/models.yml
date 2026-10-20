@@ -1,0 +1,74 @@
+# Models and observation products that appear in comparisons.
+#
+#   label           shown in the portal
+#   filename_token  exactly how the model appears in plot file names. For
+#                   models this is ds.attrs['model'].lower() as set by the
+#                   loader in models.py (plotting.py builds file names from
+#                   it) — renaming a token breaks every existing URL, so add a
+#                   new model instead. The catalog stores tokens lower-cased.
+#   kind            model | satellite | product
+#   rtofs_stream    for RTOFS variants: which stream in rtofs.yml (operational
+#                   or parallel) — catalog entries get that stream's version.
+#   loader          dotted path of the loader in models.py (Phase 2 runner);
+#                   informational until then.
+
+models:
+  rtofs:
+    label: RTOFS
+    filename_token: rtofs
+    kind: model
+    rtofs_stream: operational
+    loader: ioos_model_comparisons.models:rtofs
+  rtofs-p:
+    label: RTOFS Parallel
+    filename_token: rtofs-p
+    kind: model
+    rtofs_stream: parallel
+    loader: ioos_model_comparisons.models:rtofs
+  espc:
+    label: ESPC
+    filename_token: espc
+    kind: model
+    loader: ioos_model_comparisons.models:ESPC
+  cmems:
+    label: Copernicus (CMEMS)
+    filename_token: cmems
+    kind: model
+    loader: ioos_model_comparisons.models:CMEMS
+  copernicus:
+    # Adaptive-sampling-guidance file names say "copernicus" for CMEMS.
+    label: Copernicus (CMEMS)
+    filename_token: copernicus
+    kind: model
+  eccofs:
+    label: ECCOFS
+    filename_token: eccofs
+    kind: model
+    loader: ioos_model_comparisons.models:ECCOFSFullDepth
+  amseas:
+    label: AMSEAS
+    filename_token: amseas
+    kind: model
+    loader: ioos_model_comparisons.models:amseas
+  cnaps:
+    label: CNAPS
+    filename_token: cnaps
+    kind: model
+    loader: ioos_model_comparisons.models:cnaps
+  doppio:
+    label: Doppio
+    filename_token: doppio
+    kind: model
+    loader: ioos_model_comparisons.models:Doppio
+  goes16:
+    label: GOES-16
+    filename_token: GOES16      # file names use upper case for satellites
+    kind: satellite
+  goes19:
+    label: GOES-19
+    filename_token: GOES19
+    kind: satellite
+  nesdis:
+    label: NESDIS OHC
+    filename_token: nesdis
+    kind: product

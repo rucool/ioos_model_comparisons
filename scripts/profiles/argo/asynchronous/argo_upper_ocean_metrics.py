@@ -14,6 +14,7 @@ from gsw import CT_from_t, SA_from_SP, p_from_z, rho
 from requests.exceptions import HTTPError as rHTTPError
 
 from ioos_model_comparisons.plotting import export_fig
+from ioos_model_comparisons.env import cmems_credentials
 
 
 ################################################################################
@@ -366,8 +367,7 @@ def gofs(rename=False):
 
 
 def cmems(rename=False):
-    username = 'maristizabalvar'
-    password = 'MariaCMEMS2018'
+    username, password = cmems_credentials()
     dataset = 'global-analysis-forecast-phy-001-024'
     from pydap.cas.get_cookies import setup_session
     from pydap.client import open_url

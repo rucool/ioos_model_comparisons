@@ -69,6 +69,16 @@ def region_transform(extent):
     )
 
 
+def _register(path):
+    """Record a just-saved figure in the figure catalog (catalog.py). Never
+    raises; a no-op for paths outside the published plots root."""
+    try:
+        from ioos_model_comparisons import catalog
+        catalog.register_figure(path)
+    except Exception:
+        pass
+
+
 def export_fig(path, fname, script=None, dpi=150):
     """
     Helper function to save a figure with some nice formatting.
@@ -90,6 +100,7 @@ def export_fig(path, fname, script=None, dpi=150):
         plt.figtext(.98, 0.20, f"{script} {now}",  fontsize=10, rotation=90)
         
     plt.savefig(path / fname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+    _register(path / fname)
 
 
 def cmaps(variable):
@@ -547,6 +558,7 @@ def plot_model_region(ds, region,
                 coarsen = currents['coarsen']
                 map_add_currents(ax, da, coarsen=coarsen[model], **currents['kwargs'])
                 fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+                _register(save_file_q)
             
             plt.close()
 
@@ -1012,6 +1024,7 @@ def plot_model_region_currents(
     # plt.figtext(0.25, 0.01, 'Fixed tracks will be followed as shown.\nExpected tracks will approximately follow tracks as shown but may be affected by currents in unpredictable way.', ha="left", fontsize=9, fontstyle='italic')
 
     fig.savefig(save_file, dpi=150, bbox_inches='tight', pad_inches=0.1)
+    _register(save_file)
 
     plt.close()
 
@@ -1525,6 +1538,7 @@ def plot_grase(
     # print("Selected points:", points)
     
     fig.savefig(save_file, dpi=150, bbox_inches='tight', pad_inches=0.1)
+    _register(save_file)
 
     plt.close()
  
@@ -1961,6 +1975,7 @@ def plot_model_region_comparison(ds1, ds2, region,
             # ax2.plot(lons, lats, color='red', transform=transform['data'], zorder=1000)
     
             fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            _register(save_dir_final / sname)
 
             # Restore ax3 legend after MAB isotherm legend was added
             if _iso_leg is not None:
@@ -2258,6 +2273,7 @@ def plot_model_region_comparison_wmo(ds1, ds2, region,
             # ax2.plot(lons, lats, color='red', transform=transform['data'], zorder=1000)
     
             fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            _register(save_dir_final / sname)
 
             # Add currents as overlays over variable plots
             # if currents['bool']:
@@ -2524,6 +2540,7 @@ def plot_model_region_comparison_idalia(ds1, ds2, region,
             # figure handles so that we can reuse the figure.
             # export_fig(save_dir_final, sname, dpi=dpi)
             fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            _register(save_dir_final / sname)
 
             # Add currents as overlays over variable plots
             # if currents['bool']:
@@ -2936,6 +2953,7 @@ def plot_model_region_difference(ds1, ds2, region,
             # figure handles so that we can reuse the figure.
             # export_fig(save_dir_final, sname, dpi=dpi)
             fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            _register(save_dir_final / sname)
 
             # # Add currents as overlays over variable plots
             # if currents['bool']:
@@ -3094,6 +3112,7 @@ def plot_transect(x, y, c, xlabel, cmap, title=None, save_file=None, flip_y=None
     ax.set_xlabel(xlabel, size=12, fontweight='bold')
 
     plt.savefig(save_file, bbox_inches='tight', pad_inches=0.1, dpi=300)
+    _register(save_file)
     plt.close()
 
 
@@ -3122,6 +3141,7 @@ def plot_transects(x, y, c, xlabel, cmap=None, title=None, save_file=None, flip_
     plt.tight_layout()
 
     plt.savefig(save_file, bbox_inches='tight', pad_inches=0.1, dpi=300)
+    _register(save_file)
     plt.close()
 
 
@@ -3470,6 +3490,7 @@ def plot_model_region_comparison_streamplot(ds1, ds2, region,
 
         # Save figure
         fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        _register(save_file_q)
         if colorbar:
             cb.remove()
             
@@ -3725,6 +3746,7 @@ def plot_model_region_comparison_streamplot_idalia(ds1, ds2, region,
 
         # Save figure
         fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        _register(save_file_q)
         if colorbar:
             cb.remove()
             
@@ -7837,6 +7859,7 @@ def plot_model_region_ts_vs_speed(ds,
                                    tds['u'].values, tds['v'].values,
                                    **sargs)
                 fig.savefig(save_dir_final / sname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+                _register(save_dir_final / sname)
 
                 # Remove quiver handles from each axes
                 q.lines.remove()
@@ -8109,6 +8132,7 @@ def plot_model_region_single_streamplot(ds1, region,
 
         # Save figure
         fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        _register(save_file_q)
         if colorbar:
             cb.remove()
             
@@ -8433,6 +8457,7 @@ def plot_model_region_single_streamplot_grase(ds1, region,
 
         # Save figure
         fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        _register(save_file_q)
         if colorbar:
             cb.remove()
             
@@ -8782,6 +8807,7 @@ def plot_model_region_single_streamplot_grase_movie(ds1, region,
 
         # Save figure
         fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        _register(save_file_q)
         if colorbar:
             cb.remove()
             
@@ -9135,6 +9161,7 @@ def plot_model_region_single_streamplot_grase_cnaps(ds1, region,
 
         # Save figure
         fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        _register(save_file_q)
         if colorbar:
             cb.remove()
             
@@ -9173,7 +9200,9 @@ def plot_sst(ds1, ds2, region,
     satellite_tag = satellite.replace('-', '').upper()
     sname = f'{"-".join(region["folder"].split("_"))}_{time.strftime("%Y-%m-%dT%H%M%SZ")}_{k}-{depth}m_{ds1.model.lower()}-vs-{satellite_tag}'
 
-    sfname = save_dir_final / sname
+    # Explicit .png: matplotlib appends it anyway, and the existence check
+    # below has to look for the file that is actually written.
+    sfname = save_dir_final / f"{sname}.png"
 
     if sfname.is_file():
         if not overwrite:
@@ -9383,6 +9412,7 @@ def plot_sst(ds1, ds2, region,
     # figure handles so that we can reuse the figure.
     # export_fig(save_dir_final, sname, dpi=dpi)
     fig.savefig(sfname, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+    _register(sfname)
 
     plt.close()
 
@@ -9582,6 +9612,7 @@ def plot_model_region_scott(ds, region,
     #         plt.figtext(0.5, -0.07, legstr, ha="center", fontsize=10, fontweight='bold')
 
     fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+    _register(save_file)
     
     # Add currents
     if currents['bool']:
@@ -9592,6 +9623,7 @@ def plot_model_region_scott(ds, region,
         coarsen = currents['coarsen']
         map_add_currents(ax, da, coarsen=coarsen[model], **currents['kwargs'])
         fig.savefig(save_file_q, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        _register(save_file_q)
     
     plt.close()
 
@@ -9889,6 +9921,7 @@ def plot_model_region_single(ds1, region,
                 cb.set_label(f'{k.title()} ({rsub.units})', fontsize=12, fontweight="bold")
 
             fig.savefig(save_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+            _register(save_file)
 
             try:
                 h1.remove()

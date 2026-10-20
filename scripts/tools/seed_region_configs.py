@@ -1,29 +1,18 @@
 #!/usr/bin/env python3
 """
-Seed MongoDB region_configs collection from regions.py defaults.
+DEPRECATED — region defaults now live in ioos_model_comparisons/config/regions/*.yml
+and are read directly by region_config(). MongoDB region_configs should hold
+only deliberate overrides (see scripts/tools/unseed_region_overrides.py);
+copying the defaults into MongoDB, as this script did, HIDES later YAML edits
+because apply_colorbar_overrides() replaces whole top-level keys.
 
-This writes most of the region_config() output — extent, folder, name, eez,
-figure, currents, salinity_max, ocean_heat_content — so scripts can read the
-full region definition from MongoDB via apply_colorbar_overrides() /
-fetch_region_config() without redeploying code to change it.
+Kept for the rare case where you really want to force a region's current YAML
+values into MongoDB as overrides:
 
-region_configs is the single source of truth, with different fields owned by
-different writers: update_colorbar_limits.py (weekly live-data tuning) and
-colorbar_tuner.py (manual tuning) both write variables.temperature/salinity
-and sea_surface_height directly into this same collection/document. This
-script deliberately EXCLUDES those two fields from what it writes (and uses
-a partial $set, not a full replace) so re-running it to pick up an unrelated
-regions.py edit — a new region, a currents.limits_by_depth tweak, whatever —
-never clobbers live-tuned colorbar limits back to regions.py's static
-defaults. A brand-new, never-tuned region simply falls back to regions.py's
-values for those two fields until a tuning run sets them.
+    python scripts/tools/seed_region_configs.py --force [region ...]
 
-Usage:
-    python scripts/tools/seed_region_configs.py
-
-Requires MONGODB_URI environment variable to be set.
-Writes one document per region to hurricanes.region_configs (upsert).
-Re-run at any time to pick up new regions or edits made in regions.py.
+It still excludes variables/sea_surface_height (owned by the colorbar tuners)
+and uses a partial $set.
 """
 import logging
 import os
@@ -65,6 +54,16 @@ def _build_doc(region_key):
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--force", action="store_true", help="really copy YAML defaults into MongoDB")
+    ap.add_argument("regions", nargs="*", help="limit to these region keys")
+    args = ap.parse_args()
+    if not args.force:
+        print(__doc__)
+        sys.exit(2)
+    regions = args.regions or ALL_REGIONS
+
     uri = os.getenv("MONGODB_URI")
     if not uri:
         logger.error("MONGODB_URI environment variable is not set")
@@ -77,7 +76,7 @@ def main():
     collection.create_index("region", unique=True)
 
     seeded = 0
-    for key in ALL_REGIONS:
+    for key in regions:
         try:
             doc = _build_doc(key)
         except Exception as exc:
@@ -90,7 +89,7 @@ def main():
         seeded += 1
 
     logger.info(
-        f"Done — {seeded}/{len(ALL_REGIONS)} regions seeded in "
+        f"Done — {seeded}/{len(regions)} regions seeded in "
         "hurricanes.region_configs"
     )
 

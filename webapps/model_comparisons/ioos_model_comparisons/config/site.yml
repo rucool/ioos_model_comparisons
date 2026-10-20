@@ -1,0 +1,25 @@
+# Where plots live and how they are published. Loaded by registry.py.
+#
+# Environment overrides (for local development):
+#   IMC_PLOTS_ROOT    replaces publish_root (e.g. point a local catalog at
+#                     ~/Documents/plots/model_comparisons with a local Mongo)
+#   IMC_CONFIG_DIR    load this whole config/ directory from somewhere else
+
+# Root plot scripts write under, per platform (configs.path_plots).
+plots_root:
+  linux: /www/web/rucool/hurricane/model_comparisons
+  darwin: ~/Documents/plots/model_comparisons
+
+# Only figures saved under this directory are registered in the catalog, so a
+# laptop run pointed at the production MongoDB can't add URLs that don't exist.
+publish_root: /www/web/rucool/hurricane/model_comparisons
+
+# What Apache serves publish_root as. Catalog URLs = this + relative path.
+public_base_url: https://rucool.marine.rutgers.edu/hurricane/model_comparisons/
+
+catalog:
+  database: hurricanes
+  collection: figures
+  # The portal (DISCOVERY_BACKEND=auto) falls back to legacy discovery when
+  # the newest catalog write is older than this.
+  stale_after_hours: 12

@@ -48,7 +48,12 @@ def _rows():
 @ohc_bp.route("")
 @ohc_bp.route("/")
 def table():
-    return render_template("ohc_table.html")
+    # Model columns follow db.OHC_MODEL_FIELDS (the same list the CSV export
+    # and the profile scripts' log_ohc_metrics rows use).
+    labels = {"rtofs_parallel": "RTOFS Parallel"}
+    model_columns = [{"field": f"ohc_{m}", "label": labels.get(m, m.upper())}
+                     for m in OHC_MODEL_FIELDS]
+    return render_template("ohc_table.html", model_columns=model_columns)
 
 
 @ohc_bp.route("/api/data")

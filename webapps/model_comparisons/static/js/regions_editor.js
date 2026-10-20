@@ -53,6 +53,12 @@ async function selectRegion(region) {
   renderForm();
   syncJsonFromDoc();
   showIssues(j.errors, j.warnings);
+  // Which top-level keys MongoDB overrides; everything else is the YAML
+  // default from config/regions/<key>.yml (saving stores only differences).
+  const ov = j.overridden || [];
+  $('issues').insertAdjacentHTML('beforeend', `<div class="small text-muted mt-1">`
+    + (ov.length ? `overridden in MongoDB: ${ov.join(', ')} — other keys use config/regions/${region}.yml`
+                 : `no MongoDB overrides — all values from config/regions/${region}.yml`) + `</div>`);
   loadRegions();
 }
 
@@ -304,7 +310,7 @@ $('saveConfirm').addEventListener('click', doSave);
 $('deleteBtn').onclick = async () => {
   if (!CAN_EDIT) return;
   if (!confirm(`Drop the MongoDB override for ${state.region}?\n\n`
-             + `regions.py defaults will apply again. History is kept.`)) return;
+             + `The YAML defaults (config/regions/${state.region}.yml) will apply again. History is kept.`)) return;
   const r = await post('delete', { region: state.region });
   if (!r.ok) return showIssues([r.data.error || 'delete failed'], []);
   state.region = null; state.doc = null;
@@ -324,8 +330,8 @@ $('newBtn').onclick = () => {
   $('regionTitle').textContent = key;
   ['validateBtn', 'saveBtn', 'deleteBtn'].forEach(b => $(b).disabled = false);
   renderForm(); syncJsonFromDoc();
-  showIssues([], ['new region — not saved yet. It will only appear in scripts '
-                + 'that read region_configs, not in regions.py.']);
+  showIssues([], ['new region — not saved yet. A region that exists only in MongoDB '
+                + 'is not usable by region_config(); add config/regions/<key>.yml for that.']);
 };
 
 $('filter').oninput = loadRegions;

@@ -34,6 +34,7 @@ import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
 from cool_maps.plot import get_bathymetry
 from ioos_model_comparisons.calc import lon180to360, lon360to180, density, ocean_heat_content, safe_float
+from ioos_model_comparisons import catalog
 from ioos_model_comparisons.models import CMEMS, espc_ts
 from ioos_model_comparisons.platforms import (
     ARGO_DATA_QC_VARIABLES,
@@ -526,6 +527,7 @@ def process_argo(region_key):
         }])
 
         plt.savefig(full_file, dpi=dpi, bbox_inches='tight', pad_inches=0.1)
+        catalog.register_figure(full_file, platform={"lat": lat, "lon": lon})
         plt.close()
 
         if ctime > then:

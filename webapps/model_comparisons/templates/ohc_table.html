@@ -53,15 +53,11 @@
           <th>Lat</th>
           <th>Lon</th>
           <th>OHC @ Platform</th>
-          <th>OHC RTOFS</th>
-          <th>OHC ESPC</th>
-          <th>OHC CMEMS</th>
-          <th>OHC ECCOFS</th>
-          <th>OHC NESDIS</th>
+          {% for c in model_columns %}<th>OHC {{ c.label }}</th>{% endfor %}
         </tr>
       </thead>
       <tbody id="ohcTableBody">
-        <tr><td colspan="12" class="p-0">
+        <tr><td colspan="{{ 7 + model_columns|length }}" class="p-0">
           <div class="loading-state">
             <div class="spinner-border spinner-border-sm" role="status"></div>
             <span class="fw-medium">Loading...</span>
@@ -82,7 +78,7 @@
 
 {% block scripts %}
 <script>
-  const MODEL_COLUMNS = ['ohc_rtofs', 'ohc_espc', 'ohc_cmems', 'ohc_eccofs', 'ohc_nesdis'];
+  const MODEL_COLUMNS = {{ model_columns | map(attribute='field') | list | tojson }};
 
   function fmtOhc(v) {
     return (v === null || v === undefined) ? '' : Number(v).toFixed(4);
@@ -101,7 +97,7 @@
 
   async function loadTable() {
     const tbody = document.getElementById('ohcTableBody');
-    tbody.innerHTML = `<tr><td colspan="12" class="p-0">
+    tbody.innerHTML = `<tr><td colspan="{{ 7 + model_columns|length }}" class="p-0">
       <div class="loading-state">
         <div class="spinner-border spinner-border-sm" role="status"></div>
         <span class="fw-medium">Loading...</span>
@@ -115,7 +111,7 @@
       const rows = data.rows || [];
 
       if (rows.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="12" class="p-0">
+        tbody.innerHTML = `<tr><td colspan="{{ 7 + model_columns|length }}" class="p-0">
           <div class="placeholder-state">
             <i class="bi bi-table text-muted opacity-50 mb-2" style="font-size:2rem;"></i>
             <span class="fw-medium text-muted">No rows for this filter.</span>
@@ -140,7 +136,7 @@
       document.getElementById('rowCount').textContent = `${rows.length} row${rows.length === 1 ? '' : 's'}`;
     } catch (err) {
       console.error(err);
-      tbody.innerHTML = `<tr><td colspan="12" class="p-0">
+      tbody.innerHTML = `<tr><td colspan="{{ 7 + model_columns|length }}" class="p-0">
         <div class="unavailable-state">
           <i class="bi bi-exclamation-circle text-danger mb-1" style="font-size:1.5rem;"></i>
           <span class="fw-medium text-danger">Failed to load — network error.</span>

@@ -1,0 +1,84 @@
+# Which comparisons exist, and which portal panels show them.
+#
+# Region rules use region FOLDER names (regions.py `folder`), because that is
+# what is on disk and in the figure catalog. `include` limits to the listed
+# regions; `exclude` removes them. var_depth is the portal's variable_depth
+# value: temperature_0m, salinity_150m, currents_0m, ocean_heat_content, ...
+#
+# To add a new comparison to the portal: add it under `comparisons`, then add
+# a panel under `map_panels` (its key becomes the JSON key /api/maps returns
+# and the id of the Overview radio button, so never rename an existing key).
+
+comparisons:
+  rtofs-vs-cmems:
+    models: [rtofs, cmems]
+  rtofs-vs-espc:
+    models: [rtofs, espc]
+  espc-vs-cmems:
+    models: [espc, cmems]
+  rtofs-vs-espc-vs-cmems:
+    # Fiji's single combined three-model OHC image.
+    models: [rtofs, espc, cmems]
+  rtofs-vs-eccofs:
+    models: [rtofs, eccofs]
+    regions:
+      # ECCOFS's ROMS grid only usefully covers the Atlantic/Intra-Americas
+      # Seas; these regions never get the comparison.
+      exclude: [tropical_western_atlantic, mexico_pacific, hawaii, wmo_v_south,
+                philippines_sea, guam, fiji]
+  rtofs-vs-rtofs-p:
+    models: [rtofs, rtofs-p]
+  rtofs-vs-goes16:
+    models: [rtofs, goes16]
+    var_depths: {include: [temperature_0m]}
+    regions: {exclude: [fiji]}
+  rtofs-vs-goes19:
+    models: [rtofs, goes19]
+    var_depths: {include: [temperature_0m]}
+    regions: {exclude: [fiji]}
+  rtofs-vs-nesdis:
+    models: [rtofs, nesdis]
+    var_depths: {include: [ocean_heat_content]}
+
+# Panels on the Maps Archive and Overview tabs, in Maps display order.
+# A panel is shown for (region, var_depth) when its own rules AND its
+# comparison's rules allow it. `comparisons` lists every catalog comparison
+# that can fill the panel (first match wins).
+map_panels:
+  - key: copernicus
+    label: RTOFS vs. Copernicus (CMEMS)
+    short: Copernicus
+    comparisons: [rtofs-vs-cmems]
+    exclude: [{region: fiji, var_depth: ocean_heat_content}]
+  - key: espc
+    label: RTOFS vs. ESPC
+    short: ESPC
+    comparisons: [rtofs-vs-espc]
+    exclude: [{region: fiji, var_depth: ocean_heat_content}]
+  - key: espc_cmems
+    label: ESPC vs. CMEMS
+    short: ESPC vs CMEMS
+    # Guam's and Fiji's RTOFS histories are short; the legacy ESPC-vs-CMEMS
+    # comparison keeps their full archive reachable.
+    comparisons: [espc-vs-cmems, rtofs-vs-espc-vs-cmems]
+    regions: {include: [guam, fiji]}
+  - key: eccofs
+    label: RTOFS vs. ECCOFS
+    short: ECCOFS
+    comparisons: [rtofs-vs-eccofs]
+  - key: nesdis
+    label: RTOFS vs. NESDIS OHC
+    short: NESDIS OHC
+    comparisons: [rtofs-vs-nesdis]
+    exclude: [{region: fiji}]
+  - key: goes16
+    label: RTOFS vs. GOES-16
+    short: GOES-16
+    comparisons: [rtofs-vs-goes16]
+  - key: goes19
+    label: RTOFS vs. GOES-19
+    short: GOES-19
+    comparisons: [rtofs-vs-goes19]
+
+# Overview tab radio-button order (the first visible one is the default).
+overview_order: [espc, copernicus, espc_cmems, eccofs, nesdis, goes16, goes19]

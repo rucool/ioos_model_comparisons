@@ -190,8 +190,7 @@ with ProgressBar():
 #     return data_store
 
 
-# USERNAME = 'maristizabalvar'
-# PASSWORD = 'MariaCMEMS2018'
+# USERNAME, PASSWORD = cmems_credentials()
 # DATASET_ID = 'global-analysis-forecast-phy-001-024'
 
 # data_store = copernicusmarine_datastore(DATASET_ID, USERNAME, PASSWORD)

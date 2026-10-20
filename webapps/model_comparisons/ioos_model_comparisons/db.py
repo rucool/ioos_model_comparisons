@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 _client = None
 _client_tried = False
+_client_pid = None
 
 
 def get_client():
@@ -22,10 +23,15 @@ def get_client():
     NOT right for authentication — ioos_model_comparisons/users.py documents
     why it treats None as "deny" instead.
     """
-    global _client, _client_tried
+    global _client, _client_tried, _client_pid
+    if _client_tried and _client_pid != os.getpid():
+        # Forked (ProcessPoolExecutor workers): a MongoClient is not fork-safe,
+        # so reconnect in the child instead of reusing the parent's pool.
+        _client, _client_tried = None, False
     if _client_tried:
         return _client
     _client_tried = True
+    _client_pid = os.getpid()
 
     uri = os.getenv("MONGODB_URI")
     if not uri:
@@ -232,7 +238,7 @@ _OHC_KEYS = ["platform_type", "platform_id", "date"]
 # compute instead of throwing it away as plot-caption text. Built for Lev's
 # request: a Platform ID / date / OHC-at-platform / OHC-at-model(s) /
 # OHC-NESDIS export table.
-OHC_MODEL_FIELDS = ["rtofs", "espc", "cmems", "eccofs", "nesdis"]
+OHC_MODEL_FIELDS = ["rtofs", "rtofs_parallel", "espc", "cmems", "eccofs", "nesdis"]
 
 
 def ensure_ohc_index(db_name=_OHC_DB, coll_name=_OHC_COLL):

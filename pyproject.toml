@@ -1,0 +1,15 @@
+# Packaging still lives in setup.py; this file only configures tooling.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+norecursedirs = [
+    "scratches", "notebooks", "outputs", "cache*", "deprecated",
+    "accidentally_deleted", "webapps", "data", "plots", "pyhycom", ".git",
+]
+markers = [
+    "heavy: needs the full plotting stack (cartopy/xarray/copernicusmarine)",
+    "network: talks to the internet (never run in CI)",
+]
+addopts = "-m 'not network' -p no:cacheprovider"
+filterwarnings = ["ignore::DeprecationWarning:mongomock.*"]

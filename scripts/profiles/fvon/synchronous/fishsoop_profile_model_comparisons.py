@@ -17,6 +17,7 @@ import pandas as pd
 import xarray as xr
 
 from ioos_model_comparisons.calc import lon180to360, lon360to180, depth_interpolate
+from ioos_model_comparisons import catalog
 import ioos_model_comparisons.configs as conf
 import cool_maps.plot as cplt
 
@@ -661,6 +662,7 @@ def process_fishsoop_region(region):
         fig.subplots_adjust(top=0.9)
 
         plt.savefig(full_file, dpi=dpi, bbox_inches="tight", pad_inches=0.1)
+        catalog.register_figure(full_file, platform={"lat": lat, "lon": lon})
         plt.close()
 
         _ensure_symlink(full_file, symlink_dir, save_str, ctime, then)

@@ -24,21 +24,14 @@ import time
 
 from ioos_model_comparisons.db import apply_colorbar_overrides
 from ioos_model_comparisons.regions import region_config
+from ioos_model_comparisons.registry import load_registry
 
 logger = logging.getLogger(__name__)
 
-# The complete list of regions defined in regions.py. Adding a region there
-# means adding its key here too — this is the one place that fans out to
-# MongoDB seeding, the website's region_info/argo_regions, and (indirectly,
-# via apply_colorbar_overrides) every offline plotting script.
-ALL_REGIONS = [
-    "mastr", "yucatan", "leeward", "loop_current", "gom", "gom_east",
-    "gom_west", "east_coast", "sab", "mab", "west_florida_shelf",
-    "caribbean", "windward", "amazon", "hurricane",
-    "tropical_western_atlantic", "passengers", "mexico_pacific", "hawaii",
-    "wmo_v_south", "bahamas", "ru29", "philippines", "guam", "fiji",
-    "south_africa", "gulf_stream",
-]
+# Every region defined in config/regions/*.yml, in their `order`. Derived, not
+# hand-typed: adding a region file adds it to MongoDB seeding, the website's
+# region_info/argo_regions, and every offline plotting script.
+ALL_REGIONS = load_registry().region_keys()
 
 
 def build_region_config(key):
@@ -66,7 +59,8 @@ _OHC_AVAILABLE_OVERRIDES = {"fiji"}
 
 
 def build_region_info():
-    """{display_name: {"variables": [...], "depths": {var: ["0m", ...]}}}
+    """{display_name: {"variables": [...], "depths": {var: ["0m", ...]},
+    "key": regions key, "folder": region folder}}
     for every region in ALL_REGIONS, live from regions.py + MongoDB.
 
     Mirrors the webapps/model_comparisons UI contract exactly (verified
@@ -109,7 +103,8 @@ def build_region_info():
             variables.append("currents")
             depths["currents"] = _fmt_depths(currents.get("depths") or [])
 
-        info[name] = {"variables": variables, "depths": depths}
+        info[name] = {"variables": variables, "depths": depths,
+                      "key": key, "folder": cfg.get("folder")}
 
     return info
 

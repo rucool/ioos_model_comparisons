@@ -1,0 +1,9 @@
+# Test/dev dependencies (both the library tests and the web app tests).
+pytest>=8
+mongomock>=4.1
+responses>=0.25
+pyyaml>=6
+pydantic>=2,<3
+# mongomock 4.3 breaks on pymongo 4.11+ bulk ops (UpdateOne sort=); test-only cap
+pymongo>=4,<4.11
+python-dotenv>=1.0

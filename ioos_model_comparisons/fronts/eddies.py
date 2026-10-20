@@ -34,6 +34,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from ioos_model_comparisons.env import cmems_credentials
 
 DEG2KM = 111.195
 
@@ -70,8 +71,8 @@ def _open_sla(username=None, password=None):
     import copernicusmarine as cm
     _sla_ds = cm.open_dataset(
         dataset_id=SLA_DATASET,
-        username=username or "maristizabalvar",
-        password=password or "MariaCMEMS2018",
+        username=username or cmems_credentials()[0],
+        password=password or cmems_credentials()[1],
         chunk_size_limit=0,
     )
     return _sla_ds

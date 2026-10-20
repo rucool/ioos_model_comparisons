@@ -13,6 +13,7 @@ from ioos_model_comparisons.platforms import get_glider_by_id, Argo
 from ioos_model_comparisons.calc import convert_lon_180_to_360, find_nearest
 import os
 from pathlib import Path
+from ioos_model_comparisons.env import cmems_credentials
 
 glider = "ng645-20210613T0000"
 days_offset = 0
@@ -193,8 +194,7 @@ if copernicus:
         return data_store
 
 
-    USERNAME = 'maristizabalvar'
-    PASSWORD = 'MariaCMEMS2018'
+    USERNAME, PASSWORD = cmems_credentials()
     DATASET_ID = 'global-analysis-forecast-phy-001-024'
 
     data_store = copernicusmarine_datastore(DATASET_ID, USERNAME, PASSWORD)

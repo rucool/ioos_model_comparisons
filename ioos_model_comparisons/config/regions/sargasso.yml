@@ -1,0 +1,34 @@
+# Region 'sargasso'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 9
+# Sargasso Sea -- open ocean east of the Mid/South Atlantic Bight shelf, so
+# East Coast glider searches that stop at the shelf break (mab/sab cut off
+# around -63) miss gliders that have moved offshore.
+name: Sargasso Sea
+folder: sargasso_sea
+extent: [-74, -40, 20, 38]
+figure:
+  legend:
+    columns: 5
+  figsize: [12, 7]
+sea_surface_height:
+- depth: 0
+  limits: [-0.6, 0.7, 0.1]
+eez: false
+variables:
+  salinity:
+  - depth: 0
+    limits: [36, 37.2, 0.1]
+  - depth: 150
+    limits: [36, 37.2, 0.1]
+  temperature:
+  - depth: 0
+    limits: [20, 30, 0.5]
+  - depth: 150
+    limits: [15, 25, 0.5]
+currents:
+  bool: false
+ocean_heat_content:
+  limits: [0, 160, 10]

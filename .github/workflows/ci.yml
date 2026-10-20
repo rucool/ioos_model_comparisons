@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  library:
+    # Config registry, figure catalog/indexer, region YAML parity. These tests
+    # never import the plotting stack, so a plain pip install is enough.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest
+
+  portal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - name: Install web app requirements (uwsgi comes from the server, not pip)
+        run: |
+          grep -v '^uwsgi' webapps/model_comparisons/requirements.txt > /tmp/req.txt
+          pip install -r /tmp/req.txt -r requirements-dev.txt
+      - name: Vendored package matches the library, requirements cover imports
+        run: python scripts/release/sync_vendor.py --check
+      - run: python -m pytest
+        working-directory: webapps/model_comparisons
+
+  build:
+    needs: [library, portal]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}   # git describe needs tags
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: python scripts/release/build_webapp.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model_comparisons-webapp
+          path: dist/*.zip
+      - name: Attach to the GitHub release for version tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip

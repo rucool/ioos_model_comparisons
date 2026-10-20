@@ -38,6 +38,7 @@ from matplotlib.colors import Normalize
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 import platform
+from ioos_model_comparisons.env import cmems_credentials
 
 try:
     from bs4 import BeautifulSoup
@@ -1409,8 +1410,8 @@ def main():
                     maximum_depth=1,
                     output_filename="cmems_temp_download.nc",
                     output_directory=data_dir,
-                    username="maristizabalvar",
-                    password="MariaCMEMS2018"
+                    username=cmems_credentials()[0],
+                    password=cmems_credentials()[1]
                 )
 
                 with xr.open_dataset(temp_cmems_file) as cmems_raw:

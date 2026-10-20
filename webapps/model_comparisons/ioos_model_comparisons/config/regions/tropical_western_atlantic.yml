@@ -1,0 +1,49 @@
+# Region 'tropical_western_atlantic'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 15
+name: Tropical Western Atlantic
+folder: tropical_western_atlantic
+extent: [-70.25, -40.75, 0, 25]
+figure:
+  figsize: [12, 8.5]
+  legend:
+    columns: 9
+sea_surface_height:
+- depth: 0
+  limits: [-0.6, 0.7, 0.1]
+eez: true
+variables:
+  salinity:
+  - depth: 0
+    limits: [32, 37.6, 0.1]
+  - depth: 150
+    limits: [35.2, 37.6, 0.1]
+  - depth: 200
+    limits: [35.2, 37.3, 0.1]
+  temperature:
+  - depth: 0
+    limits: [23.0, 30.5, 0.5]
+  - depth: 150
+    limits: [11, 24, 1]
+  - depth: 200
+    limits: [10, 22, 1]
+currents:
+  bool: true
+  depths: [0, 100, 150, 200]
+  limits: [0, 1.6, 0.1]
+  coarsen:
+    rtofs: 14
+    espc: 15
+    cmems: 14
+    amseas: 13
+  kwargs:
+    ptype: streamplot
+    color: black
+    density: 2.25
+    linewidth: 0.5
+salinity_max:
+  limits: [36, 37.5, 0.1]
+ocean_heat_content:
+  limits: [0, 160, 10]

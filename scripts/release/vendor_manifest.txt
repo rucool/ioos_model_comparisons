@@ -1,0 +1,21 @@
+# Files from ioos_model_comparisons/ that the web app ships with (copied into
+# webapps/model_comparisons/ioos_model_comparisons/ by sync_vendor.py).
+# Paths are relative to ioos_model_comparisons/; globs allowed.
+# Anything the web app imports from the package must be listed here.
+__init__.py
+db.py
+env.py
+users.py
+regions.py
+regions_store.py
+region_catalog.py
+registry.py
+catalog.py
+figure_names.py
+storm_track.py
+fronts/__init__.py
+fronts/store.py
+fronts/oisst.py
+fronts/webmap.py
+config/*.yml
+config/regions/*.yml

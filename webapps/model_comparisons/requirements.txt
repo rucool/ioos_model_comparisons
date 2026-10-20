@@ -25,3 +25,8 @@ tropycal
 scipy
 networkx
 pyshp
+# Config registry (ioos_model_comparisons/config/*.yml, registry.py)
+pyyaml>=6
+pydantic>=2,<3
+# fronts/webmap.py resolves cmo.* colormaps with it (falls back to turbo without)
+cmocean

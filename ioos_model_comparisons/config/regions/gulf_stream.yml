@@ -1,0 +1,23 @@
+# Region 'gulf_stream'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 27
+# Gulf Stream, from the Mid Atlantic Bight shelf break out into the open
+# mid-Atlantic -- wide enough to show the whole warm-core path.
+name: Gulf Stream
+folder: gulf_stream
+extent: [-77.25, -49.75, 31.75, 45.25]
+figure:
+  legend:
+    columns: 5
+  figsize: [14, 8]
+sea_surface_height: []
+eez: false
+variables:
+  salinity: []
+  temperature:
+  - depth: 0
+    limits: [14, 30, 0.5]
+currents:
+  bool: false

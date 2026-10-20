@@ -371,91 +371,68 @@ function updateOverviewDepths(region, variable) {
   });
 }
 
-// GOES SST comparisons only exist for surface (0m) temperature — hide the
-// GOES-16/19 comparison buttons for any other variable/depth selection.
-function updateOverviewGoesVisibility() {
-  const regionInput = document.querySelector('input[name="ov_region"]:checked');
-  const isSpecial = regionInput && regionInput.value === 'Fiji';
+// Which comparison panels exist for a region / variable_depth comes from
+// comparisons.yml via MAP_PANELS (injected by index()); the old per-model
+// rules (GOES only at 0 m, ECCOFS exclusions, NESDIS only for OHC, Fiji/Guam
+// ESPC-vs-CMEMS) all live there now.
+function panelKeysFor(region, varDepth) {
+  const byRegion = MAP_PANELS[region] || {};
+  return byRegion[varDepth] || PANEL_DEFS.slice(0, 2).map(p => p.key);
+}
+
+function overviewVarDepth() {
   const varInput = document.querySelector('input[name="ov_variable"]:checked');
   const depInput = document.querySelector('input[name="ov_depth"]:checked');
-  const showGoes = !isSpecial && varInput && varInput.value === 'temperature' &&
-                    depInput && depInput.value === '0m';
+  if (!varInput) return null;
+  if (varInput.value === 'ocean_heat_content') return 'ocean_heat_content';
+  return depInput ? `${varInput.value}_${depInput.value}` : null;
+}
 
-  const goes16El = document.getElementById('ov_mod_goes16');
-  const goes19El = document.getElementById('ov_mod_goes19');
-  [goes16El, goes19El].forEach(btn => {
-    if (!btn) return;
-    btn.style.display = showGoes ? '' : 'none';
-    btn.nextElementSibling.style.display = showGoes ? '' : 'none';
+function updateOverviewPanels() {
+  const regionInput = document.querySelector('input[name="ov_region"]:checked');
+  if (!regionInput) return;
+  const vd = overviewVarDepth();
+  let visible = vd ? panelKeysFor(regionInput.value, vd) : null;
+  if (!visible) {
+    // No depth chosen yet: show anything this region offers for the variable.
+    const varInput = document.querySelector('input[name="ov_variable"]:checked');
+    const byRegion = MAP_PANELS[regionInput.value] || {};
+    visible = [...new Set(Object.entries(byRegion)
+      .filter(([k]) => varInput && k.startsWith(varInput.value))
+      .flatMap(([, keys]) => keys))];
+  }
+  const radios = Array.from(document.querySelectorAll('input[name="ov_model"]'));
+  radios.forEach(btn => {
+    const show = visible.includes(btn.value);
+    btn.style.display = show ? '' : 'none';
+    btn.nextElementSibling.style.display = show ? '' : 'none';
   });
-
-  const checkedModel = document.querySelector('input[name="ov_model"]:checked');
-  if (!showGoes && checkedModel && (checkedModel.value === 'goes16' || checkedModel.value === 'goes19')) {
-    document.getElementById('ov_mod_espc').checked = true;
+  const checked = document.querySelector('input[name="ov_model"]:checked');
+  if (!checked || !visible.includes(checked.value)) {
+    const first = radios.find(btn => visible.includes(btn.value));
+    if (first) first.checked = true;
   }
 }
 
+// Kept as names because several event handlers call them.
+function updateOverviewGoesVisibility() { updateOverviewPanels(); }
+
 // ─── Maps – Toggle State ──────────────────────────────────────────────────────
 
-let mapModels = [
-  { key: 'copernicus', label: 'RTOFS vs. Copernicus (CMEMS)' },
-  { key: 'espc',       label: 'RTOFS vs. ESPC' },
-  { key: 'eccofs',     label: 'RTOFS vs. ECCOFS' },
-  { key: 'goes16',     label: 'RTOFS vs. GOES-16' },
-  { key: 'goes19',     label: 'RTOFS vs. GOES-19' },
-];
+let mapModels = PANEL_DEFS.slice(0, 2);
 let mapCurrentModelIdx = 0;
-let mapCachedUrls = { copernicus: null, espc: null, espc_cmems: null, goes16: null, goes19: null, eccofs: null, nesdis: null };
-
-// ECCOFS is an East Coast product — regions off that coverage area never get
-// a comparison, mirrors ECCOFS_EXCLUDED_REGIONS in app.py.
-const MAP_ECCOFS_EXCLUDED_REGIONS = new Set([
-  'Tropical Western Atlantic', 'Eastern Pacific - Mexico', 'Hawaii',
-  'WMO V - South Pacific', 'Philippines Sea', 'Guam', 'Fiji',
-]);
+function preloadPanels(data) {
+  if (!data) return;
+  PANEL_DEFS.forEach(p => { if (data[p.key] && data[p.key].available) preloadImage(data[p.key].url); });
+}
+const emptyMapUrls = () => Object.fromEntries(PANEL_DEFS.map(p => [p.key, null]));
+let mapCachedUrls = emptyMapUrls();
 
 function updateMapModelsConfig(region, varDepth) {
-  // GOES SST comparisons don't cover the South Pacific — Fiji never has them,
-  // regardless of variable/depth.
-  const showGoes = varDepth === 'temperature_0m' && region !== 'Fiji';
-  // Fiji's RTOFS comparisons went live 2026-08-24, but Ocean Heat Content is
-  // still only ever published as a single combined three-model image (see
-  // build_map_urls's Fiji-specific OHC filename) — that one variable stays
-  // locked to the ESPC-vs-CMEMS option the way the whole region used to be.
-  const fijiOhcOnly = region === 'Fiji' && varDepth === 'ocean_heat_content';
-  const showEccofs = !fijiOhcOnly && !MAP_ECCOFS_EXCLUDED_REGIONS.has(region);
-
-  if (fijiOhcOnly) {
-    mapModels = [
-      { key: 'espc_cmems', label: 'ESPC vs. CMEMS' }
-    ];
-  } else {
-    mapModels = [
-      { key: 'copernicus', label: 'RTOFS vs. Copernicus (CMEMS)' },
-      { key: 'espc',       label: 'RTOFS vs. ESPC' },
-    ];
-    if (region === 'Guam' || region === 'Fiji') {
-      // Guam's and Fiji's RTOFS comparisons are both new (sparse history);
-      // the legacy ESPC vs. CMEMS comparison still has full historical
-      // coverage for both.
-      mapModels.push({ key: 'espc_cmems', label: 'ESPC vs. CMEMS' });
-    }
-    if (showEccofs) {
-      mapModels.push({ key: 'eccofs', label: 'RTOFS vs. ECCOFS' });
-    }
-    if (varDepth === 'ocean_heat_content') {
-      // NESDIS OHC comparison — wired in ahead of the generating pipeline
-      // (rtofs_binary_ohc_comparisons.py's --nesdis flag) running on the
-      // server, so this tab shows "not available" until it does.
-      mapModels.push({ key: 'nesdis', label: 'RTOFS vs. NESDIS OHC' });
-    }
-    if (showGoes) {
-      mapModels.push(
-        { key: 'goes16', label: 'RTOFS vs. GOES-16' },
-        { key: 'goes19', label: 'RTOFS vs. GOES-19' },
-      );
-    }
-  }
+  mapModels = panelKeysFor(region, varDepth)
+    .map(key => PANEL_DEFS.find(p => p.key === key))
+    .filter(Boolean)
+    .map(p => ({ key: p.key, label: p.label }));
 
   if (mapCurrentModelIdx >= mapModels.length) {
     mapCurrentModelIdx = 0;
@@ -536,25 +513,13 @@ function preloadAdjacentMaps() {
         const res = await fetch(url);
         const data = await res.json();
         apiCache[url] = data;
-        if (data.copernicus && data.copernicus.available) preloadImage(data.copernicus.url);
-        if (data.espc && data.espc.available) preloadImage(data.espc.url);
-        if (data.espc_cmems && data.espc_cmems.available) preloadImage(data.espc_cmems.url);
-        if (data.eccofs && data.eccofs.available) preloadImage(data.eccofs.url);
-        if (data.nesdis && data.nesdis.available) preloadImage(data.nesdis.url);
-        if (data.goes16 && data.goes16.available) preloadImage(data.goes16.url);
-        if (data.goes19 && data.goes19.available) preloadImage(data.goes19.url);
+        preloadPanels(data);
       } catch (e) {
         // silently fail on preload errors
       }
     } else {
       const data = apiCache[url];
-      if (data.copernicus && data.copernicus.available) preloadImage(data.copernicus.url);
-      if (data.espc && data.espc.available) preloadImage(data.espc.url);
-      if (data.espc_cmems && data.espc_cmems.available) preloadImage(data.espc_cmems.url);
-      if (data.eccofs && data.eccofs.available) preloadImage(data.eccofs.url);
-      if (data.nesdis && data.nesdis.available) preloadImage(data.nesdis.url);
-      if (data.goes16 && data.goes16.available) preloadImage(data.goes16.url);
-      if (data.goes19 && data.goes19.available) preloadImage(data.goes19.url);
+      preloadPanels(data);
     }
   });
 }
@@ -574,17 +539,12 @@ async function loadMaps() {
   const cacheKey = `${API_BASE}/api/maps?${params.toString()}`;
   
   const renderData = (data) => {
-    mapCachedUrls.copernicus = data.copernicus && data.copernicus.available ? data.copernicus.url : null;
-    mapCachedUrls.espc       = data.espc && data.espc.available       ? data.espc.url       : null;
-    mapCachedUrls.espc_cmems = data.espc_cmems && data.espc_cmems.available ? data.espc_cmems.url : null;
-    mapCachedUrls.eccofs     = data.eccofs && data.eccofs.available   ? data.eccofs.url     : null;
-    mapCachedUrls.nesdis     = data.nesdis && data.nesdis.available   ? data.nesdis.url     : null;
-    mapCachedUrls.goes16     = data.goes16 && data.goes16.available   ? data.goes16.url     : null;
-    mapCachedUrls.goes19     = data.goes19 && data.goes19.available   ? data.goes19.url     : null;
+    mapCachedUrls = Object.fromEntries(PANEL_DEFS.map(p =>
+      [p.key, data[p.key] && data[p.key].available ? data[p.key].url : null]));
 
     renderMapModel();
 
-    if (!mapCachedUrls.copernicus && !mapCachedUrls.espc && !mapCachedUrls.espc_cmems && !mapCachedUrls.eccofs && !mapCachedUrls.nesdis && !mapCachedUrls.goes16 && !mapCachedUrls.goes19) {
+    if (!Object.values(mapCachedUrls).some(Boolean)) {
       showToast('No images available for the selected date/time.', 'secondary');
     }
   };
@@ -605,7 +565,7 @@ async function loadMaps() {
     preloadAdjacentMaps();
   } catch (err) {
     console.error(err);
-    mapCachedUrls = { copernicus: null, espc: null, espc_cmems: null, goes16: null, goes19: null, eccofs: null, nesdis: null };
+    mapCachedUrls = emptyMapUrls();
     setUnavailable('mapImageContainer', 'Maps');
     showToast('Network error while fetching images.');
   }
@@ -1789,13 +1749,7 @@ window.addEventListener('hashchange', showDashboardTabFromHash);
 
 function preloadOverviewImages(data) {
   if (!data) return;
-  if (data.copernicus && data.copernicus.available) preloadImage(data.copernicus.url);
-  if (data.espc && data.espc.available) preloadImage(data.espc.url);
-  if (data.espc_cmems && data.espc_cmems.available) preloadImage(data.espc_cmems.url);
-  if (data.eccofs && data.eccofs.available) preloadImage(data.eccofs.url);
-  if (data.nesdis && data.nesdis.available) preloadImage(data.nesdis.url);
-  if (data.goes16 && data.goes16.available) preloadImage(data.goes16.url);
-  if (data.goes19 && data.goes19.available) preloadImage(data.goes19.url);
+  preloadPanels(data);
 }
 
 function preloadOverviewAdjacentProducts(region, currentVar, currentDep) {
@@ -1959,52 +1913,7 @@ document.querySelectorAll('input[name="ov_region"]').forEach(el => {
   });
 });
 
-// Fiji's RTOFS comparisons went live 2026-08-24. Like Guam's (whose RTOFS
-// history is still short), they sit alongside the older ESPC-vs-CMEMS
-// comparison rather than replacing it — except Ocean Heat Content, which
-// for Fiji is still only ever published as a single combined three-model
-// image (see build_map_urls's Fiji-specific OHC filename), so that one
-// variable stays locked to the ESPC-vs-CMEMS option the way the whole
-// region used to be. Every other region only ever produces RTOFS-based
-// comparisons.
-function updateOverviewModelVisibility(region, variable) {
-  const isFiji = region === 'Fiji';
-  const isGuam = region === 'Guam';
-  const fijiOhcOnly = isFiji && variable === 'ocean_heat_content';
-  const espcEl      = document.getElementById('ov_mod_espc');
-  const copEl       = document.getElementById('ov_mod_copernicus');
-  const espcCmemsEl = document.getElementById('ov_mod_espc_cmems');
-  const eccofsEl    = document.getElementById('ov_mod_eccofs');
-  const nesdisEl    = document.getElementById('ov_mod_nesdis');
-  const showEccofs  = !fijiOhcOnly && !MAP_ECCOFS_EXCLUDED_REGIONS.has(region);
-  // NESDIS OHC is an ocean-heat-content-only product (see build_map_urls) and
-  // isn't part of Fiji's combined single-image OHC comparison — wired in
-  // ahead of the generating pipeline actually running on the server, so it
-  // shows "not available" for now rather than being hidden entirely.
-  const showNesdis  = variable === 'ocean_heat_content' && !fijiOhcOnly;
-
-  const setVisible = (btn, visible) => {
-    btn.style.display = visible ? '' : 'none';
-    btn.nextElementSibling.style.display = visible ? '' : 'none';
-  };
-
-  setVisible(espcEl, !fijiOhcOnly);
-  setVisible(copEl, !fijiOhcOnly);
-  setVisible(espcCmemsEl, isFiji || isGuam);
-  setVisible(eccofsEl, showEccofs);
-  setVisible(nesdisEl, showNesdis);
-
-  const checkedModel = document.querySelector('input[name="ov_model"]:checked');
-  if (fijiOhcOnly) {
-    espcCmemsEl.checked = true;
-  } else if (checkedModel === espcCmemsEl && !isGuam && !isFiji) {
-    espcEl.checked = true;
-  } else if (checkedModel === eccofsEl && !showEccofs) {
-    espcEl.checked = true;
-  } else if (checkedModel === nesdisEl && !showNesdis) {
-    espcEl.checked = true;
-  }
-}
+function updateOverviewModelVisibility(region, variable) { updateOverviewPanels(); }
 
 function getVisibleOverviewModels() {
   return Array.from(document.querySelectorAll('input[name="ov_model"]'))

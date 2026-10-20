@@ -42,7 +42,7 @@ still runs locally (it needs a real display). Use a local port other than
     ssh -N -L 27018:mongodb.marine.rutgers.edu:27017 michaesm@boardwalk.marine.rutgers.edu &
     export MONGODB_URI="mongodb://localhost:27018/hurricanes"
 
-("Save regions.py" doesn't touch Mongo at all, so it works without the tunnel.)
+("Save region YAML" doesn't touch Mongo at all, so it works without the tunnel.)
 """
 
 import argparse
@@ -374,139 +374,13 @@ def _save_to_mongo(region_key, var_name, depth, limits, model="rtofs"):
         print(f"  MongoDB save failed: {exc}")
 
 def _update_regions_py(pending):
-    import re
-    regions_file = os.path.join(os.path.dirname(__file__), "..", "..", "ioos_model_comparisons", "regions.py")
-    with open(regions_file, "r") as f:
-        lines = f.readlines()
-
-    var_name_map = {
-        "temperature": "sea_water_temperature",
-        "salinity": "salinity",
-        "sea_surface_height": "sea_surface_height",
-    }
-
-    by_region = {}
-    currents_by_region = {}
-    for (region, var, depth), limits in pending.items():
-        if var == "currents":
-            currents_by_region.setdefault(region, []).append((depth, limits))
-        else:
-            by_region.setdefault(region, []).append((var_name_map.get(var, var), depth, limits))
-
-    def _find_block(region):
-        block_start = -1
-        for i, line in enumerate(lines):
-            # Find key = "region" or key='region'
-            if re.match(rf"^\s*key\s*=\s*['\"]{region}['\"]\s*", line):
-                block_start = i
-                break
-
-        if block_start == -1:
-            return -1, -1
-
-        block_end = len(lines)
-        for i in range(block_start + 1, len(lines)):
-            if re.match(r"^\s*key\s*=\s*['\"].*['\"]\s*", lines[i]):
-                if not lines[i].strip().startswith("#"):
-                    block_end = i
-                    break
-        return block_start, block_end
-
-    def _fmt_depth(depth):
-        return f"{int(depth)}" if float(depth).is_integer() else f"{depth}"
-
-    for region, edits in currents_by_region.items():
-        block_start, block_end = _find_block(region)
-        if block_start == -1:
-            print(f"  Could not find block for region {region!r} in regions.py")
-            continue
-
-        cur_start = -1
-        for i in range(block_start, block_end):
-            if re.match(r"^\s*currents\s*=\s*dict\s*\(", lines[i]):
-                cur_start = i
-                break
-        if cur_start == -1:
-            print(f"  No currents block found for region {region!r} -- skipping currents save")
-            continue
-
-        paren_depth = 0
-        cur_end = cur_start
-        for i in range(cur_start, block_end):
-            paren_depth += lines[i].count("(") - lines[i].count(")")
-            if paren_depth <= 0:
-                cur_end = i
-                break
-
-        lbd_line = -1
-        for i in range(cur_start, cur_end + 1):
-            if re.match(r"^\s*limits_by_depth\s*=\s*\{", lines[i]):
-                lbd_line = i
-                break
-
-        if lbd_line != -1:
-            line = lines[lbd_line]
-            for depth, limits in edits:
-                dstr = _fmt_depth(depth)
-                new_val = f"[{limits[0]}, {limits[1]}, {limits[2]}]"
-                pattern = re.compile(rf"(?<![\d.]){re.escape(dstr)}\s*:\s*\[[^\]]*\]")
-                if pattern.search(line):
-                    line = pattern.sub(f"{dstr}: {new_val}", line, count=1)
-                else:
-                    line = re.sub(r"\}\s*,?\s*\n?$", "", line.rstrip("\n"))
-                    line = f"{line}, {dstr}: {new_val}}},\n"
-            lines[lbd_line] = line
-        else:
-            indent = "            "
-            insert_at = cur_start + 1
-            for i in range(cur_start, cur_end + 1):
-                m = re.match(r"^(\s*)limits\s*=\s*\[", lines[i])
-                if m:
-                    indent = m.group(1)
-                    insert_at = i + 1
-                    break
-            entries = ", ".join(
-                f"{_fmt_depth(depth)}: [{limits[0]}, {limits[1]}, {limits[2]}]"
-                for depth, limits in edits
-            )
-            lines.insert(insert_at, f"{indent}limits_by_depth = {{{entries}}},\n")
-
-    for region, edits in by_region.items():
-        block_start, block_end = _find_block(region)
-        if block_start == -1:
-            print(f"  Could not find block for region {region!r} in regions.py")
-            continue
-
-        for var, depth, limits in edits:
-            var_start = -1
-            for i in range(block_start, block_end):
-                if lines[i].strip().startswith(f"{var} = ["):
-                    var_start = i
-                    break
-            
-            if var_start != -1:
-                # Search for the depth line within the block
-                for i in range(var_start + 1, block_end):
-                    line = lines[i]
-                    if line.strip() == "]" or any(line.strip().startswith(f"{v} = ") for v in ["sea_water_temperature", "salinity", "sea_surface_height", "ocean_heat_content", "salinity_max", "currents"]):
-                        break
-                    
-                    # Match dict(depth=DEPTH, ...)
-                    # Also handle float depth like 0.0 vs 0
-                    # For safety, let's parse the string to float
-                    match = re.search(r'dict\s*\(\s*depth\s*=\s*([0-9.]+)', line)
-                    if match and float(match.group(1)) == float(depth):
-                        # Replace limits=[...] with the new limits
-                        new_line = re.sub(r'limits\s*=\s*\[[^\]]*\]', f'limits=[{limits[0]}, {limits[1]}, {limits[2]}]', line)
-                        if new_line == line:
-                            # It didn't have limits before, append it
-                            new_line = re.sub(r'dict\s*\(\s*depth\s*=\s*' + match.group(1) + r'\s*\)', f'dict(depth={match.group(1)}, limits=[{limits[0]}, {limits[1]}, {limits[2]}])', line)
-                        lines[i] = new_line
-                        break
-
-    with open(regions_file, "w") as f:
-        f.writelines(lines)
-    print("  Saved limits directly to regions.py")
+    """Write tuned limits into the region defaults
+    (ioos_model_comparisons/config/regions/<key>.yml), preserving comments.
+    Name kept for history; regions.py itself is now a thin YAML loader."""
+    from ioos_model_comparisons.region_yaml import update_limits
+    for msg in update_limits(dict(pending)):
+        print(f"  {msg}")
+    print("  Saved limits to config/regions/*.yml")
 
 # ---------------------------------------------------------------------------
 
@@ -583,7 +457,7 @@ class ColorbarWalker:
         self.btn_back     = Button(self.ax_btn_back,     "< Back",      color="#313244", hovercolor="#45475a")
         self.btn_next     = Button(self.ax_btn_next,     "Next >",      color="#313244", hovercolor="#45475a")
         self.btn_save_all = Button(self.ax_btn_save_all, "Save Mongo",  color="#313244", hovercolor="#45475a")
-        self.btn_save_reg = Button(self.ax_btn_save_reg, "Save regions.py", color="#313244", hovercolor="#45475a")
+        self.btn_save_reg = Button(self.ax_btn_save_reg, "Save region YAML", color="#313244", hovercolor="#45475a")
 
         for b in (self.btn_reset, self.btn_back, self.btn_next, self.btn_save_all, self.btn_save_reg):
             b.label.set_color("white")
@@ -881,12 +755,12 @@ class ColorbarWalker:
     def _on_save_reg(self, _event):
         self._store_current()
         n = len(self.pending)
-        print(f"\n[Save regions.py] Saving {n} entries ...")
+        print(f"\n[Save region YAML] Saving {n} entries ...")
         for (region, var, depth), limits in self.pending.items():
             print(f"  {region} / {var} @ {depth} m  ->  {limits}")
         _update_regions_py(self.pending)
-        print("[Save regions.py] Done.")
-        self.info_text.set_text(f"Saved {n} entries directly to regions.py.")
+        print("[Save region YAML] Done.")
+        self.info_text.set_text(f"Saved {n} entries to config/regions/*.yml.")
         self.fig.canvas.draw_idle()
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,54 @@
+# Region 'mab'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 8
+name: Mid Atlantic Bight
+folder: mid_atlantic_bight
+extent: [-77, -63, 35, 44]
+figure:
+  legend:
+    columns: 5
+  figsize: [10.5, 7.5]
+sea_surface_height:
+- depth: 0
+  limits: [-0.6, 0.7, 0.1]
+eez: false
+variables:
+  salinity:
+  - depth: 0
+    limits: [31, 36.5, 0.25]
+  - depth: 30
+    limits: [33, 36.75, 0.25]
+  - depth: 100
+    limits: [34.7, 36.7, 0.1]
+  - depth: 150
+    limits: [35.3, 36.6, 0.1]
+  - depth: 200
+    limits: [35.2, 36.6, 0.1]
+  temperature:
+  - depth: 0
+    limits: [14, 29, 0.5]
+  - depth: 30
+    limits: [8, 27, 1]
+  - depth: 100
+    limits: [4, 23, 1]
+  - depth: 150
+    limits: [6, 22, 1]
+  - depth: 200
+    limits: [6, 21, 1]
+currents:
+  bool: true
+  depths: [0, 100, 150, 200]
+  limits: [0, 1.5, 0.1]
+  coarsen:
+    rtofs: 5
+    espc: 6
+  kwargs:
+    ptype: streamplot
+    color: black
+salinity_max:
+  figsize: [14, 8.5]
+  limits: [34.4, 37, 0.2]
+ocean_heat_content:
+  limits: [0, 160, 10]

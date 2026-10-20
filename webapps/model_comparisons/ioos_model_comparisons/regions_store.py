@@ -254,6 +254,17 @@ def list_regions():
             out.append({"region": d.get("region"), "name": d.get("name"),
                         "folder": d.get("folder"), "extent": d.get("extent"),
                         "n_versions": c.get("n", 0), "updated_at": c.get("last")})
+        seen = {r["region"] for r in out}
+        try:
+            from ioos_model_comparisons.registry import load_registry
+            reg = load_registry()
+            for key in reg.region_keys():
+                if key not in seen:
+                    d = reg.region_defaults(key)
+                    out.append({"region": key, "name": d.get("name"), "folder": d.get("folder"),
+                                "extent": d.get("extent"), "n_versions": 0, "updated_at": None})
+        except Exception as exc:
+            logger.warning(f"list_regions: YAML regions unavailable: {exc}")
         return sorted(out, key=lambda r: r["region"] or "")
     except Exception as exc:
         logger.warning(f"list_regions failed: {exc}")
@@ -310,6 +321,47 @@ def diff(old, new):
     return out
 
 
+def defaults_for(region):
+    """The region's YAML defaults (config/regions/<key>.yml), normalized to the
+    stored shape, or {} for a region that only exists in MongoDB."""
+    try:
+        from ioos_model_comparisons.registry import load_registry
+        return normalize(load_registry().region_defaults(region))
+    except Exception:
+        return {}
+
+
+def effective(region, stored):
+    """What plotting sees: YAML defaults with the stored top-level keys on top
+    (same rule as db.apply_colorbar_overrides)."""
+    doc = defaults_for(region)
+    doc.update({k: v for k, v in (stored or {}).items() if k != "_id"})
+    doc["region"] = region
+    return doc
+
+
+def overrides_only(region, doc):
+    """Top-level keys of doc that differ from the YAML defaults. MongoDB stores
+    only these, so editing a YAML default takes effect for every key nobody
+    has deliberately overridden."""
+    defaults = defaults_for(region)
+    doc = normalize(doc)
+    return {k: v for k, v in doc.items()
+            if k == "region" or k not in defaults or defaults[k] != v}
+
+
+def fetch_effective(region):
+    """(effective doc, sorted overridden keys) — None if the region is unknown
+    to both the YAML and MongoDB."""
+    stored = fetch(region)
+    if stored is None and not defaults_for(region):
+        return None
+    defaults = defaults_for(region)
+    overridden = sorted(k for k, v in (stored or {}).items()
+                        if k != "region" and (k not in defaults or defaults[k] != v))
+    return effective(region, stored), overridden
+
+
 # ---------------------------------------------------------------------------
 # writes
 # ---------------------------------------------------------------------------
@@ -342,22 +394,24 @@ def save(region, doc, *, edited_by, note=None, origin="manual"):
     config must not be possible by ignoring a return value. Returns the new
     version number, or None if MongoDB is unavailable.
     """
-    doc = normalize(dict(doc or {}))
-    doc["region"] = region
+    doc = normalize(effective(region, doc or {}))
     errors, _ = validate(doc)
     if errors:
         raise ValueError("; ".join(errors))
+    stored = overrides_only(region, doc)
 
     live, vers = _coll(LIVE_COLL), _coll(VERSIONS_COLL)
     if live is None or vers is None:
         return None
     try:
         ensure_indexes()
-        current = live.find_one({"region": region}, {"_id": 0})
+        current_stored = live.find_one({"region": region}, {"_id": 0})
+        # Diff against what plotting saw before this save (YAML + overrides).
+        current = effective(region, current_stored)
 
         # Baseline: capture the pre-edit state the first time a region is
         # touched, so the very first save is still diffable and revertible.
-        if current is not None and _next_version(region) == 1:
+        if current_stored is not None and _next_version(region) == 1:
             vers.insert_one({"region": region, "version": 1, "doc": current,
                              "origin": "baseline", "edited_by": None,
                              "note": "state before the first web edit",
@@ -368,10 +422,11 @@ def save(region, doc, *, edited_by, note=None, origin="manual"):
                          "origin": origin, "edited_by": edited_by,
                          "note": note, "created_at": _utcnow(),
                          "changed": diff(current, doc)})
-        # Whole-document replace: apply_colorbar_overrides copies every top
-        # level key, so a partial $set would leave stale keys behind that the
-        # editor believes it removed.
-        live.replace_one({"region": region}, doc, upsert=True)
+        # Whole-document replace of the OVERRIDES: apply_colorbar_overrides
+        # copies every top-level key, so a partial $set would leave stale keys
+        # behind that the editor believes it removed. Keys equal to the YAML
+        # default are not stored, so later YAML edits still reach them.
+        live.replace_one({"region": region}, stored, upsert=True)
         return version
     except Exception as exc:
         logger.warning(f"save({region}) failed: {exc}")
@@ -388,7 +443,7 @@ def revert(region, version, *, edited_by):
 
 
 def delete(region, *, edited_by):
-    """Remove the live override so regions.py defaults apply again.
+    """Remove the live override so the YAML defaults apply again.
 
     The history is kept: this is 'stop overriding', not 'erase what happened'.
     """
@@ -402,7 +457,7 @@ def delete(region, *, edited_by):
         vers.insert_one({"region": region, "version": _next_version(region),
                          "doc": current, "origin": "deleted",
                          "edited_by": edited_by, "created_at": _utcnow(),
-                         "note": "override removed; regions.py defaults now apply"})
+                         "note": "override removed; YAML defaults now apply"})
         live.delete_one({"region": region})
         return True
     except Exception as exc:

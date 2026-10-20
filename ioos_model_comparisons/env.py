@@ -63,3 +63,14 @@ def require(name, hint=""):
         logger.warning(f"{name} is not set. {hint}".strip())
         return None
     return val
+
+
+def cmems_credentials():
+    """(username, password) for Copernicus Marine from CMEMS_USERNAME/CMEMS_PASSWORD.
+
+    Either may be None — copernicusmarine then falls back to its own
+    COPERNICUSMARINE_SERVICE_* variables or the `copernicusmarine login`
+    credentials file. Never hardcode credentials at call sites.
+    """
+    load_env()
+    return os.getenv("CMEMS_USERNAME") or None, os.getenv("CMEMS_PASSWORD") or None

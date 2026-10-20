@@ -1,147 +1,72 @@
-# IOOS Model Comparisons Archive Explorer — Deployment Guide
+# IOOS Model Comparisons Archive Explorer
 
-A Flask web application that serves an interactive ocean model comparison viewer.
-It fetches image data from `rucool.marine.rutgers.edu` and requires no local database.
-
----
-
-## Requirements
-
-- Python 3.10 or newer
-- Network access to `rucool.marine.rutgers.edu`
+A Flask web application that serves an interactive ocean model comparison
+viewer. The plot images themselves are served by Apache from
+`rucool.marine.rutgers.edu`; this app works out which images exist and
+presents them.
 
 ---
 
-## Installation
+## Releasing (the normal path)
 
-### 1. Extract the archive
-
-```bash
-unzip ioos-model-comparisons-webapp.zip
-cd webapps
-```
-
-### 2. Create a Python virtual environment
+Releases are built from git and deployed by script; never zip this folder by
+hand. From the repo root:
 
 ```bash
-python3 -m venv venv
+make check      # tests + vendored-package/requirements check
+make deploy     # build dist/model_comparisons-<version>.zip, install on baffin, verify /healthz
+make rollback   # back to the previous release
 ```
 
-### 3. Activate the virtual environment
+See `docs/deployment.md` for the one-time server setup
+(`scripts/release/deploy.conf`, the uwsgi vassal, `shared/.env`).
 
-**Linux / macOS:**
-```bash
-source venv/bin/activate
-```
-
-**Windows:**
-```cmd
-venv\Scripts\activate
-```
-
-### 4. Install dependencies
+## Running locally
 
 ```bash
-pip install -r requirements.txt
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt -r ../../requirements-dev.txt
+python app.py                 # http://localhost:5001
+python -m pytest              # the web app test suite (offline)
 ```
 
----
+## Settings (environment, or `.env` in this directory)
 
-## Running the app
+| Variable | Purpose |
+|---|---|
+| `MONGODB_URI` | MongoDB with the figure catalog, region overrides, front editor and users. Without it the public site still works with legacy discovery. |
+| `DISCOVERY_BACKEND` | How images are found. `legacy` (default) probes rucool over HTTP. `shadow` runs both and logs differences. `auto` uses the catalog with automatic fallback. `catalog` uses the catalog only. See `discovery.py`. |
+| `FLASK_SECRET_KEY`, `AUTH_INSECURE_COOKIE` | Sign-in for the `/fronts` and `/regions` editors (below). |
+| `LOCAL_PLOTS_DIR` | Optional local mirror of the plot tree, read first for `locations.json`. |
 
-### Development / quick test
+`GET /healthz` reports the release version, MongoDB, the discovery backend in
+use, catalog freshness and the config hash. `?strict=1` returns 503 when
+degraded.
 
-```bash
-python app.py
-```
+## What's in here
 
-Then open `http://localhost:5001` in a browser.
+| Path | Purpose |
+|---|---|
+| `app.py`, `wsgi.py` | Flask app and WSGI entry point. Importing has no side effects. |
+| `discovery.py` | Finds images and profile positions, from the catalog or the legacy way. |
+| `fronts_bp.py`, `regions_bp.py`, `ohc_bp.py`, `auth.py` | Editors, OHC table, sign-in |
+| `ioos_model_comparisons/` | **Generated** copy of library modules and `config/*.yml`. Never edit it here; edit the top level and run `make sync-vendor`. |
+| `templates/`, `static/` | Pages, CSS, JS and images |
+| `tests/` | pytest suite (not shipped) |
+| `dev_checks/` | Ad hoc network scripts (not shipped) |
 
-### Production (recommended)
-
-Use **Gunicorn** (included in `requirements.txt`):
-
-```bash
-gunicorn --workers 4 --bind 0.0.0.0:8000 wsgi:app
-```
-
-The app will be available at `http://<server-ip>:8000`.
-
-To run on a different port:
-```bash
-gunicorn --workers 4 --bind 0.0.0.0:80 wsgi:app
-```
-
----
-
-## Optional: Running behind a reverse proxy (nginx / Apache)
-
-If you put the app behind nginx or Apache, proxy requests to the Gunicorn port
-and serve it at your preferred URL. Example nginx snippet:
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:8000;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-}
-```
-
----
-
-## Optional: Local plots directory
-
-If the server has a local mirror of the plot files (e.g. an NFS mount), set the
-`LOCAL_PLOTS_DIR` environment variable to its root path. The app will check
-there first before fetching from the remote server.
-
-```bash
-export LOCAL_PLOTS_DIR=/mnt/plots/model_comparisons
-gunicorn --workers 4 --bind 0.0.0.0:8000 wsgi:app
-```
-
-Expected directory structure under `LOCAL_PLOTS_DIR`:
-
-```
-LOCAL_PLOTS_DIR/
-└── profiles/
-    ├── gliders/
-    │   └── YYYY/MM-DD/locations.json
-    ├── argo/
-    │   └── <region>/last_14_days/locations.json
-    └── fvon/
-        └── <region>/last_14_days/locations.json
-```
-
-Leave `LOCAL_PLOTS_DIR` unset (the default) to always fetch from the remote server.
-
----
-
-## Files included
-
-| File | Purpose |
-|------|---------|
-| `app.py` | Flask application |
-| `wsgi.py` | Gunicorn entry point |
-| `requirements.txt` | Python dependencies |
-| `templates/index.html` | Main page template |
-| `static/` | CSS, JS, and images |
-
-Test files (`test_*.py`) and `app copy.py` are not needed for deployment and can
-be excluded from the zip.
-
----
+Regions, models, comparison panels and portal lists are configuration
+(`ioos_model_comparisons/config/` at the repo root); see
+`docs/configuration.md`.
 
 ## Troubleshooting
 
-**Port already in use:** Change the `--bind` port in the gunicorn command.
+- **Images not loading:** confirm the server can reach
+  `rucool.marine.rutgers.edu` over HTTPS, and check `/healthz`.
+- **A page 500s with no traceback after a deploy:** usually a missing
+  dependency. `make check-vendor` compares imports against `requirements.txt`.
 
-**Images not loading:** Confirm the server can reach `rucool.marine.rutgers.edu`
-on port 443 (HTTPS).
-
-**`ModuleNotFoundError`:** Make sure the virtual environment is activated before
-running gunicorn/python.
-
+---
 
 ## Gulf Stream front editor (`/fronts`)
 

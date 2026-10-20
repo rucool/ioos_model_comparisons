@@ -1,0 +1,61 @@
+# RTOFS data sources and versions. An RTOFS upgrade is an edit to this file —
+# see docs/rtofs_upgrade.md.
+#
+# streams.<name>.model_attr is the ds.attrs['model'] the loader sets; file
+# names use its lowercase form (RTOFS -> rtofs, RTOFS-P -> rtofs-p), so do not
+# change it for an existing stream.
+
+streams:
+  operational:
+    model_attr: RTOFS
+    thredds:
+      east: https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_scraped
+      west: https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_west_scraped
+    # Harvester (scripts/harvest/grab_rtofs_aws.py) sources and destinations.
+    aws_url: https://noaa-nws-rtofs-pds.s3.amazonaws.com
+    nomads_url: https://nomads.ncep.noaa.gov/pub/data/nccf/com/rtofs/prod
+    data_dirs:
+      east: /home/hurricaneadm/data/rtofs/
+      west: /home/hurricaneadm/data/rtofs_west/
+  parallel:
+    model_attr: RTOFS-P
+    thredds:
+      east: https://tds.marine.rutgers.edu/thredds/dodsC/cool/rtofs/rtofs_us_east_parallel_scraped
+    aws_url: https://noaa-nws-rtofs-pds.s3.amazonaws.com/rtofs.parallel.v2.3
+    nomads_url: null          # NOMADS has no parallel mirror
+    data_dirs:
+      east: /home/hurricaneadm/data/rtofs.parallel.v2.3/
+      west: /home/hurricaneadm/data/rtofs_west.parallel.v2.3/
+
+# Which version each stream was running, and from when (UTC date). The newest
+# row with from <= the figure's valid time wins; from: null means "since the
+# beginning". Catalog entries are tagged from this, so the portal can label
+# figures by RTOFS version. Fill in real versions/dates — version: null tags
+# nothing.
+history:
+  - {stream: operational, version: null, from: null}   # TODO: current operational version
+  - {stream: parallel, version: v2.3, from: null}
+
+# Files the harvester pulls per cycle date (rtofs.YYYYMMDD/<file>).
+files:
+  - rtofs_glo_3dz_f006_6hrly_hvr_US_east.nc
+  - rtofs_glo_3dz_f012_6hrly_hvr_US_east.nc
+  - rtofs_glo_3dz_f018_6hrly_hvr_US_east.nc
+  - rtofs_glo_3dz_f024_6hrly_hvr_US_east.nc
+  - rtofs_glo_3dz_f006_6hrly_hvr_US_west.nc
+  - rtofs_glo_3dz_f012_6hrly_hvr_US_west.nc
+  - rtofs_glo_3dz_f018_6hrly_hvr_US_west.nc
+  - rtofs_glo_3dz_f024_6hrly_hvr_US_west.nc
+  - rtofs_glo_2ds_f006_diag.nc
+  - rtofs_glo_2ds_f012_diag.nc
+  - rtofs_glo_2ds_f018_diag.nc
+  - rtofs_glo_2ds_f024_diag.nc
+
+# Dimension renames applied by models.rtofs(rename=True).
+rename:
+  Longitude: lon
+  Latitude: lat
+  MT: time
+  Depth: depth
+  X: x
+  Y: y

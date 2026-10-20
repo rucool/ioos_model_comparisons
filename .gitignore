@@ -50,3 +50,10 @@ ioos_model_comparisons_overview.pptx
 *.pdf
 *.pptx
 /data/glider_coverage
+
+# The web app's own images must ship (scripts/release/build_webapp.py zips
+# only files git knows about); release build output stays out of git.
+!webapps/model_comparisons/static/img/*.png
+/dist/
+
+scripts/release/deploy.conf

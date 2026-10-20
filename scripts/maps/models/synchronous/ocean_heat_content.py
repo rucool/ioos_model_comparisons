@@ -59,15 +59,11 @@ PACIFIC_REGIONS  = ['hawaii', 'mexico_pacific']
 # in rtofs-gofs-cmems-amseas.py. Only tropical_western_atlantic/hawaii/
 # mexico_pacific are reachable from this script's own region lists; the rest
 # are kept so this stays in sync if regions are ever added here.
-ECCOFS_EXCLUDED_REGIONS = {
-    'tropical_western_atlantic',
-    'mexico_pacific',
-    'hawaii',
-    'wmo_v_south',
-    'philippines_sea',
-    'guam',
-    'fiji',
-}
+# Region folders ECCOFS is never compared in — from comparisons.yml
+# (rtofs-vs-eccofs.regions.exclude), shared with the portal.
+from ioos_model_comparisons.registry import load_registry  # noqa: E402
+ECCOFS_EXCLUDED_REGIONS = set(
+    load_registry().comparisons["rtofs-vs-eccofs"].regions.exclude or [])
 
 # ECCOFS only publishes one full-depth ("his") nowcast per calendar day (00Z)
 # — see ECCOFSFullDepth in models.py — so evaluating it at every 6-hourly

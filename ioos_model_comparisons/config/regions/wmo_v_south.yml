@@ -1,0 +1,45 @@
+# Region 'wmo_v_south'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 19
+name: WMO V - South Pacific
+folder: wmo_v_south
+extent: [145, -120, -50, -5]
+figure:
+  figsize: [12, 7]
+  legend:
+    columns: 9
+sea_surface_height:
+- depth: 0
+  limits: [-0.6, 0.7, 0.1]
+eez: false
+variables:
+  salinity:
+  - depth: 0
+    limits: [34.0, 36.5, 0.1]
+  - depth: 175
+    limits: [34.5, 36.5, 0.1]
+  temperature:
+  - depth: 0
+    limits: [10, 29, 1]
+  - depth: 175
+    limits: [10, 23, 1]
+currents:
+  bool: true
+  depths: [0, 175]
+  limits: [0, 1.0, 0.1]
+  coarsen:
+    rtofs: 14
+    espc: 15
+    cmems: 14
+    amseas: 13
+  kwargs:
+    ptype: streamplot
+    color: black
+    density: 2.25
+    linewidth: 0.5
+salinity_max:
+  limits: [36, 37.5, 0.1]
+ocean_heat_content:
+  limits: [0, 160, 10]

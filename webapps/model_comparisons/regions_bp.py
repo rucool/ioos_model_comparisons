@@ -18,7 +18,6 @@ from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user
 
 from ioos_model_comparisons import regions_store as rs
-from ioos_model_comparisons.regions import region_config
 
 regions_bp = Blueprint("regions", __name__, url_prefix="/regions")
 
@@ -67,27 +66,17 @@ def api_region():
     region = (request.args.get("region") or "").strip()
     if not region:
         return jsonify({"error": "region is required"}), 400
-    doc = rs.fetch(region)
-    if doc is None:
+    # The editor works on the effective document: the YAML defaults
+    # (config/regions/<key>.yml) with MongoDB's overrides on top — exactly
+    # what plotting sees. `overridden` lists the keys MongoDB is overriding;
+    # saving stores only keys that differ from the defaults.
+    found = rs.fetch_effective(region)
+    if found is None:
         return jsonify({"error": f"no config for {region}"}), 404
-
-    # seed_region_configs.py deliberately never writes variables/
-    # sea_surface_height (those belong to update_colorbar_limits.py's weekly
-    # tuning and colorbar_tuner.py's manual tuning) — so a never-tuned
-    # region's live document has neither key at all, and the editor's
-    # colorbar-limits section rendered as empty with no way to tell there
-    # was ever anything to show. Fill in regions.py's defaults for display
-    # only when Mongo doesn't have the key; leave an existing (even empty)
-    # tuned value alone.
-    try:
-        defaults = region_config([region])
-    except Exception:
-        defaults = {}
-    for key in ("variables", "sea_surface_height"):
-        doc.setdefault(key, defaults.get(key))
+    doc, overridden = found
 
     errors, warnings = rs.validate(doc)
-    return jsonify({"region": region, "doc": doc,
+    return jsonify({"region": region, "doc": doc, "overridden": overridden,
                     "errors": errors, "warnings": warnings,
                     "versions": [{**v, "created_at": _iso(v.get("created_at"))}
                                  for v in rs.list_versions(region)]})
@@ -114,7 +103,8 @@ def api_validate():
     doc = dict(doc, region=region)
     errors, warnings = rs.validate(rs.normalize(doc))
     return jsonify({"errors": errors, "warnings": warnings,
-                    "diff": rs.diff(rs.fetch(region) or {}, rs.normalize(doc))})
+                    "diff": rs.diff(rs.effective(region, rs.fetch(region)),
+                                    rs.normalize(rs.effective(region, doc)))})
 
 
 @regions_bp.route("/api/save", methods=["POST"])
@@ -155,7 +145,7 @@ def api_revert():
 
 @regions_bp.route("/api/delete", methods=["POST"])
 def api_delete():
-    """Drop the override so regions.py defaults apply again (history kept)."""
+    """Drop the override so the YAML defaults apply again (history kept)."""
     body = request.get_json(silent=True) or {}
     region = (body.get("region") or "").strip()
     if not region:

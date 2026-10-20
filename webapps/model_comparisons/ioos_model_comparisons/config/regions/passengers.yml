@@ -1,0 +1,46 @@
+# Region 'passengers'. Exported from legacy regions.py (git 5c7d746) by
+# scripts/tools/export_regions_yaml.py. Edit freely — this file is now the
+# source of truth for the defaults; MongoDB region_configs (the /regions
+# editor) holds runtime overrides on top. Validated by regions_store.validate().
+order: 16
+name: Atlantis II Seamounts
+folder: passengers
+extent: [-68, -58, 36, 41]
+figure:
+  legend:
+    columns: 5
+  figsize: [16, 9]
+sea_surface_height:
+- depth: 0
+  limits: [-0.6, 0.7, 0.1]
+eez: false
+variables:
+  salinity:
+  - depth: 0
+    limits: [31, 36.5, 0.25]
+  - depth: 150
+    limits: [35.3, 36.6, 0.1]
+  - depth: 300
+    limits: [35.2, 36.6, 0.1]
+  temperature:
+  - depth: 0
+    limits: [15, 28, 1]
+  - depth: 150
+    limits: [11, 22, 1]
+  - depth: 300
+    limits: [9, 21, 1]
+currents:
+  bool: true
+  depths: [0, 150, 300]
+  limits: [0, 1.5, 0.1]
+  coarsen:
+    rtofs: 5
+    espc: 6
+  kwargs:
+    ptype: streamplot
+    color: black
+salinity_max:
+  figsize: [14, 8.5]
+  limits: [34.4, 37, 0.2]
+ocean_heat_content:
+  limits: [0, 160, 10]
