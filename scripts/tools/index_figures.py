@@ -122,11 +122,30 @@ def _stat(path):
             .replace(tzinfo=None, microsecond=0)}
 
 
+PROGRESS_EVERY = 100_000
+
+
+class _Progress:
+    """Log a line every PROGRESS_EVERY files so long walks show they're alive."""
+
+    def __init__(self, what):
+        self.what, self.n, self.t0 = what, 0, time.time()
+
+    def tick(self, rel):
+        self.n += 1
+        if self.n % PROGRESS_EVERY == 0:
+            rate = self.n / max(time.time() - self.t0, 1e-9)
+            log.info("%s: %d files so far (%.0f/s), now in %s",
+                     self.what, self.n, rate, rel.rsplit("/", 1)[0])
+
+
 def survey(root):
     parsed, unparsed, samples = collections.Counter(), collections.Counter(), collections.defaultdict(list)
+    progress = _Progress("survey")
     for rel, _p, is_json in walk(root):
         if is_json:
             continue
+        progress.tick(rel)
         meta = figure_names.parse(rel)
         prefix = "/".join(rel.split("/")[:2])
         if meta:
@@ -173,6 +192,7 @@ def index(root, min_month=None, batch=1000, dry_run=False):
             stats["would_write"] += len(todo)
         pending.clear()
 
+    progress = _Progress("index")
     for rel, path, is_json in walk(root, min_month=min_month):
         if is_json:
             try:
@@ -189,6 +209,7 @@ def index(root, min_month=None, batch=1000, dry_run=False):
         except OSError:
             continue
         stats["seen"] += 1
+        progress.tick(rel)
         if len(pending) >= batch:
             flush()
     flush()
