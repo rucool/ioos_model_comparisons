@@ -93,7 +93,7 @@ def test_stale_entry_is_served_and_recomputed_in_background(fake_mongo, computed
     started = []
     monkeypatch.setattr(st, "_recompute_in_background", lambda d: started.append(d))
     d = st._today()
-    _coll(fake_mongo).insert_one({"_id": d.isoformat(), "storms": {"OLD": {}},
+    _coll(fake_mongo).insert_one({"_id": d.isoformat(), "storms": {"OLD": {}}, "v": st.CACHE_VERSION,
                                   "computed_at": st._utcnow() - dt.timedelta(hours=3)})
     assert st.cached_storms_for_date(d) == {"OLD": {}}    # instant, no recompute in the request
     assert computed == [] and started == [d]
@@ -102,7 +102,8 @@ def test_stale_entry_is_served_and_recomputed_in_background(fake_mongo, computed
 def test_fresh_entry_is_not_recomputed(fake_mongo, computed, monkeypatch):
     monkeypatch.setattr(st, "_recompute_in_background", lambda d: pytest.fail("should not recompute"))
     d = st._today()
-    _coll(fake_mongo).insert_one({"_id": d.isoformat(), "storms": {"X": {}}, "computed_at": st._utcnow()})
+    _coll(fake_mongo).insert_one({"_id": d.isoformat(), "storms": {"X": {}}, "v": st.CACHE_VERSION,
+                                  "computed_at": st._utcnow()})
     assert st.cached_storms_for_date(d) == {"X": {}}
 
 
@@ -115,7 +116,8 @@ def test_refresh_recent_skips_fresh_older_days_but_always_redoes_live_days(fake_
     now = st._utcnow()
     for back in range(7):
         d = today - dt.timedelta(days=back)
-        _coll(fake_mongo).insert_one({"_id": d.isoformat(), "storms": {}, "computed_at": now})
+        _coll(fake_mongo).insert_one({"_id": d.isoformat(), "storms": {}, "computed_at": now,
+                                      "v": st.CACHE_VERSION})
     done = st.refresh_recent(days=7, coll=_coll(fake_mongo), today=today)
     assert done == [today, today - dt.timedelta(days=1), today - dt.timedelta(days=2)]
 
@@ -133,3 +135,40 @@ def test_max_age():
     assert st.max_age_seconds(today, today) == st.REFRESH_SECONDS + 900
     assert st.max_age_seconds(dt.date(2026, 10, 10), today) == 24 * 3600
     assert st.max_age_seconds(dt.date(2026, 8, 1), today) is None
+
+
+def _storm_between(sid, name, first, last):
+    times = []
+    t = first
+    while t <= last:
+        times.append(t)
+        t += dt.timedelta(hours=6)
+    n = len(times)
+    return types.SimpleNamespace(id=sid, name=name, basin="east_pacific", invest=False,
+                                 dict={"time": times, "lat": [15.0] * n, "lon": [-110.0] * n,
+                                       "vmax": [60.0] * n, "type": ["TS"] * n})
+
+
+@pytest.mark.parametrize("date,expected", [
+    (dt.date(2026, 10, 16), {"SIMON", "TRUDY"}),    # Simon's last day; Trudy active since the 11th
+    (dt.date(2026, 10, 17), {"TRUDY"}),             # Simon gone the day after it ended
+    (dt.date(2026, 10, 20), {"TRUDY"}),             # Trudy's last fix is 10-20 00Z
+    (dt.date(2026, 10, 10), {"SIMON"}),             # Trudy hasn't formed yet
+])
+def test_only_storms_active_on_the_selected_date(monkeypatch, date, expected):
+    simon = _storm_between("EP202026", "SIMON", dt.datetime(2026, 10, 4, 12), dt.datetime(2026, 10, 16, 18))
+    trudy = _storm_between("EP212026", "TRUDY", dt.datetime(2026, 10, 11, 6), dt.datetime(2026, 10, 20, 0))
+    monkeypatch.setattr(st, "BASINS", ())
+    monkeypatch.setattr(st, "is_recent", lambda d, today=None: True)
+    monkeypatch.setattr(st, "_realtime", {"ts": 0.0, "storms": None, "refreshing": False})
+    monkeypatch.setattr(st, "_load_realtime_storms", lambda: [(simon, None), (trudy, None)])
+    out = st.storms_for_date(date)
+    assert {p["name"] for p in out.values()} == expected
+    for p in out.values():   # track drawn up to the selected day, not beyond
+        assert max(pt["time"] for pt in p["track"]) <= f"{date.isoformat()}T23:59:59"
+
+
+def test_entries_from_an_older_cache_version_are_recomputed(fake_mongo, computed):
+    d = dt.date(2025, 9, 1)
+    _coll(fake_mongo).insert_one({"_id": d.isoformat(), "storms": {"OLD": {}}, "computed_at": st._utcnow()})
+    assert "WP292026" in st.cached_storms_for_date(d) and computed == [d]

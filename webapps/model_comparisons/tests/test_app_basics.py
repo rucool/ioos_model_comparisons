@@ -68,7 +68,7 @@ def test_storm_track_served_from_shared_cache(client, fake_mongo, app_module, mo
     monkeypatch.setattr(storm_track, "storms_for_date",
                         lambda d: (_ for _ in ()).throw(AssertionError("tropycal should not run")))
     fake_mongo["hurricanes"]["storm_tracks"].insert_one({
-        "_id": "2025-09-01", "computed_at": dt.datetime(2025, 9, 2),
+        "_id": "2025-09-01", "computed_at": dt.datetime(2025, 9, 2), "v": storm_track.CACHE_VERSION,
         "storms": {"AL052025": {"name": "ERIN", "track": []}}})
     app_module._storm_cache.clear()
     r = client.get("/api/storm-track?date=2025-09-01")

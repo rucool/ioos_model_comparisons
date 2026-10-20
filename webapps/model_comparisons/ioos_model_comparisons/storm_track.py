@@ -145,6 +145,7 @@ CACHE_DAYS = 7              # days kept current by the background refresher
 REFRESH_SECONDS = 30 * 60   # how often the refresher runs
 FINAL_AFTER_DAYS = 30       # older dates are treated as final (never recomputed)
 _LEASE_ID = "_refresh_lease"
+CACHE_VERSION = 2           # bump when the selection rules change; older entries are recomputed
 _recomputing = set()        # dates being recomputed in the background (this process)
 _recompute_lock = threading.Lock()
 
@@ -188,7 +189,7 @@ def compute_and_store(date_obj, coll=None):
     if coll is not None:
         try:
             key = date_obj.isoformat()
-            coll.replace_one({"_id": key}, {"_id": key, "storms": storms,
+            coll.replace_one({"_id": key}, {"_id": key, "storms": storms, "v": CACHE_VERSION,
                                             "computed_at": _utcnow()}, upsert=True)
         except Exception as e:
             print(f"storm_track: couldn't store storms for {date_obj}: {e}")
@@ -225,7 +226,7 @@ def cached_storms_for_date(date_obj):
             doc = coll.find_one({"_id": date_obj.isoformat()})
         except Exception:
             doc = None
-        if doc is not None:
+        if doc is not None and doc.get("v") == CACHE_VERSION:
             if not _is_fresh(doc, date_obj):
                 _recompute_in_background(date_obj)
             return doc["storms"]
@@ -262,8 +263,9 @@ def refresh_recent(days=CACHE_DAYS, coll=None, today=None):
     for back in range(days):
         date_obj = today - dt.timedelta(days=back)
         if coll is not None:
-            doc = coll.find_one({"_id": date_obj.isoformat()}, {"computed_at": 1})
-            if doc is not None and _is_fresh(doc, date_obj) and not is_recent(date_obj, today):
+            doc = coll.find_one({"_id": date_obj.isoformat()}, {"computed_at": 1, "v": 1})
+            if (doc is not None and doc.get("v") == CACHE_VERSION and _is_fresh(doc, date_obj)
+                    and not is_recent(date_obj, today)):
                 continue
         compute_and_store(date_obj, coll)
         done.append(date_obj)
@@ -295,8 +297,10 @@ def start_refresher():
     threading.Thread(target=loop, daemon=True, name="storm-refresher").start()
 
 
-def active_storms_for_date(date_obj, lookback_days=5, lookahead_days=1):
-    """Storms from BASINS whose track overlapped a window around date_obj.
+def active_storms_for_date(date_obj):
+    """Storms active on date_obj: formed by the end of that day (UTC) and
+    still tracked at some point during it. A storm that dissipated before
+    the selected day, or forms after it, is not included.
 
     Adapted from ioos_model_comparisons/plotting.py::get_active_storms, minus
     its map-extent intersection filter — the Profiles map is one merged,
@@ -308,8 +312,8 @@ def active_storms_for_date(date_obj, lookback_days=5, lookahead_days=1):
     dates, live-feed storms are merged in and replace the archive copy of the
     same storm.
     """
-    time_start = dt.datetime.combine(date_obj, dt.time.min) - dt.timedelta(days=lookback_days)
-    time_end = dt.datetime.combine(date_obj, dt.time.min) + dt.timedelta(days=lookahead_days)
+    time_start = dt.datetime.combine(date_obj, dt.time.min)
+    time_end = dt.datetime.combine(date_obj, dt.time.max)
 
     years = {date_obj.year}
     if date_obj.month == 1:
