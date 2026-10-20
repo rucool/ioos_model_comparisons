@@ -21,7 +21,7 @@ cp .env.example .env                  # MONGODB_URI, FLASK_SECRET_KEY, AUTH_INSE
 ```
 
 - Plot scripts are run directly: `python scripts/maps/models/synchronous/rtofs-gofs-cmems-amseas.py --regions gom mab --espc --cmems` (see each script's docstring for flags such as `--start/--end/--freq`, `--no-overwrite`, `--serial`). On the server they are invoked by cron through `scripts/shell/*.sh` (conda env `hurricanes`, `MPLBACKEND=agg`, `PYPROJ_GLOBAL_CONTEXT=ON`).
-- Web app (dev): `cd webapps/model_comparisons && python app.py` (port 5001). Production: uwsgi vassal `aquaman` on host `baffin`, deployed with `make deploy` (`scripts/release/{build_webapp.py,deploy.sh,rollback.sh}`; settings in git-ignored `scripts/release/deploy.conf`). Importing `app.py` has no side effects; the NGDAC glider thread starts on the first request.
+- Web app (dev): `cd webapps/model_comparisons && python app.py` (port 5001). Production: uwsgi vassal `aquaman` on host `baffin` (run by a colleague). Releases are zips from `make build`. `scripts/release/install_release.sh` (shipped inside each zip) installs on the server, with `--adopt` for the one-time takeover of the old hand-installed folder, and `--rollback`. `make deploy`/`make rollback` run it over ssh, using the git-ignored `scripts/release/deploy.conf`. This covers the web app only; the plot host updates by `git pull`. Importing `app.py` has no side effects; the NGDAC glider thread starts on the first request.
 - Fronts: `scripts/fronts/run_digitizer_goes19.py` (one scene) and `run_digitizer_batch.py` (N days) both call `fronts/pipeline.py:process_scene`; the nightly wrapper is `scripts/shell/gulf_stream_fronts.sh`; `scripts/tools/fronts_preflight.py` and `backfill_fronts_to_mongo.py` support it.
 
 ## Architecture

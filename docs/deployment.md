@@ -13,37 +13,64 @@ No test reaches the network or a real MongoDB. GitHub Actions
 (`.github/workflows/ci.yml`) runs the same on every push and pull request,
 and builds the zip. On `v*` tags it attaches the zip to the GitHub release.
 
-## Releasing to baffin
+## Releasing the portal to baffin
 
-One-time setup:
+This covers the web app only: the Flask portal in `webapps/model_comparisons/`.
+The plot scripts, cron jobs and figure indexer run from the git checkout on
+the plot host; see "Updating the plot host" below.
 
-1. `cp scripts/release/deploy.conf.example scripts/release/deploy.conf` and
-   fill in the values from baffin: app root, vassal ini path, Python, health
-   URL.
-2. On baffin, point the `aquaman` uwsgi vassal at `chdir = <app root>/current`,
-   `virtualenv = <app root>/current/venv` and `module = wsgi:app`.
-3. Put the app's environment in `<app root>/shared/.env`:
-   - `MONGODB_URI`
-   - `FLASK_SECRET_KEY`
-   - `DISCOVERY_BACKEND`
-
-Each release:
-
-```bash
-git tag v2026.10.1 && git push --tags     # optional; untagged builds use the commit id
-make deploy                                # check -> build -> upload -> switch -> verify
-make rollback                              # previous release, if needed
-```
-
-`deploy.sh`:
+A release is a zip built from a commit: `make build` locally, or the CI
+artifact. Every zip contains `install_release.sh`, which does all the
+server-side work on baffin:
 1. Unpacks the zip into `releases/<version>`.
-2. Reuses or creates a venv keyed by the requirements hash.
+2. Reuses or builds a package environment (only when `requirements.txt` changed).
 3. Checks that the app imports.
-4. Switches the `current` symlink atomically and touches the vassal ini.
-5. Waits for `/healthz` to report the new version, and rolls back
-   automatically if it doesn't.
+4. Atomically switches the `current` link and touches the uwsgi vassal ini.
+5. Waits for `/healthz` to report the new version, and rolls back automatically if it doesn't.
 
-It refuses dirty builds.
+It refuses dirty builds. `--rollback` returns to the previous release, and
+`--status` shows what's live.
+
+### Who runs it
+
+- **The server admin on baffin**, with no ssh from anyone else:
+  ```bash
+  unzip -o -j model_comparisons-<version>.zip '*/install_release.sh' -d /tmp
+  bash /tmp/install_release.sh --app-root <APP_ROOT> model_comparisons-<version>.zip
+  ```
+  Put `VASSAL_INI`, `PYTHON`, `HEALTH_URL` and `KEEP` in `<APP_ROOT>/install.conf`
+  once, so only `--app-root` is needed.
+- **Or from a laptop with ssh access:** `make deploy` / `make rollback` copy the
+  zip and the installer over and run the same installer remotely. The
+  settings go in `scripts/release/deploy.conf` (copy `deploy.conf.example`).
+
+### First time: taking over the existing hand-installed deployment
+
+The current site runs from a hand-unzipped folder that the `aquaman` vassal
+points at directly. Switch over without downtime:
+
+1. `install_release.sh --app-root <APP_ROOT> --adopt <current app folder>`
+   - registers the running app as release `model_comparisons-adopted`;
+   - copies its `.env` to `<APP_ROOT>/shared/.env`;
+   - changes nothing that's serving.
+2. Edit the vassal ini, then touch it. The same old code is now served through `current`; check the site.
+   - `chdir = <APP_ROOT>/current`
+   - `virtualenv = <APP_ROOT>/current/venv`
+   - `module = wsgi:app`
+3. Add `DISCOVERY_BACKEND=legacy` (the default) to `shared/.env` for now.
+4. Install the new release zip. If anything is wrong, `--rollback` returns to the adopted app.
+
+The new release finds figures exactly the old way until `DISCOVERY_BACKEND`
+is changed (see the rollout below), so this first deploy changes how the
+code is managed, not what the site shows.
+
+## Updating the plot host
+
+On the plot host (`/home/hurricaneadm/scripts/ioos_model_comparisons`):
+- `git pull`;
+- once, `conda activate hurricanes && pip install pyyaml pydantic`.
+
+The cron wrappers pick up the new code on their next run.
 
 ## The figure catalog: rollout
 

@@ -9,8 +9,9 @@ Steps: verify the vendored package (sync_vendor --check), take the version
 from `git describe`, and zip exactly the files git knows about under
 webapps/model_comparisons/ (tracked, plus untracked-but-not-ignored with
 --allow-dirty) — so stray local files, __pycache__, .DS_Store and tests never
-ship. A VERSION file is added; /healthz reports it, which is how deploy.sh
-confirms the new release is live.
+ship. A VERSION file is added (/healthz reports it, which is how the installer
+confirms the new release is live), plus install_release.sh, the server-side
+installer.
 
 The zip unpacks to model_comparisons-<version>/.
 """
@@ -79,6 +80,10 @@ def main(argv=None):
         for rel in files:
             z.write(REPO / rel, f"{top}/{Path(rel).relative_to(APP_REL).as_posix()}")
         z.writestr(f"{top}/VERSION", version + "\n")
+        # The server-side installer travels with every release (see its header).
+        info = zipfile.ZipInfo(f"{top}/install_release.sh")
+        info.external_attr = 0o755 << 16
+        z.writestr(info, (REPO / "scripts/release/install_release.sh").read_text())
     print(f"built {zpath} ({len(files)} files, version {version})")
     return zpath
 

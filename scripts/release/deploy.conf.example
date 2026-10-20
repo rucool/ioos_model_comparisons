@@ -1,5 +1,7 @@
+# For `make deploy` / `make rollback` from a laptop with ssh access to baffin.
 # Copy to scripts/release/deploy.conf (git-ignored) and fill in from baffin.
-# Every value here is a guess until checked on the server.
+# Every value here is a guess until checked on the server. (On baffin itself,
+# the same settings go in <app root>/install.conf for install_release.sh.)
 
 DEPLOY_HOST=baffin                      # ssh host (an ~/.ssh/config alias is fine)
 DEPLOY_APP_ROOT=/path/to/model_comparisons_app   # will hold releases/, venvs/, shared/, current

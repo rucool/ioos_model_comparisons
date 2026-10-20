@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# Switch baffin back to the release that was live before the last deploy.
+# Return baffin to the release that was live before the last install (runs
+# install_release.sh --rollback there over ssh). The server admin can run
+# `install_release.sh --app-root <root> --rollback` on baffin directly instead.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null
 source "$HERE/deploy.conf"
-ssh "$DEPLOY_HOST" bash -s -- "$DEPLOY_APP_ROOT" "$DEPLOY_VASSAL_INI" <<'REMOTE'
-set -euo pipefail
-ROOT="$1"; INI="$2"
-PREV="$(cat "$ROOT/previous_release" 2>/dev/null || true)"
-[ -n "$PREV" ] && [ -d "$PREV" ] || { echo "no previous release recorded"; exit 1; }
-CUR="$(readlink "$ROOT/current")"
-ln -sfn "$PREV" "$ROOT/current.tmp" && mv -T "$ROOT/current.tmp" "$ROOT/current"
-echo "$CUR" > "$ROOT/previous_release"
-touch "$INI"
-echo "    live: $PREV (was $CUR)"
-REMOTE
-curl -fsS "$HEALTH_URL" && echo
+scp -q "$HERE/install_release.sh" "$DEPLOY_HOST:/tmp/"
+ssh "$DEPLOY_HOST" bash /tmp/install_release.sh \
+    --app-root "$DEPLOY_APP_ROOT" --vassal-ini "$DEPLOY_VASSAL_INI" \
+    --python "${DEPLOY_PYTHON:-python3}" --health-url "$HEALTH_URL" --rollback

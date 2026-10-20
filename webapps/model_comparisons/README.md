@@ -18,8 +18,10 @@ make deploy     # build dist/model_comparisons-<version>.zip, install on baffin,
 make rollback   # back to the previous release
 ```
 
-See `docs/deployment.md` for the one-time server setup
-(`scripts/release/deploy.conf`, the uwsgi vassal, `shared/.env`).
+Each zip also carries `install_release.sh`, which the server admin can run on
+baffin directly (`install_release.sh --app-root <root> <zip>`, `--rollback`).
+See `docs/deployment.md` for the one-time switchover from the current
+hand-installed folder (`--adopt`) and the uwsgi vassal settings.
 
 ## Running locally
 
