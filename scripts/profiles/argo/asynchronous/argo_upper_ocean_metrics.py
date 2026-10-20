@@ -50,7 +50,7 @@ def ohc_from_profile(depth, temp, dens):
             OHC = np.nan
         else:
             rho0 = np.nanmean(dens[ok26]) # don't include nans
-            OHC = np.abs(cp * rho0 * np.trapz(temp[ok26]-26,depth[ok26]))
+            OHC = np.abs(cp * rho0 * np.trapezoid(temp[ok26]-26,depth[ok26]))
             OHC = OHC * 10**(-7) # in kJ/cm^2
     else:
         OHC = np.nan
@@ -215,10 +215,10 @@ def potential_energy_anomaly100(depth, dens):
             sigma = -1*z/max_depth
             sigma = np.flipud(sigma)
 
-            rhomean = np.trapz(density,sigma,axis=0)
+            rhomean = np.trapezoid(density,sigma,axis=0)
             drho = rhomean - density
             torque = drho * sigma
-            PEA = g * max_depth * np.trapz(torque,sigma,axis=0)
+            PEA = g * max_depth * np.trapezoid(torque,sigma,axis=0)
 
     return PEA
 

@@ -5,12 +5,12 @@
 
 /* ─── Design Tokens ─── */
 :root {
-  --navy:          #cc0033; /* Rutgers Scarlet */
-  --navy-mid:      #b3002d;
-  --navy-light:    #e60039;
-  --ocean-blue:    #5f6a72; /* Rutgers Grey */
-  --ocean-accent:  #000000; /* Rutgers Black */
-  --ocean-light:   #f5f7f9;
+  --rutgers-scarlet:       #cc0033; /* Rutgers Scarlet */
+  --rutgers-scarlet-mid:   #b3002d;
+  --rutgers-scarlet-light: #e60039;
+  --rutgers-grey:  #5f6a72; /* Rutgers Grey */
+  --rutgers-black: #000000; /* Rutgers Black */
+  --neutral-light: #f5f7f9;
   --sidebar-bg:    #fafafa;
   --sidebar-border:#e5e7ea;
   --panel-bg:      #ffffff;
@@ -61,8 +61,8 @@ html:has(body.app-shell) {
 }
 
 /* ─── Navbar ─── */
-.bg-navy {
-  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 60%, var(--navy-light) 100%) !important;
+.bg-scarlet {
+  background: linear-gradient(135deg, var(--rutgers-scarlet) 0%, var(--rutgers-scarlet-mid) 60%, var(--rutgers-scarlet-light) 100%) !important;
   border-bottom: 1px solid rgba(255,255,255,.08);
   box-shadow: 0 2px 16px rgba(0,0,0,.25);
 }
@@ -144,11 +144,11 @@ html:has(body.app-shell) {
 
 .tab-pills .nav-link:hover {
   background: rgba(21,101,192,.08);
-  color: var(--ocean-blue);
+  color: var(--rutgers-grey);
 }
 
 .tab-pills .nav-link.active {
-  background: var(--ocean-blue);
+  background: var(--rutgers-grey);
   color: #fff;
 }
 
@@ -179,13 +179,24 @@ html:has(body.app-shell) {
 }
 
 .controls-header {
-  background: linear-gradient(90deg, var(--navy) 0%, var(--navy-light) 100%);
+  background: linear-gradient(90deg, var(--rutgers-scarlet) 0%, var(--rutgers-scarlet-light) 100%);
   color: #fff;
   font-size: .78rem;
   font-weight: 600;
   letter-spacing: .04em;
   text-transform: uppercase;
   padding: .6rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Hidden on desktop — the header only acts as a collapse toggle on mobile,
+   see the (max-width: 900px) block below and initCollapsibleControls() in
+   app.js. */
+.controls-toggle-icon {
+  display: none;
+  transition: transform .2s;
 }
 
 .controls-body {
@@ -215,7 +226,7 @@ html:has(body.app-shell) {
 }
 
 .control-input:focus {
-  border-color: var(--ocean-accent);
+  border-color: var(--rutgers-black);
   box-shadow: 0 0 0 3px rgba(33,150,243,.15);
 }
 
@@ -224,7 +235,7 @@ html:has(body.app-shell) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--navy);
+  background: var(--rutgers-scarlet);
   color: #fff;
   font-size: .78rem;
   font-weight: 700;
@@ -235,9 +246,9 @@ html:has(body.app-shell) {
   letter-spacing: .05em;
 }
 
-/* ─── Buttons (ocean theme) ─── */
-.btn-ocean {
-  background: linear-gradient(135deg, var(--ocean-blue) 0%, var(--ocean-accent) 100%);
+/* ─── Buttons (grey/black brand theme) ─── */
+.btn-grey {
+  background: linear-gradient(135deg, var(--rutgers-grey) 0%, var(--rutgers-black) 100%);
   border: none;
   color: #fff;
   font-weight: 600;
@@ -247,53 +258,37 @@ html:has(body.app-shell) {
   box-shadow: 0 2px 8px rgba(21,101,192,.3);
 }
 
-.btn-ocean:hover {
+.btn-grey:hover {
   opacity: .9;
   box-shadow: 0 4px 14px rgba(21,101,192,.4);
   transform: translateY(-1px);
   color: #fff;
 }
 
-.btn-ocean:active { transform: translateY(0); }
+.btn-grey:active { transform: translateY(0); }
 
-.btn-ocean:disabled {
+.btn-grey:disabled {
   opacity: .6;
   pointer-events: none;
 }
 
-.btn-outline-ocean {
-  border: 1.5px solid var(--ocean-blue);
-  color: var(--ocean-blue);
+.btn-outline-grey {
+  border: 1.5px solid var(--rutgers-grey);
+  color: var(--rutgers-grey);
   font-size: .78rem;
   font-weight: 600;
   border-radius: var(--radius-sm);
   transition: background var(--transition), color var(--transition), transform var(--transition);
 }
 
-.btn-outline-ocean:hover {
-  background: var(--ocean-blue);
+.btn-outline-grey:hover {
+  background: var(--rutgers-grey);
   color: #fff;
   transform: translateY(-1px);
 }
 
-.btn-outline-ocean:active {
+.btn-outline-grey:active {
   transform: translateY(0);
-}
-
-/* ─── Legend ─── */
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  color: var(--text-main);
-}
-
-.legend-dot {
-  display: inline-block;
-  width: .6rem;
-  height: .6rem;
-  border-radius: 50%;
-  flex-shrink: 0;
 }
 
 /* ─── Image display ─── */
@@ -329,6 +324,12 @@ html:has(body.app-shell) {
   padding: .55rem 1rem;
   border-bottom: 1px solid var(--panel-border);
   background: #fafcff;
+  /* Forces its own compositor layer so Chrome paints it independently of
+     a sibling Leaflet map's GPU-transformed pane — without this, panning
+     the map (a continuous transform inside this panel's overflow:hidden +
+     border-radius box) can make Chrome fail to repaint this header for the
+     duration of the drag. */
+  transform: translateZ(0);
 }
 
 .panel-badge {
@@ -360,27 +361,70 @@ html:has(body.app-shell) {
   min-height: 400px;
 }
 
-/* ─── Profiles tab: map + plot side-by-side layout ─── */
+/* ─── Profiles tab: plot (left) + map (right) side by side, both full-size.
+   Swapped from the original map-left/plot-right order. ─── */
 .profile-display {
   flex-direction: row;
 }
 
-.profile-map-panel {
-  width: 350px;
+/* CSS resize always grips an element's bottom-right corner, so whichever
+   panel sits on the left needs to be the resizable one — its right edge is
+   the shared boundary between the two. With the plot now on the left,
+   that's the plot (wider by default, since it's primary); the map just
+   fills whatever's left on the right. */
+.profile-plot-panel {
+  width: 650px;
   flex: none;
   display: flex;
   flex-direction: column;
-  resize: horizontal;  /* drag the edge to resize; requires width, not flex-basis */
+  resize: horizontal;  /* drag the right edge to resize; requires width, not flex-basis */
   overflow: hidden;
-  min-width: 200px;
-  max-width: 800px;
-  padding-bottom: 0;
+  min-width: 300px;
+  max-width: calc(100% - 220px);  /* always leave the map at least ~220px */
 }
 
-.profile-plot-panel {
+.profile-map-panel {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 200px;
+  padding-bottom: 0;
+}
+
+/* On-map key explaining the dashed Argo/glider-search-region boxes (toggled
+   with "Show Region Boxes" — see toggleProfileRegionBoxes in app.js). */
+.map-region-legend {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  background: rgba(255, 255, 255, .92);
+  padding: .35rem .6rem;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .25);
+  font-size: .72rem;
+  color: var(--text-main);
+  max-width: 220px;
+  line-height: 1.25;
+}
+
+.map-region-legend-row {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.map-region-legend-swatch {
+  flex-shrink: 0;
+  width: 16px;
+  height: 12px;
+  border: 1.5px dashed #6c8ebf;
+  background: rgba(108, 142, 191, .08);
+}
+
+.map-region-legend-note {
+  color: var(--text-muted);
+  font-size: .68rem;
+  margin-top: .1rem;
 }
 
 .image-panel-body img.plot-image {
@@ -418,7 +462,7 @@ html:has(body.app-shell) {
   justify-content: center;
   padding: 3rem 1rem;
   gap: .75rem;
-  color: var(--ocean-blue);
+  color: var(--rutgers-grey);
   width: 100%;
 }
 
@@ -433,22 +477,11 @@ html:has(body.app-shell) {
   width: 100%;
 }
 
-/* ─── No-data message ─── */
-.no-data-msg {
-  font-size: .75rem;
-  color: #dc3545;
-  margin-top: .35rem;
-  padding: .35rem .6rem;
-  background: #fff5f5;
-  border-radius: var(--radius-sm);
-  border: 1px solid #ffd0d0;
-}
-
 /* ─── Btn-check + label reset ─── */
-.btn-check:checked + .btn-outline-ocean {
-  background: var(--ocean-blue);
+.btn-check:checked + .btn-outline-grey {
+  background: var(--rutgers-grey);
   color: #fff;
-  border-color: var(--ocean-blue);
+  border-color: var(--rutgers-grey);
 }
 
 /* ─── Region Flip Buttons ─── */
@@ -458,7 +491,7 @@ html:has(body.app-shell) {
   transform: translateY(-50%);
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid var(--panel-border);
-  color: var(--ocean-blue);
+  color: var(--rutgers-grey);
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -472,7 +505,7 @@ html:has(body.app-shell) {
   z-index: 10;
 }
 .region-flip-btn:hover {
-  background: var(--ocean-blue);
+  background: var(--rutgers-grey);
   color: #fff;
   transform: translateY(-50%) scale(1.05);
 }
@@ -495,7 +528,7 @@ html:has(body.app-shell) {
 
 .ov-sidebar-grid {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 270px 1fr;  /* matches .content-grid's sidebar width — no jump switching tabs */
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -513,11 +546,11 @@ html:has(body.app-shell) {
   transition: color var(--transition), background var(--transition);
 }
 #mapModelTabs .nav-link:hover {
-  color: var(--navy);
+  color: var(--rutgers-scarlet);
   background: rgba(204, 0, 51, 0.05);
 }
 #mapModelTabs .nav-link.active {
-  color: var(--navy);
+  color: var(--rutgers-scarlet);
   background: var(--panel-bg);
   border-color: var(--panel-border);
   border-bottom-color: var(--panel-bg);
@@ -542,6 +575,22 @@ html:has(body.app-shell) {
     border-right: none;
     border-bottom: 1px solid var(--sidebar-border);
     padding: .75rem;
+  }
+
+  /* Collapsible controls: collapsed by default on mobile only (JS sets
+     is-collapsed on load at this breakpoint) so users don't have to scroll
+     past a full sidebar to reach the image/plot below it. */
+  .controls-header {
+    cursor: pointer;
+  }
+  .controls-toggle-icon {
+    display: inline-block;
+  }
+  .controls-header[aria-expanded="false"] .controls-toggle-icon {
+    transform: rotate(-90deg);
+  }
+  .controls-body.is-collapsed {
+    display: none;
   }
 
   .image-display {
@@ -586,18 +635,23 @@ html:has(body.app-shell) {
     max-height: 70vh;
   }
 
-  /* Profiles tab: map + plot stack instead of sitting side by side, and
-     the map panel drops its fixed desktop width/drag-resize in favor of
-     a plain fixed height. */
+  /* Profiles tab: plot + map stack instead of sitting side by side, and
+     the plot panel drops its fixed desktop width/drag-resize in favor of
+     a plain fixed height for the map. */
   .profile-display {
     flex-direction: column;
   }
-  .profile-map-panel {
-    width: 100%;
-    height: 280px;
+  .profile-plot-panel {
+    width: auto;
     resize: none;
     min-width: 0;
     max-width: none;
+  }
+  .profile-map-panel {
+    flex: none;
+    width: 100%;
+    height: 280px;
+    min-width: 0;
     /* Leaflet's tile grid renders slightly larger than its container and
        relies on an ancestor clipping it (true on desktop via .image-panel's
        base overflow:hidden) — re-assert that here since the broad
@@ -630,6 +684,21 @@ html:has(body.app-shell) {
   #mapModelTabs::-webkit-scrollbar { display: none; }
   #mapModelTabs .nav-item { flex-shrink: 0; }
 
+  /* Overview's region bar: same swipeable-row treatment. Its inner button
+     group defaults to flex-wrap, which on mobile just wraps 10 buttons
+     across several lines instead of scrolling like the other bars. */
+  .ov-region-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .ov-region-bar::-webkit-scrollbar { display: none; }
+  .ov-region-bar > div {
+    flex-wrap: nowrap;
+    width: max-content;
+  }
+  .ov-region-bar .btn { flex-shrink: 0; }
+
   .brand-title   { font-size: 1.15rem; }
   .navbar-logo   { height: 42px; }
   .nav-timestamp { font-size: 1rem; }
@@ -651,15 +720,19 @@ html:has(body.app-shell) {
 
 /* ─── Image Lightbox ───
    Tapping/clicking any plot image opens it full-size over a dark backdrop —
-   dismiss via the close button, a backdrop click, or Escape. */
+   dismiss via the close button, a backdrop click, or Escape.
+
+   Profile mode (opened via openProfileLightbox()) additionally shows
+   .lightbox-toolbar, a bar of the real Date/Day-nav/Type/Platform controls
+   moved in from the sidebar — not clones, the same elements — so navigating
+   while maximized doesn't require closing it. Closing moves them back. */
 .image-lightbox {
   display: none;
   position: fixed;
   inset: 0;
   background: rgba(10, 12, 16, .92);
   z-index: 2000;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   padding: 2rem;
   cursor: zoom-out;
 }
@@ -668,7 +741,39 @@ html:has(body.app-shell) {
   display: flex;
 }
 
-.image-lightbox img {
+.lightbox-toolbar {
+  display: none;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: .5rem 1.5rem;
+  margin: -2rem -2rem 1.5rem;
+  padding: .85rem 4.5rem .85rem 1.5rem;  /* right-padded to clear the close button */
+  background: rgba(255, 255, 255, .06);
+  border-bottom: 1px solid rgba(255, 255, 255, .12);
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.lightbox-toolbar:has(> *) {
+  display: flex;
+}
+
+/* Controls keep their normal light-mode styling but the surrounding bar is
+   dark — lighten the label text so it stays legible. */
+.lightbox-toolbar .control-label {
+  color: rgba(255, 255, 255, .7);
+}
+
+.lightbox-content {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightbox-content img {
   max-width: 100%;
   max-height: 100%;
   width: auto;
@@ -678,6 +783,24 @@ html:has(body.app-shell) {
   box-shadow: 0 10px 50px rgba(0, 0, 0, .5);
   cursor: default;
   animation: fadeIn .2s ease;
+}
+
+.lightbox-body {
+  display: none;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+}
+
+.lightbox-body:has(> *) {
+  display: flex;
+}
+
+/* The real #profileImageContainer, moved in — fill the body instead of its
+   normal small-panel size. */
+.lightbox-body > * {
+  width: 100%;
+  height: 100%;
 }
 
 .lightbox-close {

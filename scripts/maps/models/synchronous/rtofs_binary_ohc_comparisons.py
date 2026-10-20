@@ -27,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests
 import xarray as xr
 
 import ioos_model_comparisons.configs as conf
@@ -37,7 +38,7 @@ from ioos_model_comparisons.calc import (
     ocean_heat_content,
 )
 from ioos_model_comparisons.models import CMEMS, espc_ts, espc_ts_archive
-from ioos_model_comparisons.platforms import get_active_gliders, get_argo_floats_by_time
+from ioos_model_comparisons.platforms import get_active_gliders, get_argo_floats_by_time, get_ohc
 from ioos_model_comparisons.plotting import plot_ohc, region_transform
 from ioos_model_comparisons.regions import region_config
 from ioos_model_comparisons.db import (
@@ -58,6 +59,10 @@ SCRIPT_ID = "ohc_binary"
 
 plot_espc = True
 plot_cmems = True
+# Off by default — mirrors ocean_heat_content_nesdis_pacific.py's comparison
+# but hasn't been validated end-to-end for this (region/Atlantic-side) binary
+# pipeline yet. Wired in now so it's a one-flag flip (--nesdis) once it has.
+plot_nesdis = False
 plot_hurricanes = True
 
 # ESPC only keeps ~1 week of history in the FMRC "best" aggregation; older
@@ -88,7 +93,9 @@ def _load_realtime():
     global _rt_obj
     if _rt_obj is None:
         from tropycal import realtime as trealtime
-        _rt_obj = trealtime.Realtime()
+        # jtwc=True also pulls JTWC-tracked storms (west/south Pacific
+        # typhoons etc.) — without it, Realtime() only has NHC's own basins.
+        _rt_obj = trealtime.Realtime(jtwc=True)
     return _rt_obj
 
 
@@ -165,12 +172,19 @@ def _load_realtime_storms():
         for k in keys:
             try:
                 s = rt.get_storm(k)
-                ofcl = {}
-                if not s.invest:
-                    ofcl = s.get_operational_forecasts().get('OFCL', {})
-                storms.append((s, ofcl))
             except Exception as e:
-                logger.warning("Tropycal realtime: failed to fetch forecast history for %s: %s", k, e)
+                logger.warning("Tropycal realtime: failed to fetch storm %s: %s", k, e)
+                continue
+            # A forecast-history failure (e.g. a weak JTWC system with no
+            # operational model data yet) shouldn't drop the storm entirely —
+            # just means no cone, track-only (same as ocean_heat_content.py).
+            ofcl = {}
+            if not s.invest:
+                try:
+                    ofcl = s.get_operational_forecasts().get('OFCL', {})
+                except Exception as e:
+                    logger.warning("Tropycal realtime: no forecast history for %s: %s", k, e)
+            storms.append((s, ofcl))
     except Exception as e:
         logger.warning("Tropycal realtime feed unavailable: %s", e)
     _realtime_storm_cache = storms
@@ -252,11 +266,11 @@ def _get_storms_for_time(ctime, extent):
             if sliced is None:
                 continue
             fct = _forecast_at_or_before(ofcl, ctime)
-            if fct is None and not sliced.invest:
-                # No OFCL advisory had been issued yet at ctime (e.g. plotting
-                # a time right at genesis, before the first cycle) — nothing
-                # sane to draw a cone from, so skip this storm at this ctime.
-                continue
+            # fct may be None here (no OFCL advisory yet, or — for a JTWC
+            # storm — no operational model guidance at all, common for a
+            # weak/disorganized TD). plot_storms() already handles a falsy
+            # forecast_dict by skipping just the cone and still drawing the
+            # track/position, so don't drop the storm entirely over it.
             active_stms.append(sliced)
             active_fcts.append(fct)
         if active_stms:
@@ -415,6 +429,22 @@ def load_cmems_subset(cmems_instance, ctime, lon_extent, lat_extent):
     return xr.concat(parts, dim='lon') if len(parts) > 1 else parts[0]
 
 
+def get_nesdis_ohc(extent, ctime):
+    """Fetch NESDIS OHC for a single region's own extent (not a combined
+    multi-region bbox) - keeps this out of get_ohc()'s basin math entirely,
+    since a bbox spanning multiple regions could straddle the antimeridian
+    and produce a reversed (min > max) longitude query. Mirrors
+    ocean_heat_content_nesdis_pacific.py's helper of the same name."""
+    try:
+        amt = get_ohc(bbox=extent, time=ctime)
+    except requests.exceptions.HTTPError:
+        amt = None
+    if amt is None:
+        return None
+    amt.attrs["model"] = "NESDIS"
+    return amt.rename({"longitude": "lon", "latitude": "lat"})
+
+
 def _ohc_record(region, ts_dt, m1, m2):
     return {"region": region["name"], "timestamp": ts_dt, "plot_type": "ocean_heat_content",
             "variable": "ohc", "depth": 0, "model1": m1, "model2": m2}
@@ -439,6 +469,8 @@ def _expected_plot_keys(ctime, region) -> set:
         model_pairs.append(("rtofs", "espc"))
     if plot_cmems:
         model_pairs.append(("rtofs", "cmems"))
+    if plot_nesdis:
+        model_pairs.append(("rtofs", "nesdis"))
 
     for m1, m2 in model_pairs:
         keys.add((rname, tstr_k, "ocean_heat_content", "ohc", 0, m1, m2))
@@ -478,6 +510,9 @@ def parse_args():
     )
     parser.add_argument("--no-espc", action="store_true")
     parser.add_argument("--no-cmems", action="store_true")
+    parser.add_argument("--nesdis", action="store_true",
+        help="Also compare against NESDIS satellite OHC (off by default — "
+             "not yet validated end-to-end for this pipeline)")
     parser.add_argument("--overwrite", action="store_true",
         help="Regenerate plots even if they already exist")
     parser.add_argument(
@@ -488,7 +523,7 @@ def parse_args():
 
 
 def main():
-    global plot_espc, plot_cmems
+    global plot_espc, plot_cmems, plot_nesdis
 
     args = parse_args()
 
@@ -504,6 +539,8 @@ def main():
         plot_espc = False
     if args.no_cmems:
         plot_cmems = False
+    if args.nesdis:
+        plot_nesdis = True
     if args.overwrite:
         kwargs["overwrite"] = True
 
@@ -710,6 +747,28 @@ def main():
                 except Exception as e:
                     logger.error("Failed RTOFS vs CMEMS OHC: %s", e, exc_info=True)
                     errors += 1
+
+            # RTOFS vs NESDIS
+            if plot_nesdis:
+                amt = get_nesdis_ohc(extent_data, ctime)
+                if amt is not None:
+                    try:
+                        amt_slice = amt.sel(
+                            lon=slice(extent_data[0], extent_data[1]),
+                            lat=slice(extent_data[2], extent_data[3]),
+                        )
+                        plot_ohc(rds, amt_slice.squeeze(), extent, rc["name"],
+                                 storms=_storms, forecasts=_forecasts, **kw)
+                        total_plots += 1
+                        pending_logs.append(_ohc_record(rc, ts_dt, "rtofs", "nesdis"))
+                        logger.info("Plotted RTOFS vs NESDIS OHC for %s @ %s", region_name, ctime)
+                    except TypeError as e:
+                        logger.warning("Skipping RTOFS vs NESDIS OHC (bad data shape): %s", e)
+                    except Exception as e:
+                        logger.error("Failed RTOFS vs NESDIS OHC: %s", e, exc_info=True)
+                        errors += 1
+                else:
+                    logger.info("NESDIS: no data for %s @ %s", region_name, ctime)
 
             log_plots(SCRIPT_ID, pending_logs, has_argo=has_argo, has_gliders=has_gliders)
             rds.close()

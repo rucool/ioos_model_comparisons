@@ -15,9 +15,7 @@
 
 const map = L.map('map', { preferCanvas: false }).setView([38.5, -63.5], 5);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; OpenStreetMap, &copy; CARTO', maxZoom: 12,
-}).addTo(map);
+addBasemaps(map, { maxZoom: 12 });
 
 const wallLayer = L.featureGroup().addTo(map);
 const ringLayer = L.featureGroup().addTo(map);

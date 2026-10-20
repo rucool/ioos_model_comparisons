@@ -14,3 +14,14 @@ joblib
 xarray
 matplotlib
 shapely
+# tropycal.tracks/.realtime import tropycal.plot at package-init time, which
+# pulls in tropycal.utils.cartopy_utils unconditionally — so cartopy is
+# required just to import tropycal's data-access modules, not only its
+# plotting ones (confirmed by hand: importing tropycal.tracks fails with
+# "No module named 'cartopy'" if it's missing, even though storm_track.py
+# never calls anything that plots).
+cartopy
+tropycal
+scipy
+networkx
+pyshp

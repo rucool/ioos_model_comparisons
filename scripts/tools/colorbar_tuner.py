@@ -18,19 +18,40 @@ Usage
 -----
     python scripts/tools/colorbar_tuner.py
     python scripts/tools/colorbar_tuner.py --regions mab sab --vars temperature
+    python scripts/tools/colorbar_tuner.py --regions guam --vars currents
+        (tunes the current-speed colorbar, i.e. currents.limits_by_depth)
+    python scripts/tools/colorbar_tuner.py --regions guam --vars currents \
+        --rtofs-file /path/to/rtofs_glo_20260724T06_guam.nc
+        (for regions not served by the THREDDS OPeNDAP source -- e.g. guam,
+        which is binary-archive-only -- point at a regional NetCDF produced
+        by scripts/harvest/grab_rtofs_archv_aws.py instead)
 
 Requirements
 ------------
     - ioos_model_comparisons conda env
     - MONGODB_URI env var (only for Save All)
     - Interactive matplotlib backend (TkAgg / Qt5Agg / MacOSX)
+
+MongoDB access from a laptop
+-----------------------------
+mongodb.marine.rutgers.edu isn't reachable directly -- tunnel through
+boardwalk.marine.rutgers.edu and point MONGODB_URI at localhost so the GUI
+still runs locally (it needs a real display). Use a local port other than
+27017 if you run MongoDB locally too (it'll otherwise fail to bind):
+
+    ssh -N -L 27018:mongodb.marine.rutgers.edu:27017 michaesm@boardwalk.marine.rutgers.edu &
+    export MONGODB_URI="mongodb://localhost:27018/hurricanes"
+
+("Save regions.py" doesn't touch Mongo at all, so it works without the tunnel.)
 """
 
 import argparse
 import os
+import re
 import sys
 
 import numpy as np
+import xarray as xr
 
 import matplotlib
 for _backend in ("TkAgg", "Qt5Agg", "MacOSX", "Agg"):
@@ -41,14 +62,14 @@ for _backend in ("TkAgg", "Qt5Agg", "MacOSX", "Agg"):
         continue
 
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Button, RadioButtons, Slider
+from matplotlib.widgets import Button, RadioButtons, Slider, TextBox
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cmocean
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from ioos_model_comparisons.regions import region_config
-from ioos_model_comparisons.models import rtofs, espc_ts, CMEMS
+from ioos_model_comparisons.models import rtofs, espc_ts, espc_uv, CMEMS
 from ioos_model_comparisons.calc import lon180to360, lon360to180
 
 # ---------------------------------------------------------------------------
@@ -70,11 +91,13 @@ STRIDE_CANDIDATES = {
     "temperature":        [0.25, 0.5, 1.0, 2.0],
     "salinity":           [0.05, 0.1, 0.25, 0.5],
     "sea_surface_height": [0.05, 0.1, 0.2],
+    "currents":           [0.01, 0.025, 0.05, 0.1, 0.25, 0.5],
 }
 CMAPS = {
     "temperature":        cmocean.cm.thermal,
     "salinity":           cmocean.cm.haline,
     "sea_surface_height": cmocean.cm.balance,
+    "currents":           cmocean.cm.speed,
 }
 RTOFS_VAR = {
     "temperature":        "temperature",
@@ -85,6 +108,10 @@ UNITS = {
     "temperature":        "C",
     "salinity":           "PSU",
     "sea_surface_height": "m",
+    "currents":           "m/s",
+}
+VAR_LABELS = {
+    "currents": "Current Speed",
 }
 
 import matplotlib as _mpl
@@ -106,6 +133,16 @@ def build_combo_list(regions=None, vars_=None):
             print(f"  skip region {r!r}: {e}")
             continue
         for v in vars_:
+            if v == "currents":
+                cdict = cfg.get("currents")
+                if not cdict or not cdict.get("bool"):
+                    continue
+                by_depth = cdict.get("limits_by_depth") or {}
+                base_limits = cdict.get("limits")
+                for depth in cdict.get("depths", []):
+                    limits = by_depth.get(depth, base_limits)
+                    combos.append((r, v, float(depth), limits))
+                continue
             entries = (cfg.get("sea_surface_height", []) if v == "sea_surface_height"
                        else cfg.get("variables", {}).get(v, []))
             for entry in entries:
@@ -126,6 +163,27 @@ def _subset_rtofs(ds, extent, buf=1.0):
         x=slice(int(np.floor(lons_ind[0])), int(np.ceil(lons_ind[1]))),
         y=slice(int(np.floor(lats_ind[0])), int(np.ceil(lats_ind[1]))),
     )
+
+
+def _load_rtofs_local(path):
+    """Open a regional RTOFS NetCDF produced by grab_rtofs_archv_aws.py.
+
+    These files come from process_rtofs_region() (binary .a/.b archives
+    interpolated onto standard z-levels) for regions -- e.g. guam -- that
+    the Rutgers THREDDS OPeNDAP aggregation doesn't serve at all. Variables
+    use raw HYCOM field names ('temp', 'salin', 'u-vel.', 'v-vel.') on a
+    'z' vertical coord instead of 'depth'; rename to match what load_data's
+    rtofs-local branch (and the rest of the tuner) expects. There is no
+    'time' dimension -- one file is one archive snapshot.
+    """
+    ds = xr.open_dataset(path)
+    return ds.rename({
+        "temp": "temperature",
+        "salin": "salinity",
+        "u-vel.": "u",
+        "v-vel.": "v",
+        "z": "depth",
+    })
 
 
 def _auto_limits(data, stride_candidates):
@@ -155,15 +213,44 @@ def load_data(region_key, var_name, depth, model="rtofs", model_ds=None):
         ds    = model_ds
         rds_t = ds.sel(time=ds.time.values[-1])
         sub   = _subset_rtofs(rds_t, extent)
-        da    = sub[RTOFS_VAR.get(var_name, var_name)]
-        if "depth" in da.dims:
-            da = da.sel(depth=depth, method="nearest")
-        data = da.compute().values
+        if var_name == "currents":
+            da_u, da_v = sub["u"], sub["v"]
+            if "depth" in da_u.dims:
+                da_u = da_u.sel(depth=depth, method="nearest")
+                da_v = da_v.sel(depth=depth, method="nearest")
+            u, v = da_u.compute().values, da_v.compute().values
+            data = np.sqrt(u ** 2 + v ** 2)
+        else:
+            da = sub[RTOFS_VAR.get(var_name, var_name)]
+            if "depth" in da.dims:
+                da = da.sel(depth=depth, method="nearest")
+            data = da.compute().values
+        lons = sub.lon.values
+        lats = sub.lat.values
+
+    elif model == "rtofs-local":
+        buf = 1.0
+        sub = model_ds.sel(
+            lon=slice(extent[0] - buf, extent[1] + buf),
+            lat=slice(extent[2] - buf, extent[3] + buf),
+        )
+        if var_name == "currents":
+            da_u, da_v = sub["u"], sub["v"]
+            if "depth" in da_u.dims:
+                da_u = da_u.sel(depth=depth, method="nearest")
+                da_v = da_v.sel(depth=depth, method="nearest")
+            u, v = da_u.compute().values, da_v.compute().values
+            data = np.sqrt(u ** 2 + v ** 2)
+        else:
+            da = sub[var_name]
+            if "depth" in da.dims:
+                da = da.sel(depth=depth, method="nearest")
+            data = da.compute().values
         lons = sub.lon.values
         lats = sub.lat.values
 
     elif model == "espc":
-        ds  = model_ds
+        ds  = model_ds["uv"] if var_name == "currents" else model_ds["ts"]
         buf = 1.0
         lon360 = lon180to360([extent[0] - buf, extent[1] + buf])
         t   = ds.time.values[-1]
@@ -172,27 +259,51 @@ def load_data(region_key, var_name, depth, model="rtofs", model_ds=None):
             lon=slice(lon360[0], lon360[1]),
             lat=slice(extent[2] - buf, extent[3] + buf),
         )
-        da = sub[var_name]
-        if "depth" in da.dims:
-            da = da.sel(depth=depth, method="nearest")
-        data = da.compute().values
+        if var_name == "currents":
+            da_u, da_v = sub["u"], sub["v"]
+            if "depth" in da_u.dims:
+                da_u = da_u.sel(depth=depth, method="nearest")
+                da_v = da_v.sel(depth=depth, method="nearest")
+            u, v = da_u.compute().values, da_v.compute().values
+            data = np.sqrt(u ** 2 + v ** 2)
+        else:
+            da = sub[var_name]
+            if "depth" in da.dims:
+                da = da.sel(depth=depth, method="nearest")
+            data = da.compute().values
         lons = lon360to180(sub.lon.values)
         lats = sub.lat.values
 
     elif model == "cmems":
         buf = 1.0
-        da  = model_ds.get_subset(
-            var_name,
-            lon_extent=[extent[0] - buf, extent[1] + buf],
-            lat_extent=[extent[2] - buf, extent[3] + buf],
-        )
-        if "time" in da.dims:
-            da = da.isel(time=-1)
-        if "depth" in da.dims:
-            da = da.sel(depth=depth, method="nearest")
-        data = da.compute().values
-        lons = da.longitude.values
-        lats = da.latitude.values
+        lon_extent = [extent[0] - buf, extent[1] + buf]
+        lat_extent = [extent[2] - buf, extent[3] + buf]
+        if var_name == "currents":
+            da_u = model_ds.get_subset("uo", lon_extent=lon_extent, lat_extent=lat_extent)
+            da_v = model_ds.get_subset("vo", lon_extent=lon_extent, lat_extent=lat_extent)
+            if "time" in da_u.dims:
+                da_u = da_u.isel(time=-1)
+                da_v = da_v.isel(time=-1)
+            if "depth" in da_u.dims:
+                da_u = da_u.sel(depth=depth, method="nearest")
+                da_v = da_v.sel(depth=depth, method="nearest")
+            u, v = da_u.compute().values, da_v.compute().values
+            data = np.sqrt(u ** 2 + v ** 2)
+            lons = da_u.longitude.values
+            lats = da_u.latitude.values
+        else:
+            da  = model_ds.get_subset(
+                var_name,
+                lon_extent=lon_extent,
+                lat_extent=lat_extent,
+            )
+            if "time" in da.dims:
+                da = da.isel(time=-1)
+            if "depth" in da.dims:
+                da = da.sel(depth=depth, method="nearest")
+            data = da.compute().values
+            lons = da.longitude.values
+            lats = da.latitude.values
 
     else:
         raise ValueError(f"Unknown model: {model!r}")
@@ -215,7 +326,7 @@ def _save_to_mongo(region_key, var_name, depth, limits, model="rtofs"):
     if not uri:
         print("  MONGODB_URI not set -- NOT saved.")
         return
-    if var_name not in ("temperature", "salinity", "sea_surface_height"):
+    if var_name not in ("temperature", "salinity", "sea_surface_height", "currents"):
         print(f"  Unknown var_name {var_name!r} -- NOT saved.")
         return
     try:
@@ -224,6 +335,24 @@ def _save_to_mongo(region_key, var_name, depth, limits, model="rtofs"):
         collection = client["hurricanes"]["region_configs"]
         query      = {"region": region_key}
         doc        = collection.find_one(query) or {"region": region_key}
+
+        if var_name == "currents":
+            # currents is otherwise fully owned by regions.py (seeded whole
+            # via seed_region_configs.py) -- apply_colorbar_overrides()
+            # replaces the *entire* top-level 'currents' key wholesale, so
+            # if this region's Mongo doc has never been seeded we backfill
+            # bool/depths/limits/coarsen/kwargs from regions.py first, to
+            # avoid clobbering them down to just limits_by_depth.
+            cur = doc.get("currents")
+            if not isinstance(cur, dict):
+                base_cfg = region_config(region_key).get("currents")
+                cur = dict(base_cfg) if isinstance(base_cfg, dict) else {}
+            by_depth = {str(k): v for k, v in (cur.get("limits_by_depth") or {}).items()}
+            by_depth[str(int(depth) if float(depth).is_integer() else depth)] = limits
+            cur["limits_by_depth"] = by_depth
+            collection.update_one(query, {"$set": {"currents": cur}}, upsert=True)
+            print(f"  Saved -> hurricanes.region_configs[{region_key}].currents.limits_by_depth[{depth}] (model={model})")
+            return
 
         if var_name in ("temperature", "salinity"):
             lst = doc.setdefault("variables", {}).setdefault(var_name, [])
@@ -257,27 +386,96 @@ def _update_regions_py(pending):
     }
 
     by_region = {}
+    currents_by_region = {}
     for (region, var, depth), limits in pending.items():
-        by_region.setdefault(region, []).append((var_name_map.get(var, var), depth, limits))
+        if var == "currents":
+            currents_by_region.setdefault(region, []).append((depth, limits))
+        else:
+            by_region.setdefault(region, []).append((var_name_map.get(var, var), depth, limits))
 
-    for region, edits in by_region.items():
+    def _find_block(region):
         block_start = -1
         for i, line in enumerate(lines):
             # Find key = "region" or key='region'
             if re.match(rf"^\s*key\s*=\s*['\"]{region}['\"]\s*", line):
                 block_start = i
                 break
-        
+
         if block_start == -1:
-            print(f"  Could not find block for region {region!r} in regions.py")
-            continue
-        
+            return -1, -1
+
         block_end = len(lines)
         for i in range(block_start + 1, len(lines)):
             if re.match(r"^\s*key\s*=\s*['\"].*['\"]\s*", lines[i]):
                 if not lines[i].strip().startswith("#"):
                     block_end = i
                     break
+        return block_start, block_end
+
+    def _fmt_depth(depth):
+        return f"{int(depth)}" if float(depth).is_integer() else f"{depth}"
+
+    for region, edits in currents_by_region.items():
+        block_start, block_end = _find_block(region)
+        if block_start == -1:
+            print(f"  Could not find block for region {region!r} in regions.py")
+            continue
+
+        cur_start = -1
+        for i in range(block_start, block_end):
+            if re.match(r"^\s*currents\s*=\s*dict\s*\(", lines[i]):
+                cur_start = i
+                break
+        if cur_start == -1:
+            print(f"  No currents block found for region {region!r} -- skipping currents save")
+            continue
+
+        paren_depth = 0
+        cur_end = cur_start
+        for i in range(cur_start, block_end):
+            paren_depth += lines[i].count("(") - lines[i].count(")")
+            if paren_depth <= 0:
+                cur_end = i
+                break
+
+        lbd_line = -1
+        for i in range(cur_start, cur_end + 1):
+            if re.match(r"^\s*limits_by_depth\s*=\s*\{", lines[i]):
+                lbd_line = i
+                break
+
+        if lbd_line != -1:
+            line = lines[lbd_line]
+            for depth, limits in edits:
+                dstr = _fmt_depth(depth)
+                new_val = f"[{limits[0]}, {limits[1]}, {limits[2]}]"
+                pattern = re.compile(rf"(?<![\d.]){re.escape(dstr)}\s*:\s*\[[^\]]*\]")
+                if pattern.search(line):
+                    line = pattern.sub(f"{dstr}: {new_val}", line, count=1)
+                else:
+                    line = re.sub(r"\}\s*,?\s*\n?$", "", line.rstrip("\n"))
+                    line = f"{line}, {dstr}: {new_val}}},\n"
+            lines[lbd_line] = line
+        else:
+            indent = "            "
+            insert_at = cur_start + 1
+            for i in range(cur_start, cur_end + 1):
+                m = re.match(r"^(\s*)limits\s*=\s*\[", lines[i])
+                if m:
+                    indent = m.group(1)
+                    insert_at = i + 1
+                    break
+            entries = ", ".join(
+                f"{_fmt_depth(depth)}: [{limits[0]}, {limits[1]}, {limits[2]}]"
+                for depth, limits in edits
+            )
+            lines.insert(insert_at, f"{indent}limits_by_depth = {{{entries}}},\n")
+
+    for region, edits in by_region.items():
+        block_start, block_end = _find_block(region)
+        if block_start == -1:
+            print(f"  Could not find block for region {region!r} in regions.py")
+            continue
 
         for var, depth, limits in edits:
             var_start = -1
@@ -358,10 +556,22 @@ class ColorbarWalker:
             sl.valtext.set_color("white")
 
         # Placeholder radio — replaced in _refresh_widgets
-        self.ax_radio = self.fig.add_axes((0.70, 0.10, 0.26, 0.16))
+        self.ax_radio = self.fig.add_axes((0.70, 0.12, 0.26, 0.14))
         self.ax_radio.set_facecolor("#1e1e2e")
         self.radio = RadioButtons(self.ax_radio, ["0.5", "1.0"])
         self.ax_radio.set_title("Stride", color="white", fontsize=9, pad=2)
+
+        # Free-entry box for a stride finer than any preset above -- some
+        # deep/weak currents combos need well below 0.05 to show contrast.
+        self.ax_stride_custom = self.fig.add_axes((0.855, 0.075, 0.105, 0.035))
+        self.ax_stride_custom.set_facecolor("#1e1e2e")
+        self.tb_stride = TextBox(
+            self.ax_stride_custom, "Custom ", initial="",
+            color="#313244", hovercolor="#45475a",
+        )
+        self.tb_stride.label.set_color("white")
+        self.tb_stride.label.set_fontsize(8)
+        self.tb_stride.on_submit(self._on_custom_stride)
 
         self.ax_btn_reset    = self.fig.add_axes((0.08, 0.07, 0.09, 0.045))
         self.ax_btn_back     = self.fig.add_axes((0.19, 0.07, 0.09, 0.045))
@@ -386,7 +596,7 @@ class ColorbarWalker:
             0.73, 0.04, "", color="#a6e3a1", fontsize=10, fontweight="bold",
         )
 
-        for ax in (self.ax_vmin, self.ax_vmax, self.ax_radio,
+        for ax in (self.ax_vmin, self.ax_vmax, self.ax_radio, self.ax_stride_custom,
                    self.ax_btn_reset, self.ax_btn_back,
                    self.ax_btn_next, self.ax_btn_save_all, self.ax_btn_save_reg):
             ax.set_facecolor("#1e1e2e")
@@ -517,6 +727,7 @@ class ColorbarWalker:
         active_idx    = strides.index(stride) if stride in strides else 0
         self.radio    = RadioButtons(self.ax_radio, stride_labels, active=active_idx)
         self.ax_radio.set_title("Stride", color="white", fontsize=9, pad=2)
+        self.tb_stride.set_val("")
         for lbl in self.radio.labels:
             lbl.set_color("white")
             lbl.set_fontsize(9)
@@ -561,8 +772,9 @@ class ColorbarWalker:
         var_name = self.combos[self.idx][1]
         if self._cb is None:
             self._cb = self.fig.colorbar(self._cf, cax=self.ax_cb)
+            label = VAR_LABELS.get(var_name, var_name.replace(chr(95), ' ').title())
             self._cb.set_label(
-                f"{var_name.replace(chr(95), ' ').title()} ({self.units})",
+                f"{label} ({self.units})",
                 color="#cdd6f4", fontsize=9,
             )
             self._cb.outline.set_edgecolor("#585b70")
@@ -610,6 +822,16 @@ class ColorbarWalker:
 
     def _on_stride(self, label):
         self.stride = float(label)
+        self._on_slider(None)
+
+    def _on_custom_stride(self, text):
+        try:
+            val = float(text)
+        except ValueError:
+            return
+        if val <= 0:
+            return
+        self.stride = val
         self._on_slider(None)
 
     def _on_reset(self, _event):
@@ -676,16 +898,41 @@ def _parse_args():
     p.add_argument("--regions", "-r", nargs="+",
                    help="Regions to walk (default: all)")
     p.add_argument("--vars", "-v", nargs="+",
-                   choices=["temperature", "salinity"],
-                   help="Variables to walk (default: temperature and salinity)")
+                   choices=["temperature", "salinity", "currents"],
+                   help="Variables to walk (default: temperature and salinity). "
+                        "'currents' tunes the speed (m/s) colorbar.")
     p.add_argument("--model", "-m", default="rtofs",
                    choices=["rtofs", "espc", "cmems"],
                    help="Model to load data from (default: rtofs)")
+    p.add_argument("--rtofs-file", type=str, default=None,
+                   help="Path to a regional RTOFS NetCDF produced by "
+                        "scripts/harvest/grab_rtofs_archv_aws.py, for regions "
+                        "(e.g. guam) not served by the THREDDS OPeNDAP source. "
+                        "Overrides --model. If --regions is omitted, the region "
+                        "is inferred from the filename (rtofs_glo_*_<region>.nc).")
     return p.parse_args()
 
 
 def main():
-    args   = _parse_args()
+    args = _parse_args()
+
+    if args.rtofs_file:
+        regions = args.regions
+        if not regions:
+            m = re.search(r"_([A-Za-z0-9]+)\.nc$", os.path.basename(args.rtofs_file))
+            if m:
+                regions = [m.group(1)]
+                print(f"Inferred region {regions[0]!r} from filename.")
+        combos = build_combo_list(regions=regions, vars_=args.vars)
+        if not combos:
+            print("No region/variable/depth combinations found.")
+            return
+        print(f"Found {len(combos)} combinations to walk through.")
+        print(f"Loading local RTOFS file: {args.rtofs_file}")
+        model_ds = _load_rtofs_local(args.rtofs_file)
+        ColorbarWalker(combos, model="rtofs-local", model_ds=model_ds)
+        return
+
     combos = build_combo_list(regions=args.regions, vars_=args.vars)
     if not combos:
         print("No region/variable/depth combinations found.")
@@ -693,11 +940,18 @@ def main():
     print(f"Found {len(combos)} combinations to walk through.")
 
     model = args.model
+    vars_requested = args.vars or ["temperature", "salinity"]
     print(f"Loading {model.upper()} dataset (once) ...")
     if model == "rtofs":
         model_ds = rtofs()
     elif model == "espc":
-        model_ds = espc_ts(rename=True)
+        # ts3z (temperature/salinity) and uv3z (currents) are separate HYCOM
+        # endpoints -- only load what this walk actually needs.
+        model_ds = {}
+        if any(v != "currents" for v in vars_requested):
+            model_ds["ts"] = espc_ts(rename=True)
+        if "currents" in vars_requested:
+            model_ds["uv"] = espc_uv(rename=True)
     elif model == "cmems":
         model_ds = CMEMS()
 

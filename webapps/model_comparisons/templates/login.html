@@ -3,8 +3,9 @@
 {% block content %}
 <div class="container" style="max-width: 420px; margin-top: 3rem;">
   <h5 class="mb-3">Sign in</h5>
-  <p class="text-muted small">Required only to edit the Gulf Stream front. The
-     rest of the site is open.</p>
+  <p class="text-muted small">Sign-in is required to edit the Gulf Stream front,
+     and to view or edit region configs. The main dashboard and OHC table are open
+     to everyone.</p>
   {% with msgs = get_flashed_messages(with_categories=true) %}
     {% for cat, m in msgs %}
       <div class="alert alert-{{ cat }} py-2 small">{{ m }}</div>

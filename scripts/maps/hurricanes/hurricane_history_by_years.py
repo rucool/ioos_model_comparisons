@@ -19,6 +19,7 @@ from cool_maps.plot import add_bathymetry, create, get_bathymetry
 from tropycal import tracks
 
 import ioos_model_comparisons.configs as conf
+from ioos_model_comparisons.gulf_of_mexico import bounding_box_mask, gulf_mask
 from ioos_model_comparisons.plotting import export_fig, plot_active_hurricanes
 
 
@@ -252,17 +253,21 @@ def _distinct_colors(n):
     ]
 
 
-def _storm_in_region(lons, lats, region_extent, buffer=0.0):
-    """Return True if any track point falls within region_extent (+buffer)."""
-    lon_min, lon_max, lat_min, lat_max = region_extent
-    in_lon = (lons >= lon_min - buffer) & (lons <= lon_max + buffer)
-    in_lat = (lats >= lat_min - buffer) & (lats <= lat_max + buffer)
-    return bool(np.any(in_lon & in_lat))
-
-
-def _collect_hurricanes(basin, year, wind_threshold, region_extent=None):
+def _collect_hurricanes(basin, year, wind_threshold, use_gulf_polygon=True, force_include_names=frozenset()):
     """Return metadata for every storm in `year` that reached >=wind_threshold kt
-    and, if `region_extent` is given, actually entered that region."""
+    *while inside* the Gulf of Mexico.
+
+    Membership in the Gulf uses the ``gulf_of_mexico`` polygon (Yucatan
+    Channel/Straits of Florida excluded), not the map's rectangular plotting
+    extent, so a storm that only touches the region at low intensity — e.g.
+    it peaked at Cat 4/5 in the Caribbean and merely brushed the Gulf on its
+    way in or out — is excluded. Storms reaching the threshold outside the
+    Gulf are printed so they can be double-checked by hand.
+
+    `force_include_names` falls back to the coarser rectangular bounding box
+    for the named storms, for cases like Irma where the polygon's Straits of
+    Florida cut excludes a storm we want kept in anyway.
+    """
     season = basin.get_season(year)
     storm_ids = season.summary()["id"]
     hurricanes = []
@@ -272,13 +277,29 @@ def _collect_hurricanes(basin, year, wind_threshold, region_extent=None):
         vmax = np.asarray(storm.dict["vmax"], dtype=float)
         if np.isnan(vmax).all():
             continue
-        if np.nanmax(vmax) < wind_threshold:
-            continue
 
+        name_upper = str(getattr(storm, "name", storm_id)).upper()
         lons = np.asarray(storm.dict["lon"], dtype=float)
         lats = np.asarray(storm.dict["lat"], dtype=float)
 
-        if region_extent is not None and not _storm_in_region(lons, lats, region_extent):
+        if use_gulf_polygon:
+            in_region = (
+                bounding_box_mask(lons, lats)
+                if name_upper in force_include_names
+                else gulf_mask(lons, lats)
+            )
+            if not np.any(in_region):
+                continue
+            vmax_in_region = np.where(in_region, vmax, np.nan)
+        else:
+            vmax_in_region = vmax
+
+        if np.isnan(vmax_in_region).all() or np.nanmax(vmax_in_region) < wind_threshold:
+            if use_gulf_polygon and np.nanmax(vmax) >= wind_threshold:
+                print(
+                    f"  (excluded) {name_upper} ({storm_id}): reached the category "
+                    f"threshold outside the region only — verify by hand"
+                )
             continue
 
         times = pd.to_datetime(storm.dict["time"])
@@ -288,6 +309,8 @@ def _collect_hurricanes(basin, year, wind_threshold, region_extent=None):
 
         extent = _compute_extent(lons, lats)
 
+        peak_idx = np.nanargmax(vmax_in_region)
+
         hurricanes.append(
             {
                 "id": storm_id,
@@ -295,6 +318,8 @@ def _collect_hurricanes(basin, year, wind_threshold, region_extent=None):
                 "center_time": center_time,
                 "lookback_days": lookback_days,
                 "extent": extent,
+                "peak_lon": float(lons[peak_idx]),
+                "peak_lat": float(lats[peak_idx]),
             }
         )
 
@@ -302,10 +327,16 @@ def _collect_hurricanes(basin, year, wind_threshold, region_extent=None):
 
 
 def main():
-    y0 = 2016
-    y1 = 2025
+    y0 = 2009
+    y1 = 2016
     min_category = 4  # Minimum Saffir-Simpson category to include (1-5)
-    extent = [-98.25, -80.75, 17.75, 30.25]  # Gulf of Mexico
+    extent = [-98.25, -79.75, 17.75, 31.25]  # Gulf of Mexico -- map plotting extent
+    exclude_names = {"MATTHEW"}  # Storm names to omit from the plot
+    # Storms kept in despite peaking outside the Gulf polygon (see
+    # gulf_of_mexico.bounding_box_mask). None fall in this 2009-2016 window;
+    # Irma (2017) gets this treatment in hurricane_history_by_years_cat4_5_
+    # markers.py instead.
+    force_include_names = set()
     wind_threshold = CATEGORY_MIN_KT[min_category]
     basin = tracks.TrackDataset(basin="north_atlantic", include_btk=True)
 
@@ -313,14 +344,20 @@ def main():
     for year in range(y0, y1 + 1):
         try:
             hurricanes.extend(
-                _collect_hurricanes(basin, year, wind_threshold, region_extent=extent)
+                _collect_hurricanes(
+                    basin, year, wind_threshold, force_include_names=force_include_names
+                )
             )
         except Exception as exc:
             print(f"Warning: Could not load season {year}: {exc}")
 
+    hurricanes = [
+        storm for storm in hurricanes
+        if str(storm["name"]).upper() not in exclude_names
+    ]
+
     if not hurricanes:
         print(f"No Gulf of Mexico category {min_category}+ hurricanes detected between {y0} and {y1}.")
-        return
 
     try:
         bathy = get_bathymetry(extent)
@@ -341,7 +378,18 @@ def main():
             if storm["name"] and storm["name"].upper() != "UNNAMED"
             else storm["id"]
         )
-        print(f"  - plotting {display_name} ({storm['id']})")
+        flag = (
+            "  <-- peak near the Yucatan Channel/W. Caribbean; verify by hand"
+            if storm["peak_lat"] < 21.5
+            else ""
+        )
+        peak_ns = "N" if storm["peak_lat"] >= 0 else "S"
+        peak_ew = "E" if storm["peak_lon"] >= 0 else "W"
+        print(
+            f"  - plotting {display_name} ({storm['id']}); peaked at "
+            f"{abs(storm['peak_lat']):.2f}{peak_ns}, "
+            f"{abs(storm['peak_lon']):.2f}{peak_ew}{flag}"
+        )
         plot_active_hurricanes(
             ax=ax,
             time=storm["center_time"].to_pydatetime(),

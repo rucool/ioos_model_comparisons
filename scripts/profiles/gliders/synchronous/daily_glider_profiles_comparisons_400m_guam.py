@@ -91,6 +91,10 @@ RTOFS_BINARY_REGION = 'guam'
 
 # RTOFS binary pre-processed NetCDF directory (created by grab_rtofs_archv_aws.py)
 RTOFS_DATA_DIR = Path("/home/hurricaneadm/data/rtofs_archv")
+# TEMP: use the locally-mounted server share when present (e.g. ~/boardwalk)
+_mounted = Path.home() / "boardwalk" / "hurricaneadm" / "data" / "rtofs_archv"
+if _mounted.is_dir():
+    RTOFS_DATA_DIR = _mounted
 
 # Max age difference between a glider profile and the nearest RTOFS file (hours)
 RTOFS_MAX_HOURS = 12
@@ -532,6 +536,10 @@ def plot_glider_profiles(id, gliders):
         tax.set_yticks(yticks)
         tax.set_ylabel('Depth (m)', fontsize=13, fontweight="bold")
         tax.set_xlabel('Temperature ($^oC$)', fontsize=13, fontweight="bold")
+        # 26°C isotherm reference (tropical cyclone heat potential threshold)
+        tax.axvline(26, color='dimgray', linestyle='-.', linewidth=1.5, zorder=1)
+        tax.text(26, 0.01, ' 26°C', transform=tax.get_xaxis_transform(),
+                color='dimgray', fontsize=11, fontweight='bold', ha='left', va='bottom', clip_on=True)
         tax.grid(True, linestyle='--', linewidth=0.5)
 
         sax.set_xlim([smin, smax])
@@ -628,10 +636,13 @@ def plot_glider_profiles(id, gliders):
         except:
             pass
 
-        if np.isnan(ohc_rtofs):
-            ohc_string += 'RTOFS: N/A,  '
-        else:
-            ohc_string += f"RTOFS: {ohc_rtofs:.4f},  "
+        try:
+            if np.isnan(ohc_rtofs):
+                ohc_string += 'RTOFS: N/A,  '
+            else:
+                ohc_string += f"RTOFS: {ohc_rtofs:.4f},  "
+        except:
+            pass
 
         try:
             if np.isnan(ohc_espc):

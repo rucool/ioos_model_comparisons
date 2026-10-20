@@ -94,6 +94,20 @@ if conf.gliders:
     try:
         glider_data = get_active_gliders(global_extent, search_start, date_end, parallel=False, timeout=60) if conf.gliders else pd.DataFrame()
         logger.info(f"Glider data {'loaded' if not glider_data.empty else 'not available'}.")
+        # When a glider has multiple active deployments, keep only the most
+        # recent one — the deployment suffix is a sortable timestamp string.
+        # Without this, two deployments stripping to the same glider id make
+        # the rename below raise ("Level values must be unique"), which the
+        # except clause below silently turns into "drop every glider".
+        dep_ids = glider_data.index.get_level_values('glider').unique()
+        short_to_latest = {}
+        for dep_id in dep_ids:
+            short = dep_id.rsplit("-", 1)[0]
+            if short not in short_to_latest or dep_id > short_to_latest[short]:
+                short_to_latest[short] = dep_id
+        keep = set(short_to_latest.values())
+        glider_data = glider_data[glider_data.index.get_level_values('glider').isin(keep)]
+        glider_data.index = glider_data.index.remove_unused_levels()
         glider_data.index = glider_data.index.set_levels(
             glider_data.index.levels[0].str.rsplit("-", n=1).str[0],
             level="glider"
@@ -279,7 +293,10 @@ def main():
             region = region_config(item)
             region = apply_colorbar_overrides(item, region)
 
-            cdt_flag, cdt = attempt_cmems_data_load(cmems_instance, ctime, region['extent']) if plot_cmems else (False, None)
+            # Buffer by 1 deg like the RTOFS/ESPC subsets (and the main script): the map axes
+            # extend past the nominal extent, which left an empty band on the CMEMS panel.
+            cmems_extent = np.add(region['extent'], [-1, 1, -1, 1]).tolist()
+            cdt_flag, cdt = attempt_cmems_data_load(cmems_instance, ctime, cmems_extent) if plot_cmems else (False, None)
             logger.info(f"Processing region: {region['name']} at time: {ctime}")
             pending_logs = process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_uv, cdt_flag, cdt,
                            amt_flag, amt, cnt_flag, cnt, region)

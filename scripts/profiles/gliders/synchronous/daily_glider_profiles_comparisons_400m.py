@@ -611,6 +611,10 @@ def plot_glider_profiles(id, gliders):
         tax.set_yticks(yticks)
         tax.set_ylabel('Depth (m)', fontsize=13, fontweight="bold")
         tax.set_xlabel('Temperature ($^oC$)', fontsize=13, fontweight="bold")
+        # 26°C isotherm reference (tropical cyclone heat potential threshold)
+        tax.axvline(26, color='dimgray', linestyle='-.', linewidth=1.5, zorder=1)
+        tax.text(26, 0.01, ' 26°C', transform=tax.get_xaxis_transform(),
+                color='dimgray', fontsize=11, fontweight='bold', ha='left', va='bottom', clip_on=True)
         tax.grid(True, linestyle='--', linewidth=0.5)
 
         sax.set_xlim([smin, smax])

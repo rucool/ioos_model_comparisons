@@ -12,3 +12,5 @@ pydap
 lxml
 tqdm
 pydap
+psutil
+python-pptx

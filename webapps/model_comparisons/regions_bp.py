@@ -45,7 +45,14 @@ def _iso(v):
 @regions_bp.route("")
 @regions_bp.route("/")
 def editor():
-    return render_template("regions.html")
+    # _require_editor above already guarantees current_user.is_authenticated
+    # for every route under /regions (including this one) — but NOT the
+    # editor role, which is only additionally enforced for non-GET requests.
+    # Without this, a signed-in non-editor saw a fully-enabled Save/Delete
+    # form and only discovered they lacked permission via a raw 403 from the
+    # API call — mirrors Fronts' can_edit pattern (templates/fronts.html).
+    can_edit = current_user.has_role("editor")
+    return render_template("regions.html", can_edit=can_edit)
 
 
 @regions_bp.route("/api/regions")

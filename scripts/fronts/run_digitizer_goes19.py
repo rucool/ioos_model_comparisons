@@ -19,7 +19,7 @@ Writes to outputs/gulf_stream_fronts/:
 The two PNGs are pixel-registered — same figsize, extent, projection and
 colorbar geometry — so you can flip back and forth between them to compare
 the thermal front against the sea-level field. Both carry the wall and ring
-overlays; SST-only QC layers (fill stipple, gradient anchors, unsupported
+overlays, plus active glider tracks; SST-only QC layers (gradient anchors, unsupported
 spans) appear on the SST map only, since they describe the retrieval rather
 than the ocean.
 
@@ -87,6 +87,8 @@ def parse_args():
                          "refuses, so a routine re-run cannot silently supersede an edit.")
     p.add_argument("--no-eddies", action="store_true",
                     help="Skip altimetry ring detection (CMEMS SLA)")
+    p.add_argument("--no-gliders", action="store_true",
+                    help="Don't fetch or draw active glider tracks (IOOS Glider DAC)")
     p.add_argument("--no-eddy-coupling", action="store_true",
                     help="Detect rings but do not use them to interpret the wall. "
                          "Disables the QC explanation (whether a displacement hotspot "
@@ -133,6 +135,7 @@ def main():
                       max_local_west_km=args.max_local_west_km,
                       min_eddy_days=args.min_eddy_days,
                       no_eddies=args.no_eddies,
+                      no_gliders=args.no_gliders,
                       no_eddy_coupling=args.no_eddy_coupling,
                       no_mongo=args.no_mongo, force_auto=args.force_auto))
 

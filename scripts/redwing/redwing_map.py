@@ -40,22 +40,22 @@ logger = logging.getLogger(__name__)
 
 # Configuration dictionary for all parameters
 CONFIG = {
-    # 'paths': {
-    #     'save_path': '/Users/mikesmith/Documents/',
-    #     'bathy_file': '/Users/mikesmith/Documents/github/ioos_model_comparisons/sentinel_bathy.nc',  # Use relative path by default
-    #     'eez_path': '/Users/mikesmith/Downloads/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp'
-    # },
     'paths': {
-          'save_path': '/www/web/rucool/media/sentinel/',
-          'bathy_file': '/home/michaesm/sentinel/sentinel_bathy.nc',  # Use relative path by default
-          'eez_path': '/home/hurricaneadm/data/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp',
-          },
+        'save_path': '/Users/mikesmith/Documents/',
+        'bathy_file': '/Users/mikesmith/Documents/github/ioos_model_comparisons/sentinel_bathy.nc',  # Use relative path by default
+        'eez_path': '/Users/mikesmith/Downloads/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp'
+    },
+    # 'paths': {
+    #       'save_path': '/www/web/rucool/media/sentinel/',
+    #       'bathy_file': '/home/michaesm/sentinel/sentinel_bathy.nc',  # Use relative path by default
+    #       'eez_path': '/home/hurricaneadm/data/World_Exclusive_Economic_Zones_Boundaries-shp/World_Exclusive_Economic_Zones_Boundaries.shp',
+    #       },
     'models': {
         'plot_model_data': True,
         'plot_rtofs': False,
         'plot_espc': True,
         'plot_cmems': True,
-        'plot_lusitania': True,
+        'plot_lusitania': False,
     },
     'glider': {
         'id': "redwing-20251011T1511",
@@ -66,7 +66,7 @@ CONFIG = {
         'name': "Sentinel Mission",
         'folder': "sentinel",
         # 'extent': [-72.25+15, -44.75+15, 34.75-3, 45.25-3],  # [lon_min, lon_max, lat_min, lat_max]
-        'extent': [-43.25, -14.75, 27.5, 37.5]
+        'extent': [-43.25, 5, 27.5, 48]
     },
     'currents': {
         'enabled': True,
@@ -90,7 +90,8 @@ CONFIG = {
         'legend_columns': 7,
         'glider_track_linewidth': 4,
         'glider_marker_size': 10,
-        'waypoint_marker_size': 6,  # Added for waypoint
+        'waypoint_marker_size': 6,
+        'show_waypoint': False,  # Set to True to plot waypoint marker
     },
     'bathymetry': {
         'enabled': False,  # Set to True to enable bathymetry plotting
@@ -958,6 +959,45 @@ def currents_to_cm_per_s(ds: Optional[xr.Dataset]) -> Optional[xr.Dataset]:
     scaled.attrs["velocity_units"] = "cm/s"
     return scaled
 
+def regrid_curvilinear(ds: Optional[xr.Dataset], resolution: float = 0.25) -> Optional[xr.Dataset]:
+    """
+    If lat/lon are 2D (curvilinear grid), interpolate u/v to a regular grid.
+    Eliminates seam artifacts (e.g. ESPC tripolar patch) before contourf.
+    No-op when lat/lon are already 1D.
+    """
+    if ds is None:
+        return ds
+    lon = ds['lon'].values
+    lat = ds['lat'].values
+    if lon.ndim == 1:
+        return ds
+
+    from scipy.interpolate import griddata
+
+    lon_reg = np.arange(float(np.nanmin(lon)), float(np.nanmax(lon)) + resolution, resolution)
+    lat_reg = np.arange(float(np.nanmin(lat)), float(np.nanmax(lat)) + resolution, resolution)
+    lon_grid, lat_grid = np.meshgrid(lon_reg, lat_reg)
+    src_pts = np.column_stack([lon.ravel(), lat.ravel()])
+
+    new_vars = {}
+    for var in ds.data_vars:
+        vals = ds[var].values
+        if vals.ndim != 2:
+            continue
+        flat = vals.ravel()
+        mask = np.isfinite(flat) & np.isfinite(src_pts[:, 0]) & np.isfinite(src_pts[:, 1])
+        if mask.sum() < 4:
+            continue
+        new_vars[var] = xr.DataArray(
+            griddata(src_pts[mask], flat[mask], (lon_grid, lat_grid), method='linear'),
+            dims=['lat', 'lon']
+        )
+
+    new_ds = xr.Dataset(new_vars, coords={'lon': lon_reg, 'lat': lat_reg})
+    new_ds.attrs = ds.attrs
+    return new_ds
+
+
 def map_add_currents(
     ax,
     ds: xr.Dataset,
@@ -1218,15 +1258,27 @@ def plot_redwing_map(
             #     plt.Line2D([], [], color='red', linewidth=2, label='EEZ'), # Your EEZ line
             # ]
 
-            if add_legend:
-                ax.legend(loc='lower left', fontsize=10).set_zorder(100000)
-        
+        # Always plot PLOCAN and EEZ
+        h = ax.plot(
+            PLOCAN_LOCATION["longitude"],
+            PLOCAN_LOCATION["latitude"],
+            marker='o',
+            color='lime',
+            markersize=6,
+            markeredgecolor='black',
+            transform=DATA_PROJECTION,
+            zorder=10002,
+            linestyle="None"
+        )
+        he = map_add_eez(ax, color='white', linewidth=2)
+        he.set_zorder(10000)
+
         # Plot waypoint if available (as a target/bullseye)
-        if waypoint is not None:
+        if config['plotting']['show_waypoint'] and waypoint is not None:
             wp_lon = waypoint['longitude']
             wp_lat = waypoint['latitude']
             base_size = config['plotting']['waypoint_marker_size']
-            
+
             # Outer ring (black)
             ax.plot(
                 wp_lon, wp_lat,
@@ -1268,66 +1320,47 @@ def plot_redwing_map(
                 linestyle="None"
             )
 
-            h = ax.plot(
-                PLOCAN_LOCATION["longitude"],
-                PLOCAN_LOCATION["latitude"],
-                marker='o',
-                color='lime',
-                markersize=6,
-                markeredgecolor='black',
-                transform=DATA_PROJECTION,
-                zorder=10002,
-                # label=PLOCAN_LOCATION["name"],
-                linestyle="None"
-            )
-
-            he = map_add_eez(ax, color='white', linewidth=2)
-            he.set_zorder(10000)
-            
             if add_legend:
-                # Create custom legend entry for the target
-                # Plot invisible proxy artists for the legend
-                
-                # Get existing legend handles and labels
                 handles, labels = ax.get_legend_handles_labels()
-                
-                # Create composite target for legend using multiple overlaid markers
                 target_handles = [
-                    Line2D([0], [0], marker='o', color='w', markerfacecolor='black', 
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='black',
                            markersize=base_size * 1.2, linestyle='None', markeredgecolor='none'),
-                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white', 
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white',
                            markersize=base_size * 0.9, linestyle='None', markeredgecolor='none'),
-                    Line2D([0], [0], marker='o', color='w', markerfacecolor='red', 
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='red',
                            markersize=base_size * 0.6, linestyle='None', markeredgecolor='none'),
-                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white', 
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white',
                            markersize=base_size * 0.2, linestyle='None', markeredgecolor='none'),
                 ]
-                
-                # Add the target as a tuple (matplotlib will overlay them with custom handler)
                 handles.append(tuple(target_handles))
                 labels.append('Waypoint')
-
                 handles.append(h[0])
                 labels.append(PLOCAN_LOCATION["name"])
-
                 handles.append(plt.Line2D([], [], color='white', linewidth=2))
                 labels.append('EEZ')
-                
-                ax.legend(handles, labels, loc='upper right', fontsize=10, 
+                ax.legend(handles, labels, loc='upper left', fontsize=10,
                          handler_map={tuple: TargetHandler()}).set_zorder(100000)
+        else:
+            if add_legend:
+                handles, labels = ax.get_legend_handles_labels()
+                handles.append(h[0])
+                labels.append(PLOCAN_LOCATION["name"])
+                handles.append(plt.Line2D([], [], color='white', linewidth=2))
+                labels.append('EEZ')
+                ax.legend(handles, labels, loc='upper left', fontsize=10).set_zorder(100000)
         
-        if add_text and latest_glider_text:
-            ax.text(
-                # 0.98, 0.02, #to the left of the plot
-                0.275, 0.02,  # to the right of the plot
-                f'Latest glider profile: {latest_glider_text}',
-                transform=ax.transAxes,
-                fontsize=6,
-                fontweight='bold',
-                ha='right',
-                va='bottom',
-                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none')
-            )
+        # if add_text and latest_glider_text:
+        #     ax.text(
+        #         # 0.98, 0.02, #to the left of the plot
+        #         0.275, 0.02,  # to the right of the plot
+        #         f'Latest glider profile: {latest_glider_text}',
+        #         transform=ax.transAxes,
+        #         fontsize=6,
+        #         fontweight='bold',
+        #         ha='right',
+        #         va='bottom',
+        #         bbox=dict(facecolor='white', alpha=0.7, edgecolor='none')
+        #     )
         
         # Configure axis ticks
         # [-72.25, -44.75, 34.75, 45.25]
@@ -1335,10 +1368,10 @@ def plot_redwing_map(
         # ax.set_yticks(np.arange(35, 45, 5), crs=ccrs.PlateCarree())
         # ax.set_xticks(np.arange(-72+15, -44+15, 1), minor=True, crs=ccrs.PlateCarree())
         # ax.set_yticks(np.arange(35-3, 45-2, 1), minor=True, crs=ccrs.PlateCarree())
-        ax.set_xticks(np.arange(-40, -14, 5), crs=ccrs.PlateCarree())
-        ax.set_yticks(np.arange(30, 36, 5), crs=ccrs.PlateCarree())
-        ax.set_xticks(np.arange(-43, -14, 1), minor=True, crs=ccrs.PlateCarree())
-        ax.set_yticks(np.arange(28, 38, 1), minor=True, crs=ccrs.PlateCarree())
+        ax.set_xticks(np.arange(-40, 6, 5), crs=ccrs.PlateCarree())
+        ax.set_yticks(np.arange(30, 49, 5), crs=ccrs.PlateCarree())
+        ax.set_xticks(np.arange(-43, 6, 1), minor=True, crs=ccrs.PlateCarree())
+        ax.set_yticks(np.arange(28, 49, 1), minor=True, crs=ccrs.PlateCarree())
         ax.xaxis.set_major_formatter(cticker.LongitudeFormatter())
         ax.yaxis.set_major_formatter(cticker.LatitudeFormatter())
         
@@ -1375,6 +1408,7 @@ def plot_redwing_map(
         
         m = None
         if ds_plot is not None:
+            ds_plot = regrid_curvilinear(ds_plot)
             try:
                 _, mag = uv2spdir(ds_plot['u'], ds_plot['v'])
                 m = ax.contourf(ds_plot["lon"], ds_plot["lat"], mag, **qargs)
@@ -1396,11 +1430,11 @@ def plot_redwing_map(
                 cb.update_ticks()
 
         ax.set_title(title_text, fontsize=18, fontweight='bold')
-        fig.text(
-            0.85, 0.20,
+        ax.text(
+            1.0, -0.07,
             f'Image generated: {actual_generated_time}',
-            transform=fig.transFigure,
-            ha='right', va='bottom',
+            transform=ax.transAxes,
+            ha='right', va='top',
             fontsize=7, fontweight='bold'
         )
 
@@ -1532,23 +1566,32 @@ def subset_model_data(
                 # Convert extent to 0-360
                 lon_min_360 = extent_data[0] % 360
                 lon_max_360 = extent_data[1] % 360
-                
+
                 logger.info(f"{model_name} subsetting: lon=[{lon_min_360:.2f}, {lon_max_360:.2f}], lat=[{extent_data[2]:.2f}, {extent_data[3]:.2f}]")
-                
-                # Use .where().dropna() for more robust subsetting
-                subset = model_ds.where(
-                    (model_ds[lon_key] >= lon_min_360) & 
-                    (model_ds[lon_key] <= lon_max_360) &
-                    (model_ds[lat_key] >= extent_data[2]) & 
-                    (model_ds[lat_key] <= extent_data[3]),
-                    drop=True
+
+                lat_mask = (
+                    (model_ds[lat_key] >= extent_data[2]) &
+                    (model_ds[lat_key] <= extent_data[3])
                 )
+                # When extent crosses the prime meridian, lon_min_360 > lon_max_360
+                if lon_min_360 > lon_max_360:
+                    lon_mask = (
+                        (model_ds[lon_key] >= lon_min_360) |
+                        (model_ds[lon_key] <= lon_max_360)
+                    )
+                else:
+                    lon_mask = (
+                        (model_ds[lon_key] >= lon_min_360) &
+                        (model_ds[lon_key] <= lon_max_360)
+                    )
+                subset = model_ds.where(lon_mask & lat_mask, drop=True)
                 
                 logger.info(f"{model_name} after subset: lon size={subset[lon_key].size}, lat size={subset[lat_key].size}")
                 
-                # Convert longitude back to -180:180
+                # Convert longitude back to -180:180 and sort to fix wrap-around ordering
                 new_lon = lon360to180(subset[lon_key].values)
                 subset = subset.assign_coords({lon_key: new_lon})
+                subset = subset.sortby(lon_key)
                 
             else:
                 logger.info(f"{model_name} subsetting: lon=[{extent_data[0]:.2f}, {extent_data[1]:.2f}], lat=[{extent_data[2]:.2f}, {extent_data[3]:.2f}]")
@@ -1568,10 +1611,19 @@ def subset_model_data(
                 subset = subset.rename({lon_key: 'lon'})
             if lat_key != 'lat':
                 subset = subset.rename({lat_key: 'lat'})
+
+            # Re-apply bounds as a NaN mask (no drop) to eliminate seam rows from
+            # curvilinear grids (e.g. ESPC tripolar) that survive the drop=True subset
+            # but whose cells lie outside the actual extent.
+            in_bounds = (
+                (subset['lon'] >= extent_data[0]) & (subset['lon'] <= extent_data[1]) &
+                (subset['lat'] >= extent_data[2]) & (subset['lat'] <= extent_data[3])
+            )
+            subset = subset.where(in_bounds)
         else:
             logger.warning(f"Could not find standard lat/lon coordinates in {model_name}")
             subset = model_ds
-    
+
     subset.attrs['model'] = model_name
     return subset
 

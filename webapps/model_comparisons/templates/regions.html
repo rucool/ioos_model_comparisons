@@ -8,13 +8,17 @@
 {% endblock %}
 
 {% block content %}
+{% with archive_nav_mode="links", archive_nav_active="regions" %}
+  {% include "archive_nav.html" %}
+{% endwith %}
 <div class="container-fluid py-3">
   <div class="row g-3">
     <!-- region list -->
     <div class="col-12 col-lg-3">
       <div class="d-flex gap-2 mb-2">
         <input id="filter" class="form-control form-control-sm" placeholder="filter…">
-        <button id="newBtn" class="btn btn-sm btn-outline-primary" title="new region">+</button>
+        <button id="newBtn" class="btn btn-sm btn-outline-primary {% if not can_edit %}d-none{% endif %}"
+                title="new region">+</button>
       </div>
       <div id="regionList" class="list-group list-group-flush region-list"></div>
     </div>
@@ -24,11 +28,16 @@
       <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
         <h6 class="mb-0" id="regionTitle">Select a region</h6>
         <span class="badge bg-secondary" id="versionBadge" style="display:none"></span>
+        {% if not can_edit %}
+        <span class="badge bg-secondary-subtle text-secondary-emphasis small">
+          view only — your account can't edit region configs
+        </span>
+        {% endif %}
         <div class="ms-auto d-flex gap-2">
           <select id="versionSelect" class="form-select form-select-sm" style="width:auto"></select>
-          <button id="validateBtn" class="btn btn-sm btn-outline-secondary" disabled>Check</button>
-          <button id="saveBtn" class="btn btn-sm btn-success" disabled>Save</button>
-          <button id="deleteBtn" class="btn btn-sm btn-outline-danger" disabled
+          <button id="validateBtn" class="btn btn-sm btn-outline-secondary {% if not can_edit %}d-none{% endif %}" disabled>Check</button>
+          <button id="saveBtn" class="btn btn-sm btn-success {% if not can_edit %}d-none{% endif %}" disabled>Save</button>
+          <button id="deleteBtn" class="btn btn-sm btn-outline-danger {% if not can_edit %}d-none{% endif %}" disabled
                   title="remove the override so regions.py defaults apply">Drop override</button>
         </div>
       </div>
@@ -62,17 +71,38 @@
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="saveModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">Save region config?</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <p id="saveSummary" class="mb-0"></p>
+      <div class="alert alert-secondary small mb-0 mt-2">
+        This takes effect on the next plotting run. Saved as a new <b>version</b> —
+        the previous one is kept, not overwritten, and stays available in the
+        version dropdown.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button class="btn btn-success" id="saveConfirm">Save</button>
+    </div>
+  </div></div>
+</div>
 {% endblock %}
 
 {% block data_channel %}
 <script>
   const API_BASE   = {{ request.script_root | tojson }};
   const CSRF_TOKEN = {{ csrf_token() | tojson }};
+  const CAN_EDIT   = {{ can_edit | tojson }};
 </script>
 {% endblock %}
 
 {% block scripts %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="{{ url_for('static', filename='js/basemaps.js') }}"></script>
 <script src="{{ url_for('static', filename='js/regions_editor.js') }}"></script>
 {% endblock %}

@@ -35,6 +35,18 @@ ioos_model_comparisons.egg-info/
 /cache
 /cache_grase
 /data/gliders
+/data/eccofs
 /transect_1
 ioos_model_comparisons_overview.pptx
 ~$ioos_model_comparisons_overview.pptx
+
+# Secrets. A committed FLASK_SECRET_KEY is a full auth bypass — anyone with
+# repo access could forge a session cookie for any user. Real values live in
+# the shell env (local) or the systemd/gunicorn unit's Environment= (server);
+# .env is only a local convenience and must never be committed.
+.env
+.env.*
+!.env.example
+*.pdf
+*.pptx
+/data/glider_coverage

@@ -22,34 +22,34 @@
       <div class="ov-region-bar">
         <div class="d-flex flex-wrap gap-1" role="group">
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_carib" value="Caribbean" autocomplete="off" checked>
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_carib">Caribbean</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_carib">Caribbean</label>
 
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_gom" value="Gulf of Mexico" autocomplete="off">
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_gom">Gulf of Mexico</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_gom">Gulf of Mexico</label>
 
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_sab" value="South Atlantic Bight" autocomplete="off">
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_sab">South Atlantic</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_sab">South Atlantic</label>
 
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_mab" value="Mid Atlantic Bight" autocomplete="off">
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_mab">Mid Atlantic</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_mab">Mid Atlantic</label>
 
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_wfs" value="West Florida Shelf" autocomplete="off">
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_wfs">West FL Shelf</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_wfs">West FL Shelf</label>
 
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_twa" value="Tropical Western Atlantic" autocomplete="off">
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_twa">Tropical W. Atl</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_twa">Tropical W. Atl</label>
 
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_epm" value="Eastern Pacific - Mexico" autocomplete="off">
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_epm">E. Pacific (Mex)</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_epm">E. Pacific (Mex)</label>
 
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_hawaii" value="Hawaii" autocomplete="off">
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_hawaii">Hawaii</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_hawaii">Hawaii</label>
 
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_guam" value="Guam" autocomplete="off">
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_guam">Guam</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_guam">Guam</label>
 
           <input type="radio" class="btn-check" name="ov_region" id="ov_reg_fiji" value="Fiji" autocomplete="off">
-          <label class="btn btn-outline-ocean btn-sm" for="ov_reg_fiji">Fiji</label>
+          <label class="btn btn-outline-grey btn-sm" for="ov_reg_fiji">Fiji</label>
         </div>
       </div>
 
@@ -59,10 +59,12 @@
         <!-- Controls sidebar -->
         <aside class="controls-sidebar">
           <div class="controls-card">
-            <div class="controls-header">
-              <i class="bi bi-sliders2 me-2"></i>Overview Controls
+            <div class="controls-header" role="button" tabindex="0" aria-expanded="true"
+                 aria-controls="ovControlsBody" data-collapse-target="ovControlsBody">
+              <span><i class="bi bi-sliders2 me-2"></i>Overview Controls</span>
+              <i class="bi bi-chevron-down controls-toggle-icon"></i>
             </div>
-            <div class="controls-body">
+            <div class="controls-body" id="ovControlsBody">
 
               <!-- Variable -->
               <div class="control-group">
@@ -71,16 +73,16 @@
                 </label>
                 <div class="btn-group-vertical w-100" role="group">
                   <input type="radio" class="btn-check" name="ov_variable" id="ov_var_temp" value="temperature" autocomplete="off" checked>
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_var_temp">Temperature</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_var_temp">Temperature</label>
 
                   <input type="radio" class="btn-check" name="ov_variable" id="ov_var_salt" value="salinity" autocomplete="off">
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_var_salt">Salinity</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_var_salt">Salinity</label>
 
                   <input type="radio" class="btn-check" name="ov_variable" id="ov_var_curr" value="currents" autocomplete="off">
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_var_curr">Currents</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_var_curr">Currents</label>
 
                   <input type="radio" class="btn-check" name="ov_variable" id="ov_var_ohc" value="ocean_heat_content" autocomplete="off">
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_var_ohc">Ocean Heat Content</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_var_ohc">Ocean Heat Content</label>
                 </div>
               </div>
 
@@ -101,29 +103,27 @@
                 </label>
                 <div class="btn-group-vertical w-100" role="group">
                   <input type="radio" class="btn-check" name="ov_model" id="ov_mod_espc" value="espc" autocomplete="off" checked>
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_espc">ESPC</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_mod_espc">ESPC</label>
 
                   <input type="radio" class="btn-check" name="ov_model" id="ov_mod_copernicus" value="copernicus" autocomplete="off">
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_copernicus">Copernicus</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_mod_copernicus">Copernicus</label>
 
                   <input type="radio" class="btn-check" name="ov_model" id="ov_mod_espc_cmems" value="espc_cmems" autocomplete="off">
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_espc_cmems">ESPC vs CMEMS</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_mod_espc_cmems">ESPC vs CMEMS</label>
 
                   <input type="radio" class="btn-check" name="ov_model" id="ov_mod_eccofs" value="eccofs" autocomplete="off">
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_eccofs">ECCOFS</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_mod_eccofs">ECCOFS</label>
+
+                  <input type="radio" class="btn-check" name="ov_model" id="ov_mod_nesdis" value="nesdis" autocomplete="off">
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_mod_nesdis">NESDIS OHC</label>
 
                   <input type="radio" class="btn-check" name="ov_model" id="ov_mod_goes16" value="goes16" autocomplete="off">
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_goes16">GOES-16</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_mod_goes16">GOES-16</label>
 
                   <input type="radio" class="btn-check" name="ov_model" id="ov_mod_goes19" value="goes19" autocomplete="off">
-                  <label class="btn btn-outline-ocean btn-sm text-start" for="ov_mod_goes19">GOES-19</label>
+                  <label class="btn btn-outline-grey btn-sm text-start" for="ov_mod_goes19">GOES-19</label>
                 </div>
               </div>
-
-              <!-- Download -->
-              <button class="btn btn-outline-ocean w-100 btn-sm mt-1" onclick="downloadPlot(null, 'ov_image')" title="Download Image">
-                <i class="bi bi-download me-1"></i>Download
-              </button>
 
             </div>
           </div>
@@ -134,21 +134,25 @@
           <div class="image-panel" style="display:flex;flex-direction:column;flex:1;min-height:0;">
             <div class="image-panel-header justify-content-between">
               <div class="d-flex align-items-center gap-2">
-                <span class="panel-badge bg-ocean-light text-ocean-blue"><i class="bi bi-geo-alt me-1"></i><span id="ov_region_label">Caribbean</span></span>
+                <span class="panel-badge bg-neutral-light text-rutgers-grey"><i class="bi bi-geo-alt me-1"></i><span id="ov_region_label">Caribbean</span></span>
+                <span class="text-muted small fst-italic d-none" id="ov_fallback_note"></span>
               </div>
               <div class="d-flex align-items-center gap-2">
                 <span class="time-badge" id="ov_time_badge">--Z</span>
                 <span class="text-muted small fw-medium" id="ov_date_label">YYYY-MM-DD</span>
+                <button class="btn btn-sm btn-outline-grey" onclick="downloadPlot(null, 'ov_image')" title="Download Image">
+                  <i class="bi bi-download"></i> Download
+                </button>
               </div>
             </div>
 
             <div class="image-panel-body position-relative" id="ov_image_container" style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;">
 
               <!-- Left/Right Model Flip Buttons -->
-              <button id="ov_prev_model" class="btn btn-dark region-flip-btn position-absolute top-50 start-0 translate-middle-y ms-2 rounded-circle shadow" style="opacity:0.7;width:40px;height:40px;z-index:5;">
+              <button id="ov_prev_model" class="btn btn-dark region-flip-btn position-absolute top-50 start-0 translate-middle-y ms-2 rounded-circle shadow" style="opacity:0.7;z-index:5;" aria-label="Previous model" title="Previous model">
                 <i class="bi bi-chevron-left"></i>
               </button>
-              <button id="ov_next_model" class="btn btn-dark region-flip-btn position-absolute top-50 end-0 translate-middle-y me-2 rounded-circle shadow" style="opacity:0.7;width:40px;height:40px;z-index:5;">
+              <button id="ov_next_model" class="btn btn-dark region-flip-btn position-absolute top-50 end-0 translate-middle-y me-2 rounded-circle shadow" style="opacity:0.7;z-index:5;" aria-label="Next model" title="Next model">
                 <i class="bi bi-chevron-right"></i>
               </button>
 
@@ -180,10 +184,12 @@
         <!-- Controls sidebar -->
         <aside class="controls-sidebar">
           <div class="controls-card">
-            <div class="controls-header">
-              <i class="bi bi-sliders2 me-2"></i>Map Controls
+            <div class="controls-header" role="button" tabindex="0" aria-expanded="true"
+                 aria-controls="mapControlsBody" data-collapse-target="mapControlsBody">
+              <span><i class="bi bi-sliders2 me-2"></i>Map Controls</span>
+              <i class="bi bi-chevron-down controls-toggle-icon"></i>
             </div>
-            <div class="controls-body">
+            <div class="controls-body" id="mapControlsBody">
 
               <!-- Date -->
               <div class="control-group">
@@ -200,12 +206,12 @@
                   <i class="bi bi-clock me-1"></i>Time Step
                 </label>
                 <div class="d-flex align-items-center gap-2">
-                  <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="mapTimeBack"
+                  <button class="btn btn-outline-grey btn-sm flex-shrink-0" id="mapTimeBack"
                     title="Go back 6 hours">
                     <i class="bi bi-chevron-left"></i>&nbsp;6h
                   </button>
                   <span class="time-badge" id="mapTimeDisplay">00Z</span>
-                  <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="mapTimeForward"
+                  <button class="btn btn-outline-grey btn-sm flex-shrink-0" id="mapTimeForward"
                     title="Go forward 6 hours">
                     6h&nbsp;<i class="bi bi-chevron-right"></i>
                   </button>
@@ -232,36 +238,9 @@
                 </select>
               </div>
 
-              <!-- Update button -->
-              <button class="btn btn-ocean w-100 mt-2" id="mapUpdateBtn" onclick="loadMaps()">
-                <i class="bi bi-arrow-clockwise me-1"></i>Update Maps
-              </button>
+              <!-- Every control above already triggers a reload on change
+                   (autoUpdateMaps()) — no separate Update button needed. -->
 
-            </div>
-          </div>
-
-          <!-- Legend card -->
-          <div class="controls-card mt-3">
-            <div class="controls-header">
-              <i class="bi bi-info-circle me-2"></i>Legend
-            </div>
-            <div class="controls-body">
-              <div class="legend-item">
-                <span class="legend-dot" style="background:#0d6efd;"></span>
-                <small>RTOFS vs. Copernicus (CMEMS)</small>
-              </div>
-              <div class="legend-item mt-1">
-                <span class="legend-dot" style="background:#00897b;"></span>
-                <small>RTOFS vs. ESPC</small>
-              </div>
-              <div class="legend-item mt-1">
-                <span class="legend-dot" style="background:#d97706;"></span>
-                <small>RTOFS vs. GOES-16</small>
-              </div>
-              <div class="legend-item mt-1">
-                <span class="legend-dot" style="background:#c2410c;"></span>
-                <small>RTOFS vs. GOES-19</small>
-              </div>
             </div>
           </div>
         </aside>
@@ -297,7 +276,7 @@
                   </button>
                 </li>
               </ul>
-              <button class="btn btn-sm btn-outline-ocean" onclick="downloadPlot('mapImageContainer')" title="Download Image">
+              <button class="btn btn-sm btn-outline-grey" onclick="downloadPlot('mapImageContainer')" title="Download Image">
                 <i class="bi bi-download"></i> Download
               </button>
             </div>
@@ -305,7 +284,7 @@
             <div class="image-panel-body" id="mapImageContainer">
               <div class="placeholder-state">
                 <i class="bi bi-image text-muted" style="font-size:3rem;"></i>
-                <p class="text-muted mt-2">Select controls and click <strong>Update Maps</strong></p>
+                <p class="text-muted mt-2">Select a region and variable to load maps</p>
               </div>
             </div>
           </div>
@@ -322,13 +301,15 @@
         <!-- Controls sidebar -->
         <aside class="controls-sidebar">
           <div class="controls-card">
-            <div class="controls-header">
-              <i class="bi bi-sliders2 me-2"></i>Profile Controls
+            <div class="controls-header" role="button" tabindex="0" aria-expanded="true"
+                 aria-controls="profileControlsBody" data-collapse-target="profileControlsBody">
+              <span><i class="bi bi-sliders2 me-2"></i>Profile Controls</span>
+              <i class="bi bi-chevron-down controls-toggle-icon"></i>
             </div>
-            <div class="controls-body">
+            <div class="controls-body" id="profileControlsBody">
 
               <!-- Profile Date -->
-              <div class="control-group">
+              <div class="control-group" id="profileDateGroup">
                 <label class="control-label" for="profileDate">
                   <i class="bi bi-calendar3 me-1"></i>Date
                 </label>
@@ -337,51 +318,39 @@
               </div>
 
               <!-- Day nav -->
-              <div class="control-group">
+              <div class="control-group" id="profileDayNavGroup">
                 <label class="control-label">
                   <i class="bi bi-clock me-1"></i>Navigate Days
                 </label>
                 <div class="d-flex gap-2">
-                  <button class="btn btn-outline-ocean btn-sm flex-grow-1" id="profileDayBack">
+                  <button class="btn btn-outline-grey btn-sm flex-grow-1" id="profileDayBack">
                     <i class="bi bi-chevron-left"></i>&nbsp;1 Day
                   </button>
-                  <button class="btn btn-outline-ocean btn-sm flex-grow-1" id="profileDayForward">
+                  <button class="btn btn-outline-grey btn-sm flex-grow-1" id="profileDayForward">
                     1 Day&nbsp;<i class="bi bi-chevron-right"></i>
                   </button>
                 </div>
               </div>
 
               <!-- Profile Type -->
-              <div class="control-group">
+              <div class="control-group" id="profileTypeGroupWrap">
                 <label class="control-label" for="profileType">
                   <i class="bi bi-person-workspace me-1"></i>Profile Type
                 </label>
                 <div class="btn-group w-100" role="group" id="profileTypeGroup">
                   <input type="radio" class="btn-check" name="profileType" id="typeGlider" value="Glider" checked />
-                  <label class="btn btn-outline-ocean btn-sm" for="typeGlider">
+                  <label class="btn btn-outline-grey btn-sm" for="typeGlider">
                     <i class="bi bi-water me-1"></i>Glider
                   </label>
                   <input type="radio" class="btn-check" name="profileType" id="typeArgo" value="Argo" />
-                  <label class="btn btn-outline-ocean btn-sm" for="typeArgo">
+                  <label class="btn btn-outline-grey btn-sm" for="typeArgo">
                     <i class="bi bi-circle-half me-1"></i>Argo
                   </label>
                   <input type="radio" class="btn-check" name="profileType" id="typeFvon" value="FVON" />
-                  <label class="btn btn-outline-ocean btn-sm" for="typeFvon">
+                  <label class="btn btn-outline-grey btn-sm" for="typeFvon">
                     <i class="bi bi-geo me-1"></i>FVON
                   </label>
                 </div>
-              </div>
-
-              <!-- Profile Region (hidden for Glider) -->
-              <div class="control-group" id="argoRegionGroup" style="display:none!important;">
-                <label class="control-label" for="argoRegion">
-                  <i class="bi bi-geo-alt me-1"></i>Region
-                </label>
-                <select id="argoRegion" class="form-select form-select-sm control-input">
-                  {% for region in region_info|sort %}
-                  <option value="{{ region }}">{{ region }}</option>
-                  {% endfor %}
-                </select>
               </div>
 
               <!-- Platform ID select -->
@@ -392,15 +361,13 @@
                 <select id="platformId" class="form-select form-select-sm control-input">
                   <option value="">Loading…</option>
                 </select>
-                <div id="noPlatformMsg" class="no-data-msg d-none">
-                  No profiles available for this date
-                </div>
+                <!-- Availability messaging lives in the main panel now
+                     (showNoPlatformsMessage) — single source of truth
+                     instead of a second, separately-worded message here. -->
               </div>
 
-              <!-- Update button -->
-              <button class="btn btn-ocean w-100 mt-2" id="profileUpdateBtn" onclick="loadProfile()">
-                <i class="bi bi-arrow-clockwise me-1"></i>Update Profile
-              </button>
+              <!-- Picking a platform already triggers a reload
+                   (autoUpdateProfile()) — no separate Update button needed. -->
 
               <!-- Map visibility toggle -->
               <div class="form-check form-switch d-flex align-items-center gap-2 mt-2 ps-0">
@@ -410,6 +377,36 @@
                 </label>
               </div>
 
+              <!-- Region box visibility toggle -->
+              <div class="form-check form-switch d-flex align-items-center gap-2 mt-1 ps-0">
+                <input class="form-check-input ms-0" type="checkbox" id="profileRegionBoxToggle" role="switch" checked autocomplete="off" style="cursor:pointer; width:2.2em; height:1.2em;" onchange="toggleProfileRegionBoxes(this.checked)">
+                <label class="form-check-label text-muted small" for="profileRegionBoxToggle" style="cursor:pointer;">
+                  Show Region Boxes
+                </label>
+                <button type="button" class="btn btn-link text-muted small p-0 border-0 lh-1" style="cursor:pointer;"
+                   data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="bottom"
+                   data-bs-title="Region boxes"
+                   data-bs-content="Dashed boxes mark the Argo (blue) and Glider (amber) search regions — only platforms inside a box of their type are found and listed. Hover a box on the map for its region name."
+                   aria-label="What the region boxes mean">
+                  <i class="bi bi-question-circle"></i>
+                </button>
+              </div>
+
+              <!-- Storm track visibility toggle -->
+              <div class="form-check form-switch d-flex align-items-center gap-2 mt-1 ps-0">
+                <input class="form-check-input ms-0" type="checkbox" id="profileStormToggle" role="switch" checked autocomplete="off" style="cursor:pointer; width:2.2em; height:1.2em;" onchange="toggleStormLayer(this.checked)">
+                <label class="form-check-label text-muted small" for="profileStormToggle" style="cursor:pointer;">
+                  Show Storms
+                </label>
+                <button type="button" class="btn btn-link text-muted small p-0 border-0 lh-1" style="cursor:pointer;"
+                   data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="bottom"
+                   data-bs-title="Storm tracks"
+                   data-bs-content="Shows any Atlantic or East Pacific tropical system active near the selected date, with its track through that date and the NHC forecast cone where one was issued. Guam/Fiji aren't covered yet."
+                   aria-label="What the storm tracks show">
+                  <i class="bi bi-question-circle"></i>
+                </button>
+              </div>
+
             </div>
           </div>
         </aside>
@@ -417,23 +414,8 @@
         <!-- Profile Image display -->
         <main class="image-display d-flex gap-3 profile-display">
 
-          <!-- Map Panel -->
-          <!-- We use resize: horizontal to allow dragging the edge, requiring width instead of flex-basis -->
-          <div class="image-panel position-relative profile-map-panel" id="profileMapPanel">
-            <div class="image-panel-header d-flex justify-content-between align-items-center">
-              <div>
-                <span class="panel-badge" style="background:#20c99720;color:#20c997;">Profile Locations</span>
-              </div>
-              <button class="btn btn-sm text-muted p-0 border-0" onclick="document.getElementById('profileMapToggle').click();" title="Hide Map">
-                <i class="bi bi-x-lg"></i>
-              </button>
-            </div>
-            <div class="image-panel-body p-0" id="profileMapContainer" style="flex: 1; min-height: 400px; z-index: 1;">
-              <!-- Leaflet Map will render here -->
-            </div>
-          </div>
-
-          <!-- Profile Plot Panel -->
+          <!-- Profile Plot Panel — on the left; map sits full-size on the
+               right (swapped from the original map-left/plot-right order). -->
           <div class="image-panel profile-plot-panel" id="profilePanel">
             <div class="image-panel-header d-flex justify-content-between align-items-center">
               <div>
@@ -441,7 +423,14 @@
               </div>
               <div class="d-flex align-items-center gap-2">
                 <span id="profileLabel" class="text-muted small"></span>
-                <button class="btn btn-sm btn-outline-ocean ms-2" onclick="downloadPlot('profileImageContainer')" title="Download Image">
+                <a class="btn btn-sm btn-outline-grey" href="{{ url_for('ohc.table') }}" target="_blank"
+                   title="Open the OHC export table — platform, model, and NESDIS OHC for every Argo/glider profile, in a new tab">
+                  <i class="bi bi-table"></i> OHC Table
+                </a>
+                <button class="btn btn-sm btn-outline-grey" onclick="openProfileLightbox()" title="Maximize — day/platform navigation stays usable inside">
+                  <i class="bi bi-arrows-fullscreen"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-grey" onclick="downloadPlot('profileImageContainer')" title="Download Image">
                   <i class="bi bi-download"></i> Download
                 </button>
               </div>
@@ -449,8 +438,30 @@
             <div class="image-panel-body" id="profileImageContainer">
               <div class="placeholder-state">
                 <i class="bi bi-graph-up text-muted" style="font-size:3rem;"></i>
-                <p class="text-muted mt-2">Select controls and click <strong>Update Profile</strong></p>
+                <p class="text-muted mt-2">Select a platform to view its profile</p>
               </div>
+            </div>
+          </div>
+
+          <!-- Map Panel — full-size, on the right. Drag its left edge to resize. -->
+          <div class="image-panel position-relative profile-map-panel" id="profileMapPanel">
+            <div class="image-panel-header d-flex justify-content-between align-items-center">
+              <div>
+                <span class="panel-badge" style="background:#20c99720;color:#20c997;">Profile Locations</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm text-muted p-0 border-0" data-bs-toggle="modal"
+                        data-bs-target="#regionBoxOpacityModal" title="Region box opacity"
+                        aria-label="Adjust region box opacity">
+                  <i class="bi bi-sliders"></i>
+                </button>
+                <button class="btn btn-sm text-muted p-0 border-0" onclick="document.getElementById('profileMapToggle').click();" title="Hide Map" aria-label="Hide Map">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </div>
+            </div>
+            <div class="image-panel-body p-0" id="profileMapContainer" style="flex: 1; min-height: 400px; z-index: 1;">
+              <!-- Leaflet Map will render here -->
             </div>
           </div>
         </main>
@@ -465,10 +476,12 @@
         <!-- Controls sidebar -->
         <aside class="controls-sidebar">
           <div class="controls-card">
-            <div class="controls-header">
-              <i class="bi bi-compass me-2"></i>Adaptive Sampling Controls
+            <div class="controls-header" role="button" tabindex="0" aria-expanded="true"
+                 aria-controls="adaptiveControlsBody" data-collapse-target="adaptiveControlsBody">
+              <span><i class="bi bi-sliders2 me-2"></i>Adaptive Sampling Controls</span>
+              <i class="bi bi-chevron-down controls-toggle-icon"></i>
             </div>
-            <div class="controls-body">
+            <div class="controls-body" id="adaptiveControlsBody">
 
               <!-- Date -->
               <div class="control-group">
@@ -485,12 +498,12 @@
                   <i class="bi bi-clock me-1"></i>Time Step
                 </label>
                 <div class="d-flex align-items-center gap-2">
-                  <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="asgTimeBack"
+                  <button class="btn btn-outline-grey btn-sm flex-shrink-0" id="asgTimeBack"
                     title="Go back 6 hours">
                     <i class="bi bi-chevron-left"></i>&nbsp;6h
                   </button>
                   <span class="time-badge" id="asgTimeDisplay">00Z</span>
-                  <button class="btn btn-outline-ocean btn-sm flex-shrink-0" id="asgTimeForward"
+                  <button class="btn btn-outline-grey btn-sm flex-shrink-0" id="asgTimeForward"
                     title="Go forward 6 hours">
                     6h&nbsp;<i class="bi bi-chevron-right"></i>
                   </button>
@@ -533,10 +546,8 @@
                 </select>
               </div>
 
-              <!-- Update button -->
-              <button class="btn btn-ocean w-100 mt-2" id="asgUpdateBtn" onclick="loadAdaptiveSampling()">
-                <i class="bi bi-arrow-clockwise me-1"></i>Update Figure
-              </button>
+              <!-- Every control above already triggers a reload on change
+                   (autoUpdateASG()) — no separate Update button needed. -->
 
             </div>
           </div>
@@ -552,7 +563,7 @@
               </p>
               <a href="https://rucool.marine.rutgers.edu/hurricane/adaptive_sampling_guidance/"
                 target="_blank" rel="noopener"
-                class="btn btn-outline-ocean btn-sm w-100 mt-2">
+                class="btn btn-outline-grey btn-sm w-100 mt-2">
                 <i class="bi bi-box-arrow-up-right me-1"></i>View Raw Files
               </a>
             </div>
@@ -564,11 +575,11 @@
           <div class="image-panel" id="asgPanel">
             <div class="image-panel-header d-flex justify-content-between align-items-center">
               <div>
-                <span class="panel-badge" style="background:#e65100;opacity:.9;background:#ff6d0020;color:#e65100;">Adaptive Sampling Guidance</span>
+                <span class="panel-badge" style="background:#ff6d0020;color:#e65100;">Adaptive Sampling Guidance</span>
               </div>
               <div class="d-flex align-items-center gap-2">
                 <span id="asgLabel" class="text-muted small"></span>
-                <button class="btn btn-sm btn-outline-ocean ms-2" onclick="downloadPlot('asgImageContainer')" title="Download Image">
+                <button class="btn btn-sm btn-outline-grey ms-2" onclick="downloadPlot('asgImageContainer')" title="Download Image">
                   <i class="bi bi-download"></i> Download
                 </button>
               </div>
@@ -576,7 +587,7 @@
             <div class="image-panel-body" id="asgImageContainer">
               <div class="placeholder-state">
                 <i class="bi bi-compass text-muted" style="font-size:3rem;"></i>
-                <p class="text-muted mt-2">Select controls and click <strong>Update Figure</strong></p>
+                <p class="text-muted mt-2">Select a region, variable, and model to load guidance</p>
               </div>
             </div>
           </div>
@@ -600,11 +611,46 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════ IMAGE LIGHTBOX -->
-<div class="image-lightbox" id="imageLightbox">
+<!-- Plain mode (any other .plot-image on the site): just the zoomed image.
+     Profile mode (opened via openProfileLightbox()): lightboxToolbar holds
+     the real Date/Day-nav/Type/Platform controls (moved in from the
+     sidebar, not clones — same elements, same listeners, same IDs) so
+     navigation keeps working without closing the modal; lightboxBody holds
+     the real #profileImageContainer, so it reflects whatever that panel
+     shows (image, loading, unavailable) with no extra syncing needed. Both
+     are moved back to their original spot in the sidebar/panel on close. -->
+<div class="image-lightbox" id="imageLightbox" role="dialog" aria-modal="true" aria-label="Image viewer" tabindex="-1">
+  <div class="lightbox-toolbar" id="lightboxToolbar"></div>
+  <div class="lightbox-content">
+    <img src="" id="lightboxImage" alt="">
+    <div class="lightbox-body" id="lightboxBody"></div>
+  </div>
   <button class="lightbox-close" id="lightboxClose" aria-label="Close">
     <i class="bi bi-x-lg"></i>
   </button>
-  <img src="" id="lightboxImage" alt="">
+</div>
+
+<!-- Region box opacity: lets the viewer re-tune how visible the Argo/Glider
+     search-region boxes are, instead of a single hardcoded fill value. -->
+<div class="modal fade" id="regionBoxOpacityModal" tabindex="-1">
+  <div class="modal-dialog modal-sm"><div class="modal-content">
+    <div class="modal-header">
+      <h6 class="modal-title">Region box opacity</h6>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    </div>
+    <div class="modal-body">
+      <label for="regionBoxOpacitySlider" class="form-label small text-muted">
+        How filled-in the Argo/Glider search-region boxes look on the map.
+      </label>
+      <input type="range" class="form-range" id="regionBoxOpacitySlider"
+             min="0" max="60" step="1" value="2">
+      <div class="d-flex justify-content-between small text-muted">
+        <span>Invisible</span>
+        <span id="regionBoxOpacityValue">2%</span>
+        <span>Solid</span>
+      </div>
+    </div>
+  </div></div>
 </div>
 
 {% endblock %}

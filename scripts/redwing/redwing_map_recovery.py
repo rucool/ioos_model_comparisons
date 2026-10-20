@@ -90,7 +90,8 @@ CONFIG = {
         'legend_columns': 7,
         'glider_track_linewidth': 4,
         'glider_marker_size': 10,
-        'waypoint_marker_size': 6,  # Added for waypoint
+        'waypoint_marker_size': 6,
+        'show_waypoint': False,  # Set to True to plot waypoint marker
     },
     'bathymetry': {
         'enabled': False,  # Set to True to enable bathymetry plotting
@@ -1218,15 +1219,27 @@ def plot_redwing_map(
             #     plt.Line2D([], [], color='red', linewidth=2, label='EEZ'), # Your EEZ line
             # ]
 
-            if add_legend:
-                ax.legend(loc='lower left', fontsize=10).set_zorder(100000)
-        
+        # Always plot PLOCAN and EEZ
+        h = ax.plot(
+            PLOCAN_LOCATION["longitude"],
+            PLOCAN_LOCATION["latitude"],
+            marker='o',
+            color='lime',
+            markersize=6,
+            markeredgecolor='black',
+            transform=DATA_PROJECTION,
+            zorder=10002,
+            linestyle="None"
+        )
+        he = map_add_eez(ax, color='white', linewidth=2)
+        he.set_zorder(10000)
+
         # Plot waypoint if available (as a target/bullseye)
-        if waypoint is not None:
+        if config['plotting']['show_waypoint'] and waypoint is not None:
             wp_lon = waypoint['longitude']
             wp_lat = waypoint['latitude']
             base_size = config['plotting']['waypoint_marker_size']
-            
+
             # Outer ring (black)
             ax.plot(
                 wp_lon, wp_lat,
@@ -1268,53 +1281,34 @@ def plot_redwing_map(
                 linestyle="None"
             )
 
-            h = ax.plot(
-                PLOCAN_LOCATION["longitude"],
-                PLOCAN_LOCATION["latitude"],
-                marker='o',
-                color='lime',
-                markersize=6,
-                markeredgecolor='black',
-                transform=DATA_PROJECTION,
-                zorder=10002,
-                # label=PLOCAN_LOCATION["name"],
-                linestyle="None"
-            )
-
-            he = map_add_eez(ax, color='white', linewidth=2)
-            he.set_zorder(10000)
-            
             if add_legend:
-                # Create custom legend entry for the target
-                # Plot invisible proxy artists for the legend
-                
-                # Get existing legend handles and labels
                 handles, labels = ax.get_legend_handles_labels()
-                
-                # Create composite target for legend using multiple overlaid markers
                 target_handles = [
-                    Line2D([0], [0], marker='o', color='w', markerfacecolor='black', 
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='black',
                            markersize=base_size * 1.2, linestyle='None', markeredgecolor='none'),
-                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white', 
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white',
                            markersize=base_size * 0.9, linestyle='None', markeredgecolor='none'),
-                    Line2D([0], [0], marker='o', color='w', markerfacecolor='red', 
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='red',
                            markersize=base_size * 0.6, linestyle='None', markeredgecolor='none'),
-                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white', 
+                    Line2D([0], [0], marker='o', color='w', markerfacecolor='white',
                            markersize=base_size * 0.2, linestyle='None', markeredgecolor='none'),
                 ]
-                
-                # Add the target as a tuple (matplotlib will overlay them with custom handler)
                 handles.append(tuple(target_handles))
                 labels.append('Waypoint')
-
                 handles.append(h[0])
                 labels.append(PLOCAN_LOCATION["name"])
-
                 handles.append(plt.Line2D([], [], color='white', linewidth=2))
                 labels.append('EEZ')
-                
-                ax.legend(handles, labels, loc='upper right', fontsize=10, 
+                ax.legend(handles, labels, loc='upper right', fontsize=10,
                          handler_map={tuple: TargetHandler()}).set_zorder(100000)
+        else:
+            if add_legend:
+                handles, labels = ax.get_legend_handles_labels()
+                handles.append(h[0])
+                labels.append(PLOCAN_LOCATION["name"])
+                handles.append(plt.Line2D([], [], color='white', linewidth=2))
+                labels.append('EEZ')
+                ax.legend(handles, labels, loc='upper right', fontsize=10).set_zorder(100000)
         
         if add_text and latest_glider_text:
             ax.text(

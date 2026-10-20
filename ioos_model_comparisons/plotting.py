@@ -13,6 +13,7 @@ from cartopy.mpl.geoaxes import GeoAxesSubplot
 import cmocean
 import matplotlib.colors
 import matplotlib.lines as mlines
+import matplotlib.patheffects as patheffects
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.ticker import FormatStrFormatter
@@ -1598,7 +1599,7 @@ def plot_model_region_comparison(ds1, ds2, region,
                                        currents=None,
                                        eez=False,
                                        cols=6,
-                                       transform=dict(map=proj['map'], 
+                                       transform=dict(map=proj['map'],
                                                       data=proj['data']
                                                       ),
                                        path_save=os.getcwd(),
@@ -1608,7 +1609,29 @@ def plot_model_region_comparison(ds1, ds2, region,
                                        overwrite=False,
                                        legend=True,
                                        hurricanes=False,
+                                       highlight=None,
+                                       fixed_layout=False,
                                        ):
+    """
+    highlight: optional list of dicts, each {'depth', 'lon', 'lat', 'color',
+    'radius_pt', 'label'} — draws a hollow circle at (lon, lat) on both panels
+    for every entry whose 'depth' matches the depth being plotted. Used to
+    call out a specific platform/feature (e.g. a glider sampling a cold
+    patch) without affecting the other depths in the same region.
+
+    fixed_layout: when True, pin the two map axes, the colorbar and the
+    legend to hardcoded position fractions instead of letting matplotlib's
+    "constrained" layout engine reflow them. By default the engine resizes
+    everything based on that call's own content (mainly how many Argo/glider
+    entries are in the legend), so the same region/depth/comparison can
+    render the map panels at a visibly different size from one timestamp to
+    the next — fine for one-off plots, but distracting when several
+    timestamps are flipped through back-to-back (e.g. in a slide deck).
+    The fixed fractions below were captured from a representative render
+    (mexico_pacific, figsize (12, 8)) and are figsize-relative, so they hold
+    up across regions that share that figsize; a region with a very
+    differently shaped figsize may need its own set.
+    """
 
     # Convert ds.time value to a normal datetime
     time = pd.to_datetime(ds1.time.data)
@@ -1655,6 +1678,21 @@ def plot_model_region_comparison(ds1, ds2, region,
     ax1 = axs[0] # Model 1
     ax2 = axs[1] # Model 2
     ax3 = axs[2] # Legend for argo/gliders
+
+    # See fixed_layout's docstring note above for why this exists. Disabling
+    # the layout engine and pinning positions up front (before any
+    # content-dependent sizing happens) means every call renders identically
+    # regardless of that day's Argo/glider count. The colorbar normally
+    # steals space from ax1/ax2 via fig.colorbar(ax=axs[:2], ...)'s own
+    # auto-layout, which would undo this, so it gets its own fixed cax here
+    # instead — see the two fixed_layout branches below.
+    cb_ax = None
+    if fixed_layout:
+        fig.set_layout_engine('none')
+        ax1.set_position([0.0513, 0.3549, 0.4338, 0.4989])
+        ax2.set_position([0.5148, 0.3549, 0.4338, 0.4989])
+        ax3.set_position([0.4491, 0.0052, 0.1019, 0.1307])
+        cb_ax = fig.add_axes([0.1125, 0.2249, 0.7750, 0.0160])
 
     # Plot transect line on each map
     point1 = (-87, 23)
@@ -1841,6 +1879,31 @@ def plot_model_region_comparison(ds1, ds2, region,
                 glats = gsub['lat']
             h2 = ax2.contourf(glons, glats, gsub.squeeze(), **vargs)
 
+            # Call out a specific platform/feature (e.g. a glider sampling a
+            # cold patch) with a hollow circle on both panels, only at the
+            # depth(s) it's registered for.
+            if highlight:
+                for hl in highlight:
+                    if hl.get('depth') != depth:
+                        continue
+                    for _ax in (ax1, ax2):
+                        _ax.plot(hl['lon'], hl['lat'], 'o',
+                                 ms=hl.get('radius_pt', 28),
+                                 mfc='none',
+                                 mec=hl.get('color', 'yellow'),
+                                 mew=3,
+                                 transform=transform['data'],
+                                 zorder=10000)
+                    if hl.get('label'):
+                        _x1, _y1 = ax1.projection.transform_point(hl['lon'], hl['lat'], transform['data'])
+                        _x2, _y2 = ax1.transData.transform((_x1, _y1))
+                        _x3, _y3 = ax1.transAxes.inverted().transform((_x2, _y2))
+                        ax1.text(_x3, _y3 - 0.05, hl['label'], transform=ax1.transAxes,
+                                 ha='center', va='top', fontsize=11, fontweight='bold',
+                                 color=hl.get('color', 'yellow'),
+                                 path_effects=[patheffects.Stroke(linewidth=2, foreground='black'), patheffects.Normal()],
+                                 zorder=10001, clip_on=True)
+
             # At the surface in MAB, overlay each model's own 15°C isotherm at
             # 200m (a proxy for the Gulf Stream north wall) plus the
             # hand-digitized wall (from the GOES-19 SST digitizer).
@@ -1877,7 +1940,11 @@ def plot_model_region_comparison(ds1, ds2, region,
                 _iso_leg._legend_box.sep = 1
 
             if colorbar:
-                cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
+                if fixed_layout:
+                    cb_ax.clear()
+                    cb = fig.colorbar(h1, cax=cb_ax, orientation="horizontal")
+                else:
+                    cb = fig.colorbar(h1, ax=axs[:2], orientation="horizontal", shrink=.95, aspect=80)#, shrink=0.7, aspect=20*0.7)
                 cb.ax.tick_params(labelsize=12)
                 cb.set_label(f'{k.title()} ({rsub.units})', fontsize=12, fontweight="bold")
 
@@ -1936,10 +2003,13 @@ def plot_model_region_comparison(ds1, ds2, region,
                 pass
 
             if colorbar:
-                try:
-                    cb.remove()
-                except Exception:
-                    pass
+                if fixed_layout:
+                    cb_ax.clear()
+                else:
+                    try:
+                        cb.remove()
+                    except Exception:
+                        pass
 
             if eez:
                 try:

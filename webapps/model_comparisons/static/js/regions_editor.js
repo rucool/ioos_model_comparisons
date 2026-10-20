@@ -48,7 +48,7 @@ async function selectRegion(region) {
   $('regionTitle').textContent = `${j.doc.name || region}`;
   $('versionBadge').style.display = '';
   $('versionBadge').textContent = `${(j.versions || []).length} version(s)`;
-  ['validateBtn', 'saveBtn', 'deleteBtn'].forEach(b => $(b).disabled = false);
+  if (CAN_EDIT) ['validateBtn', 'saveBtn', 'deleteBtn'].forEach(b => $(b).disabled = false);
   renderVersions(j.versions);
   renderForm();
   syncJsonFromDoc();
@@ -178,8 +178,7 @@ function initMap() {
   if (!state.map) {
     state.map = L.map('extentMap', { attributionControl: false })
                  .setView([25, -60], 2);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                { maxZoom: 8 }).addTo(state.map);
+    addBasemaps(state.map, { maxZoom: 8 });
   }
   drawExtent();
   setTimeout(() => state.map.invalidateSize(), 50);
@@ -271,26 +270,39 @@ window.revertTo = revertTo;
 
 /* ------------------------------------------------------------------ actions */
 $('validateBtn').onclick = async () => {
+  if (!CAN_EDIT) return;
   if (!syncDocFromJson()) return;
   const r = await post('validate', { region: state.region, doc: state.doc });
   showIssues(r.data.errors, r.data.warnings, r.data.diff);
 };
 
-$('saveBtn').onclick = async () => {
+let saveModal = null;
+
+async function openSaveDialog() {
+  if (!CAN_EDIT) return;
   if (!syncDocFromJson()) return;
   const chk = await post('validate', { region: state.region, doc: state.doc });
   showIssues(chk.data.errors, chk.data.warnings, chk.data.diff);
   if ((chk.data.errors || []).length) return;
   const n = Object.keys(chk.data.diff || {}).length;
-  if (!confirm(`Save ${state.region}? ${n} field(s) change.\n\n`
-             + `This takes effect on the next plotting run.`)) return;
+  $('saveSummary').textContent = `Save ${state.region}? ${n} field(s) change.`;
+  saveModal.show();
+}
+
+async function doSave() {
+  if (!CAN_EDIT) return;
+  saveModal.hide();
   const r = await post('save', { region: state.region, doc: state.doc });
   if (!r.ok) return showIssues([r.data.error || 'save failed'], []);
   state.dirty = false;
   selectRegion(state.region);
-};
+}
+
+$('saveBtn').onclick = openSaveDialog;
+$('saveConfirm').addEventListener('click', doSave);
 
 $('deleteBtn').onclick = async () => {
+  if (!CAN_EDIT) return;
   if (!confirm(`Drop the MongoDB override for ${state.region}?\n\n`
              + `regions.py defaults will apply again. History is kept.`)) return;
   const r = await post('delete', { region: state.region });
@@ -302,6 +314,7 @@ $('deleteBtn').onclick = async () => {
 };
 
 $('newBtn').onclick = () => {
+  if (!CAN_EDIT) return;
   const key = (prompt('New region key (e.g. gulf_stream):') || '').trim();
   if (!key) return;
   state = { ...state, region: key, dirty: true, doc: {
@@ -319,4 +332,5 @@ $('filter').oninput = loadRegions;
 window.addEventListener('beforeunload', (e) => {
   if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
 });
+if (CAN_EDIT) saveModal = new bootstrap.Modal($('saveModal'));
 loadRegions();

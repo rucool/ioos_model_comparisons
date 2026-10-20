@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """
-fronts_preflight.py — check a host is ready for the fronts/regions stack.
+fronts_preflight.py — check a host is ready for the web editors.
+
+OPTIONAL DIAGNOSTIC. Nothing imports this and the application does not need
+it; it exists because the production MongoDB could not be reached from a
+development laptop, so there was no other way to confirm a host had the
+right packages, environment variables and database permissions. Deleting it
+breaks nothing.
+
+Despite "fronts" in the name it checks the whole stack: Mongo connectivity
+and write/index permission, the front_* collections, region_config_versions,
+editor accounts, FLASK_SECRET_KEY and the per-role python packages.
 
 Run this on the digitizer host and on the web host BEFORE the first real
 deployment. It only reads, plus one index creation on a scratch collection it

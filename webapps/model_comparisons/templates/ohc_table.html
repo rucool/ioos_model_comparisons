@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}OHC Export Table – IOOS Model Comparisons{% endblock %}
+
+{% block content %}
+{% with archive_nav_mode="links", archive_nav_active="ohc" %}
+  {% include "archive_nav.html" %}
+{% endwith %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+    <h5 class="mb-0 me-2">Daily Ocean Heat Content Export</h5>
+    <span class="text-muted small">
+      Platform ID, date, OHC at the platform's own profile, OHC at each
+      comparison model, and OHC from NESDIS satellite data — one row per
+      Argo/glider profile per day.
+    </span>
+  </div>
+
+  <div class="d-flex align-items-end flex-wrap gap-2 mb-3 p-3 border rounded bg-light">
+    <div>
+      <label class="form-label small mb-1" for="dateFrom">From</label>
+      <input type="date" id="dateFrom" class="form-control form-control-sm">
+    </div>
+    <div>
+      <label class="form-label small mb-1" for="dateTo">To</label>
+      <input type="date" id="dateTo" class="form-control form-control-sm">
+    </div>
+    <div>
+      <label class="form-label small mb-1" for="platformType">Platform type</label>
+      <select id="platformType" class="form-select form-select-sm">
+        <option value="">All</option>
+        <option value="argo">Argo</option>
+        <option value="glider">Glider</option>
+      </select>
+    </div>
+    <button class="btn btn-sm btn-primary" id="applyBtn">
+      <i class="bi bi-funnel"></i> Apply
+    </button>
+    <button class="btn btn-sm btn-outline-secondary" id="downloadBtn">
+      <i class="bi bi-download"></i> Download CSV
+    </button>
+    <span class="text-muted small ms-auto" id="rowCount"></span>
+  </div>
+
+  <div class="table-responsive border rounded" style="max-height: 70vh;">
+    <table class="table table-sm table-striped table-hover mb-0" id="ohcTable">
+      <thead class="table-dark sticky-top">
+        <tr>
+          <th>Type</th>
+          <th>Platform ID</th>
+          <th>Date</th>
+          <th>Region</th>
+          <th>Lat</th>
+          <th>Lon</th>
+          <th>OHC @ Platform</th>
+          <th>OHC RTOFS</th>
+          <th>OHC ESPC</th>
+          <th>OHC CMEMS</th>
+          <th>OHC ECCOFS</th>
+          <th>OHC NESDIS</th>
+        </tr>
+      </thead>
+      <tbody id="ohcTableBody">
+        <tr><td colspan="12" class="p-0">
+          <div class="loading-state">
+            <div class="spinner-border spinner-border-sm" role="status"></div>
+            <span class="fw-medium">Loading...</span>
+          </div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block data_channel %}
+<script>
+  const API_BASE = {{ request.script_root | tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const MODEL_COLUMNS = ['ohc_rtofs', 'ohc_espc', 'ohc_cmems', 'ohc_eccofs', 'ohc_nesdis'];
+
+  function fmtOhc(v) {
+    return (v === null || v === undefined) ? '' : Number(v).toFixed(4);
+  }
+
+  function currentFilters() {
+    const params = new URLSearchParams();
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const platformType = document.getElementById('platformType').value;
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
+    if (platformType) params.set('platform_type', platformType);
+    return params;
+  }
+
+  async function loadTable() {
+    const tbody = document.getElementById('ohcTableBody');
+    tbody.innerHTML = `<tr><td colspan="12" class="p-0">
+      <div class="loading-state">
+        <div class="spinner-border spinner-border-sm" role="status"></div>
+        <span class="fw-medium">Loading...</span>
+      </div>
+    </td></tr>`;
+    document.getElementById('rowCount').textContent = '';
+
+    try {
+      const res = await fetch(`${API_BASE}/ohc-table/api/data?` + currentFilters());
+      const data = await res.json();
+      const rows = data.rows || [];
+
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="12" class="p-0">
+          <div class="placeholder-state">
+            <i class="bi bi-table text-muted opacity-50 mb-2" style="font-size:2rem;"></i>
+            <span class="fw-medium text-muted">No rows for this filter.</span>
+          </div>
+        </td></tr>`;
+        document.getElementById('rowCount').textContent = '0 rows';
+        return;
+      }
+
+      tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.platform_type ?? ''}</td>
+          <td>${r.platform_id ?? ''}</td>
+          <td>${r.date ?? ''}</td>
+          <td>${r.region ?? ''}</td>
+          <td>${r.lat ?? ''}</td>
+          <td>${r.lon ?? ''}</td>
+          <td>${fmtOhc(r.ohc_platform)}</td>
+          ${MODEL_COLUMNS.map(c => `<td>${fmtOhc(r[c])}</td>`).join('')}
+        </tr>
+      `).join('');
+      document.getElementById('rowCount').textContent = `${rows.length} row${rows.length === 1 ? '' : 's'}`;
+    } catch (err) {
+      console.error(err);
+      tbody.innerHTML = `<tr><td colspan="12" class="p-0">
+        <div class="unavailable-state">
+          <i class="bi bi-exclamation-circle text-danger mb-1" style="font-size:1.5rem;"></i>
+          <span class="fw-medium text-danger">Failed to load — network error.</span>
+        </div>
+      </td></tr>`;
+    }
+  }
+
+  document.getElementById('applyBtn').addEventListener('click', loadTable);
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    window.location.href = `${API_BASE}/ohc-table/api/csv?` + currentFilters();
+  });
+
+  loadTable();
+</script>
+{% endblock %}

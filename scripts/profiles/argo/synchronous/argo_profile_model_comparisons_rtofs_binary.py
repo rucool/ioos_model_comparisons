@@ -661,6 +661,10 @@ def process_argo(region_key):
             ax1.grid(True, linestyle='--', linewidth=.5)
             ax1.tick_params(axis='both', labelsize=13)
             ax1.set_xlabel('Temperature (˚C)', fontsize=14, fontweight='bold')
+            # 26°C isotherm reference (tropical cyclone heat potential threshold)
+            ax1.axvline(26, color='dimgray', linestyle='-.', linewidth=1.5, zorder=1)
+            ax1.text(26, 0.01, ' 26°C', transform=ax1.get_xaxis_transform(),
+                    color='dimgray', fontsize=11, fontweight='bold', ha='left', va='bottom', clip_on=True)
             ax1.set_ylabel('Depth (m)', fontsize=14, fontweight='bold')
 
             ax2.set_ylim([depth, 0])

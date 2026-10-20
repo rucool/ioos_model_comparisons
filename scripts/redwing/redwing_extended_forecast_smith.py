@@ -63,8 +63,8 @@ DIFFUSIVITY_VALUES = [100]
 NUM_PARTICLES = 20
 
 # Model enable/disable flags
-ENABLE_ESPC = True       # HYCOM/ESPC model
-ENABLE_CMEMS = True      # Copernicus Marine CMEMS model
+ENABLE_ESPC = False       # HYCOM/ESPC model
+ENABLE_CMEMS = False      # Copernicus Marine CMEMS model
 ENABLE_LUSITANIA = True  # Lusitania regional model
 
 # Current visualization options
@@ -74,6 +74,9 @@ CURRENT_STYLE = 'quiver'  # 'quiver' or 'streamplot'
 QUIVER_SUBSAMPLE_CMEMS = 6  # Subsample factor for CMEMS quiver arrows (higher = fewer arrows)
 QUIVER_SUBSAMPLE_ESPC = 8  # Subsample factor for ESPC quiver arrows (higher = fewer arrows)
 QUIVER_SUBSAMPLE_LUSITANIA = 6  # Subsample factor for Lusitania quiver arrows (higher = fewer arrows)
+QUIVER_SCALE_CMEMS = 60      # Quiver scale for CMEMS (lower = bigger arrows)
+QUIVER_SCALE_ESPC = 60       # Quiver scale for ESPC (lower = bigger arrows)
+QUIVER_SCALE_LUSITANIA = 20  # Quiver scale for Lusitania (lower = bigger arrows)
 STREAMPLOT_DENSITY = 3  # Density of streamlines (higher = more lines)
 
 # Bathymetry configuration
@@ -402,54 +405,41 @@ def lusitania_uv_multi(start_time, rename=True):
 
     logger.info(f"Loading {len(files_to_load)} Lusitania files from {files_to_load[0][0]} to {files_to_load[-1][0]}")
 
-    datasets = []
-    for file_date, filename in files_to_load:
-        opendap_url = (
-            f"{LUSITANIA_CONFIG['base_url']}"
-            f"{LUSITANIA_CONFIG['opendap_base']}{filename}"
+    urls = [
+        f"{LUSITANIA_CONFIG['base_url']}{LUSITANIA_CONFIG['opendap_base']}{fn}"
+        for _, fn in files_to_load
+    ]
+
+    try:
+        combined = xr.open_mfdataset(
+            urls,
+            combine='nested',
+            concat_dim='time',
+            coords='minimal',
+            compat='override',
         )
 
-        try:
-            logger.info(f"  Loading: {filename}")
-            ds = xr.open_dataset(opendap_url)
-
-            if rename:
-                rename_map = {}
-                u_candidates = ['uo', 'u', 'water_u', 'u_velocity', 'U', 'ucur']
-                v_candidates = ['vo', 'v', 'water_v', 'v_velocity', 'V', 'vcur']
-
-                for u_name in u_candidates:
-                    if u_name in ds.data_vars and u_name != 'water_u':
-                        rename_map[u_name] = 'water_u'
-                        break
-
-                for v_name in v_candidates:
-                    if v_name in ds.data_vars and v_name != 'water_v':
-                        rename_map[v_name] = 'water_v'
-                        break
-
-                if rename_map:
-                    ds = ds.rename(rename_map)
-
-            datasets.append(ds)
-
-        except Exception as exc:
-            logger.warning(f"  Failed to load {filename}: {exc}")
-            continue
-
-    if not datasets:
-        logger.error("Failed to load any Lusitania files")
-        return None
-
-    # Concatenate along time dimension
-    logger.info(f"Concatenating {len(datasets)} Lusitania datasets...")
-    try:
-        combined = xr.concat(datasets, dim='time')
         combined = combined.sortby('time')
 
-        # Remove duplicate time steps if any
+        # Remove duplicate time steps (midnight overlap between daily files)
         _, unique_indices = np.unique(combined['time'].values, return_index=True)
         combined = combined.isel(time=sorted(unique_indices))
+
+        if rename:
+            rename_map = {}
+            u_candidates = ['uo', 'u', 'water_u', 'u_velocity', 'U', 'ucur']
+            v_candidates = ['vo', 'v', 'water_v', 'v_velocity', 'V', 'vcur']
+            for u_name in u_candidates:
+                if u_name in combined.data_vars and u_name != 'water_u':
+                    rename_map[u_name] = 'water_u'
+                    break
+            for v_name in v_candidates:
+                if v_name in combined.data_vars and v_name != 'water_v':
+                    rename_map[v_name] = 'water_v'
+                    break
+            if rename_map:
+                logger.info(f"Renaming variables: {rename_map}")
+                combined = combined.rename(rename_map)
 
         combined.attrs['model'] = 'Lusitania'
         combined.attrs['source_files'] = [fn for _, fn in files_to_load]
@@ -460,7 +450,7 @@ def lusitania_uv_multi(start_time, rename=True):
         return combined
 
     except Exception as exc:
-        logger.error(f"Failed to concatenate Lusitania datasets: {exc}")
+        logger.error(f"Failed to load Lusitania files with open_mfdataset: {exc}")
         return None
 
 
@@ -1181,13 +1171,16 @@ def create_animation(model_outputs, glider_info, output_dir, projection_days, di
     SPEED_LEVELS = np.linspace(0, 1.5, 16)  # 0 to 1.5 m/s in 16 levels
     SPEED_CMAP = cmo.speed
 
-    # Determine subsample factor based on model
+    # Determine subsample factor and scale based on model
     if quiver_model == 'ESPC':
         quiver_subsample = QUIVER_SUBSAMPLE_ESPC
+        quiver_scale = QUIVER_SCALE_ESPC
     elif quiver_model == 'Lusitania':
         quiver_subsample = QUIVER_SUBSAMPLE_LUSITANIA
+        quiver_scale = QUIVER_SCALE_LUSITANIA
     else:
         quiver_subsample = QUIVER_SUBSAMPLE_CMEMS
+        quiver_scale = QUIVER_SCALE_CMEMS
 
     if quiver_model and quiver_data and quiver_model in quiver_data:
         qds = quiver_data[quiver_model]
@@ -1215,7 +1208,7 @@ def create_animation(model_outputs, glider_info, output_dir, projection_days, di
             quiver_plot = ax.quiver(
                 Q_lon, Q_lat, np.zeros_like(Q_lon), np.zeros_like(Q_lat),
                 transform=ccrs.PlateCarree(), color='black', alpha=0.6,
-                scale=60, width=0.002, zorder=2
+                scale=quiver_scale, width=0.002, zorder=2
             )
 
     # Add colorbar for speed (only if we have quiver data)
@@ -1793,6 +1786,22 @@ def main():
                 if lusitania_full is None:
                     raise ValueError("Could not load Lusitania data from THREDDS server")
 
+                # Warn if simulation start_time is before the Lusitania data coverage.
+                # This causes a temporal mismatch: OpenDrift can't find velocities at
+                # the simulation start time and defaults to zero → particles stay put.
+                if 'time' in lusitania_full.dims:
+                    lus_first = pd.to_datetime(lusitania_full['time'].values[0])
+                    if start_time < lus_first:
+                        print(f"\n  WARNING: Temporal mismatch detected!")
+                        print(f"    Simulation start time : {start_time}")
+                        print(f"    Lusitania data starts  : {lus_first}")
+                        gap_days = (lus_first - start_time).total_seconds() / 86400
+                        print(f"    Gap: {gap_days:.1f} days")
+                        print(f"    Lusitania only stores ~8 days of data. The glider's last surfacing")
+                        print(f"    is older than the available Lusitania archive, so OpenDrift will")
+                        print(f"    find no velocities at the simulation start and particles will not move.")
+                        print(f"    Consider setting REAL_TIME=True or updating MANUAL_START_TIME to today.")
+
                 # Subset to the region of interest centered on glider
                 dl_lon_min = glider_info['lon'] - BUFFER_DEG
                 dl_lon_max = glider_info['lon'] + BUFFER_DEG
@@ -1863,10 +1872,10 @@ def main():
                 lusitania_extended_filename = get_forecast_filename("lusitania", lusitania_ds, "extended")
                 lusitania_extended_file = os.path.join(data_dir, lusitania_extended_filename)
 
-                # Extend forecast to max days with 6-hour time steps
+                # Extend forecast to max days with 3-hour time steps (matching Lusitania's native resolution)
                 extend_forecast_to_persistence(
                     lusitania_ds, "Lusitania", lusitania_extended_file,
-                    target_days=max_projection_days, time_step_hours=6
+                    target_days=max_projection_days, time_step_hours=3
                 )
 
             # Create reader from extended file

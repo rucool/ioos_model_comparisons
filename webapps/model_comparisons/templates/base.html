@@ -26,13 +26,13 @@
 <body class="{% block body_class %}{% endblock %}">
 
 <!-- ══════════════════════════════════════════════════════ NAVBAR -->
-<nav class="navbar navbar-expand-lg navbar-dark bg-navy py-3" id="mainNavbar">
+<nav class="navbar navbar-expand-lg navbar-dark bg-scarlet py-3" id="mainNavbar">
   <div class="container-fluid px-4">
     <div class="d-flex align-items-center gap-2 navbar-brand-group">
       <a href="https://rucool.marine.rutgers.edu" target="_blank">
         <img src="{{ url_for('static', filename='img/logo.png') }}" alt="RUCOOL Logo" height="55" class="me-2 navbar-logo">
       </a>
-      <a class="navbar-brand m-0 p-0" href="#">
+      <a class="navbar-brand m-0 p-0" href="{{ url_for('index') }}">
         <span class="fw-700 brand-title">IOOS Model Comparisons Archive Explorer</span>
       </a>
     </div>
@@ -44,13 +44,13 @@
     <div class="collapse navbar-collapse" id="navbarContent">
       <ul class="navbar-nav ms-auto align-items-center gap-1">
         {% block nav_extra %}{% endblock %}
+        {# Gulf Stream Fronts has its own entry in the grey archive_nav bar on
+           every page (unconditionally, since it's publicly viewable) — no
+           need to duplicate it up here too. Region configs requires sign-in
+           even to view, so that link only appears once authenticated here;
+           its real gate is still the blueprint's before_request handler,
+           this is presentation only. #}
         {% if current_user.is_authenticated %}
-        {# Presentation only — the real gates are the blueprints'
-           before_request handlers. An anonymous visitor is simply never shown
-           a link they cannot use. #}
-        <li class="nav-item">
-          <a class="nav-link" href="{{ url_for('fronts.editor') }}">
-            <i class="bi bi-pencil-square"></i> Front editor</a></li>
         <li class="nav-item">
           <a class="nav-link" href="{{ url_for('regions.editor') }}">
             <i class="bi bi-sliders"></i> Region configs</a></li>
@@ -86,12 +86,15 @@
   const API_BASE = {{ request.script_root | tojson }};
   const REGION_INFO = {{ region_info | tojson }};
   const MAP_REGIONS = {{ map_regions | tojson }};
+  const ARGO_REGION_BOXES = {{ argo_region_boxes | tojson }};
+  const GLIDER_REGION_BOXES = {{ glider_region_boxes | tojson }};
   const ASG_REGIONS   = {{ adaptive_sampling_regions | tojson }};
   const ASG_VARIABLES = {{ adaptive_sampling_variables | tojson }};
   const ASG_MODELS    = {{ adaptive_sampling_models | tojson }};
 </script>
 {% endblock %}
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/basemaps.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 {% endblock %}
 

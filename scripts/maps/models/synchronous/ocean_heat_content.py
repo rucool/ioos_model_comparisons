@@ -301,7 +301,11 @@ def _load_realtime():
     global _rt_obj
     if _rt_obj is None:
         from tropycal import realtime as trealtime
-        _rt_obj = trealtime.Realtime()
+        # jtwc=True also pulls JTWC-tracked storms (west/south Pacific
+        # typhoons etc.) — without it, Realtime() only has NHC's own basins
+        # (Atlantic, east/central Pacific), so a storm like a West Pacific
+        # typhoon near Guam would silently never show up on OHC overlays.
+        _rt_obj = trealtime.Realtime(jtwc=True)
     return _rt_obj
 
 

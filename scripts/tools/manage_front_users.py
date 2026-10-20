@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """
-manage_front_users.py — accounts for the Gulf Stream front editor.
+manage_front_users.py — accounts for the model_comparisons web editors.
+
+NAME IS NARROWER THAN THE SCOPE: despite "front", these accounts gate BOTH
+/fronts (the wall editor) and /regions (the region-config editor), and any
+future gated section. One user table, stored in hurricanes.front_users.
+
+This is REQUIRED, not optional tooling: there is deliberately no signup page
+— a public signup form on a public site would let anyone grant themselves an
+editor account — so this CLI is the only way a login comes into existence.
 
 There is deliberately no signup page and no password-reset flow: for a small
 team this CLI is the entire user-management story, and every extra web-facing

@@ -40,35 +40,7 @@ sys.path.insert(
 )
 
 from ioos_model_comparisons.regions import region_config  # noqa: E402
-
-ALL_REGIONS = [
-    "mastr",
-    "yucatan",
-    "leeward",
-    "loop_current",
-    "gom",
-    "gom_east",
-    "gom_west",
-    "east_coast",
-    "sab",
-    "mab",
-    "west_florida_shelf",
-    "caribbean",
-    "windward",
-    "amazon",
-    "hurricane",
-    "tropical_western_atlantic",
-    "passengers",
-    "mexico_pacific",
-    "hawaii",
-    "wmo_v_south",
-    "bahamas",
-    "ru29",
-    "philippines",
-    "guam",
-    "fiji",
-    "south_africa",
-]
+from ioos_model_comparisons.region_catalog import ALL_REGIONS  # noqa: E402
 
 
 # Fields owned by update_colorbar_limits.py / colorbar_tuner.py — never

@@ -21,6 +21,7 @@ def region_config(regions=None, model=None):
     # dict(depth=n, limits=[min, max, stride])  
 
     # Defaults
+    name = None  # set by whichever region block below matches
     eez = False
     ocean_heat_content = False
     salinity_max = False
@@ -752,9 +753,17 @@ def region_config(regions=None, model=None):
         # Caribbean Limits
         name = "Eastern Pacific - Mexico"
         folder = "mexico_pacific"
-        extent = [-126, -92, 8, 33]
+        # South bound is 10.1 because the RTOFS west dataset starts at ~10.03N.
+        extent = [-126, -92, 10.1, 33]
         sea_water_temperature = [
             dict(depth=0, limits=[20, 32, 1]),
+            # 50 m is roughly where the model-vs-obs difference peaks, so this is
+            # the level for checking whether CICESE glider data are being
+            # assimilated. Range is sized to the warmer CMEMS field (5th-99th
+            # percentile ~18-31 C, max ~31.75 C) so its warm areas keep detail
+            # instead of saturating to the top color. pinned=True keeps
+            # update_colorbar_limits.py from re-tuning it off RTOFS percentiles.
+            dict(depth=50, limits=[15, 32, .5], pinned=True),
             dict(depth=100, limits=[12, 20, 1]),
             dict(depth=200, limits=[8, 13, .5])
             ]
@@ -1260,6 +1269,12 @@ def region_config(regions=None, model=None):
         figure = dict(
             legend=dict(columns=5),
             figsize=(14, 8)
+        )
+
+    if name is None:
+        raise ValueError(
+            f"Unknown region {regions!r}: no matching region is defined in "
+            f"regions.py (check spelling; keys use underscores, e.g. 'mexico_pacific')."
         )
 
     # Create subdirectory for data variables

@@ -333,6 +333,12 @@ def process_region(
             if depth is None:
                 continue
 
+            # Hand-set range (e.g. sized to CMEMS rather than RTOFS): keep as-is.
+            if entry.get("pinned") and "limits" in entry:
+                logger.info(f"  [{region_key}] {var_key} @ {depth} m — pinned, keeping {entry['limits']}")
+                entries.append({"depth": depth, "limits": entry["limits"], "pinned": True})
+                continue
+
             stride_candidates = TEMP_STRIDES if var_key == "temperature" else SAL_STRIDES
             values = get_depth_slice(rds_sub, rtofs_var, depth)
             limits = compute_limits(values, stride_candidates)

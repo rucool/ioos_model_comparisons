@@ -43,10 +43,10 @@ from ioos_model_comparisons.models import CMEMS, Doppio, espc_uv, rtofs as load_
 
 # Run for all active gliders on the slocum-data ERDDAP server (True),
 # or only the single GLIDER_NAME below (False).
-RUN_ALL_ACTIVE_GLIDERS = True
+RUN_ALL_ACTIVE_GLIDERS = False
 
 # Only used when RUN_ALL_ACTIVE_GLIDERS is False, or as a fallback label.
-GLIDER_NAME = "ru29"
+GLIDER_NAME = "ru37"
 
 # A glider dataset is considered "active" (worth fetching at all) if its
 # time_coverage_end is within this many days of now.
@@ -106,12 +106,26 @@ DEPTH_AVG_CONFIG = {
 # last fix *within* one event so it is never contaminated by dive current.
 SURFACE_EVENT_GAP_MINUTES = 20.0
 
+# Minimum span (first fix to last fix) a surfacing event must cover before
+# it's trusted for a drift estimate. Guards against catching the glider only
+# a few fixes into a still-in-progress surfacing, where GPS fix noise (a few
+# meters per fix) can dominate the tiny displacement and produce a wildly
+# inflated speed. Events shorter than this are skipped in favor of the
+# previous qualifying event.
+SURFACE_MIN_EVENT_SECONDS = 120.0
+
 # How far back to search (from "now", or from the range end) for a complete
-# (>=2-fix) surfacing event.
+# (>=2-fix, >=SURFACE_MIN_EVENT_SECONDS) surfacing event.
 SURFACE_FIX_LOOKBACK_HOURS = 96.0
 
-# save_path = '/Users/mikesmith/Documents/gliders/depth-average/'   # local dev
-save_path = '/web/www/rucool_static/www/gliders/depth-average'
+# Maximum m_depth (metres) allowed anywhere within a candidate surfacing
+# event before it's rejected. GPS-fix presence implies "surfaced" but is an
+# inference; m_depth is a direct measurement. A couple of metres of slack
+# is allowed for wave bob / sensor noise around the true zero.
+SURFACE_MAX_DEPTH_M = 2.0
+
+save_path = '/Users/mikesmith/Documents/gliders/depth-average/'   # local dev
+# save_path = '/web/www/rucool_static/www/gliders/depth-average'
 
 
 # Sub-directory layout inside each glider's folder:
@@ -539,9 +553,76 @@ def _build_surface_record_from_event(event: pd.DataFrame) -> Dict:
     }
 
 
+def _event_span_seconds(event: pd.DataFrame) -> float:
+    return (event["ts"].iloc[-1] - event["ts"].iloc[0]).total_seconds()
+
+
+def _event_qualifies(event: pd.DataFrame) -> bool:
+    return len(event) >= 2 and _event_span_seconds(event) >= SURFACE_MIN_EVENT_SECONDS
+
+
+def _fetch_depth_erddap(
+    deployment_id: str,
+    start_time: pd.Timestamp,
+    end_time: pd.Timestamp,
+) -> pd.DataFrame:
+    """Download m_depth readings for a narrow time window, used to directly
+    confirm the glider stayed at the surface during a candidate event."""
+    dataset_id = f"{deployment_id}{ERDDAP_DATASET_SUFFIX}"
+    variables   = "time,m_depth"
+    constraints = (
+        "&m_depth!=NaN"
+        f"&time%3E={pd.Timestamp(start_time).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+        f"&time%3C={pd.Timestamp(end_time).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    )
+    url = f"{ERDDAP_BASE}/{dataset_id}.csv?{variables}{constraints}"
+    LOGGER.debug("Requesting m_depth for %s: %s", deployment_id, url)
+
+    response = requests.get(url, timeout=ERDDAP_TIMEOUT)
+    response.raise_for_status()
+    df = pd.read_csv(io.StringIO(response.text), skiprows=[1], parse_dates=["time"])
+    df = df.dropna(subset=["m_depth"])
+    if df.empty:
+        return df
+    df["time"] = pd.to_datetime(df["time"], utc=True).dt.tz_localize(None)
+    return df.rename(columns={"time": "ts", "m_depth": "depth"})[["ts", "depth"]].sort_values("ts")
+
+
+def _event_at_surface(
+    deployment_id: str,
+    event: pd.DataFrame,
+    max_depth: float = SURFACE_MAX_DEPTH_M,
+) -> bool:
+    """Directly confirm the glider's m_depth stayed near zero for the full
+    span of a candidate surfacing event, rather than just inferring surfaced
+    state from GPS-fix presence."""
+    try:
+        depth_df = _fetch_depth_erddap(deployment_id, event["ts"].iloc[0], event["ts"].iloc[-1])
+    except requests.RequestException as exc:
+        LOGGER.warning("Could not fetch m_depth to verify surface state for %s: %s", deployment_id, exc)
+        return True  # don't block the whole calc on a QC-only fetch failure
+
+    if depth_df.empty:
+        return True  # no depth telemetry logged in this window; nothing to contradict
+
+    deep = depth_df[depth_df["depth"] > max_depth]
+    if not deep.empty:
+        worst = deep.loc[deep["depth"].idxmax()]
+        LOGGER.warning(
+            "Rejecting surfacing event %s → %s: m_depth reached %.2fm (> %.1fm) at %s; "
+            "glider was not continuously at the surface.",
+            event["ts"].iloc[0], event["ts"].iloc[-1], worst["depth"], max_depth, worst["ts"],
+        )
+        return False
+    return True
+
+
 def get_latest_surface_record(deployment: str) -> Dict:
-    """Return surface drift computed from the most recent complete (>=2-fix)
-    surfacing event, using raw GPS fixes from the ERDDAP trajectory dataset."""
+    """Return surface drift computed from the most recent surfacing event that
+    spans at least SURFACE_MIN_EVENT_SECONDS, using raw GPS fixes from the
+    ERDDAP trajectory dataset. Shorter (e.g. still-in-progress) events are
+    skipped since their displacement is too small to distinguish from GPS
+    fix noise."""
     now = pd.Timestamp.utcnow().tz_localize(None)
     fixes = _fetch_gps_fixes_erddap(
         deployment,
@@ -550,12 +631,21 @@ def get_latest_surface_record(deployment: str) -> Dict:
     )
     events = _cluster_surfacing_events(fixes)
     for event in reversed(events):
-        if len(event) >= 2:
-            return _build_surface_record_from_event(event)
+        if not _event_qualifies(event):
+            LOGGER.debug(
+                "Skipping surfacing event with %d fix(es) spanning %.0fs (< %.0fs) at %s.",
+                len(event), _event_span_seconds(event), SURFACE_MIN_EVENT_SECONDS,
+                event["ts"].iloc[0],
+            )
+            continue
+        if not _event_at_surface(deployment, event):
+            continue
+        return _build_surface_record_from_event(event)
 
     raise ValueError(
-        f"No surfacing event with >=2 GPS fixes found for '{deployment}' in the "
-        f"last {SURFACE_FIX_LOOKBACK_HOURS:.0f}h; cannot compute surface drift."
+        f"No surfacing event spanning >={SURFACE_MIN_EVENT_SECONDS:.0f}s and confirmed "
+        f"at the surface (m_depth <= {SURFACE_MAX_DEPTH_M:.1f}m) found for '{deployment}' "
+        f"in the last {SURFACE_FIX_LOOKBACK_HOURS:.0f}h; cannot compute surface drift."
     )
 
 
@@ -576,11 +666,14 @@ def get_surface_records_for_range(
 
     records: List[Dict] = []
     for event in events:
-        if len(event) < 2:
+        if not _event_qualifies(event):
             LOGGER.debug(
-                "Skipping surfacing event with only %d fix(es) at %s.",
-                len(event), event.iloc[0]["ts"],
+                "Skipping surfacing event with %d fix(es) spanning %.0fs (< %.0fs) at %s.",
+                len(event), _event_span_seconds(event), SURFACE_MIN_EVENT_SECONDS,
+                event["ts"].iloc[0],
             )
+            continue
+        if not _event_at_surface(deployment, event):
             continue
         records.append(_build_surface_record_from_event(event))
 

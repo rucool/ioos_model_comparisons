@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, abort
+from flask_login import current_user
 import requests
 from datetime import datetime, timedelta
 import re
@@ -43,9 +44,16 @@ def _coerce_argo_qc_variables(include_qc):
     return list(include_qc)
 
 
-def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
-                            time_start=None, time_end=dt.date.today(),
-                            wmo_id=None, variables=None, include_qc=False):
+def _lon360to180(lon):
+    """Wrap a longitude into [-180, 180) — same formula as calc.lon360to180
+    in the main package (not vendored here)."""
+    return ((lon + 180) % 360) - 180
+
+
+def _get_argo_floats_by_time_one(bbox, time_start, time_end, wmo_id, variables, include_qc):
+    """Single ERDDAP query — the body get_argo_floats_by_time() used to be,
+    before it grew antimeridian handling. bbox here is assumed to be a plain
+    lonmin<=lonmax range (no wraparound)."""
     if isinstance(variables, tuple):
         variables = list(variables)
 
@@ -83,6 +91,38 @@ def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
     except rHTTPError:
         df = pd.DataFrame()
     return df
+
+
+def get_argo_floats_by_time(bbox=(-110, -45, 0, 46),
+                            time_start=None, time_end=dt.date.today(),
+                            wmo_id=None, variables=None, include_qc=False):
+    """Wraps _get_argo_floats_by_time_one() with antimeridian handling: IFREMER's
+    ArgoFloats longitude is in [-180, 180], so a plain longitude>=/<=
+    constraint can't express a bbox that crosses the dateline (e.g. Fiji's
+    extent, [139.75, 190.25, ...] — floats east of 180 are actually stored
+    at e.g. -170, which fails both `>= 139.75` and `<= 190.25` reads as a
+    no-op upper bound). When bbox[1] > 180, split into a west half
+    ([lonmin, 180]) and an east half ([-180, lonmax-360]), query both, and
+    shift the east half's lon back into the caller's >180 convention so the
+    two halves concatenate into one contiguous range — same west/east split
+    load_cmems_subset() uses for the same reason."""
+    if not bbox or bbox[1] <= 180:
+        return _get_argo_floats_by_time_one(bbox, time_start, time_end, wmo_id, variables, include_qc)
+
+    lon_west = (bbox[0], 180.0, bbox[2], bbox[3])
+    lon_east = (-180.0, float(_lon360to180(bbox[1])), bbox[2], bbox[3])
+
+    west = _get_argo_floats_by_time_one(lon_west, time_start, time_end, wmo_id, variables, include_qc)
+    east = _get_argo_floats_by_time_one(lon_east, time_start, time_end, wmo_id, variables, include_qc)
+
+    if not east.empty:
+        east = east.copy()
+        east['lon'] = east['lon'] + 360
+
+    parts = [d for d in (west, east) if not d.empty]
+    if not parts:
+        return west  # empty DataFrame with the right columns/index
+    return pd.concat(parts).sort_index()
 
 
 def get_active_gliders(bbox=None, t0=None, t1=dt.date.today(), variables=None,
@@ -204,9 +244,25 @@ load_env()
 from auth import init_auth                          # noqa: E402
 from fronts_bp import fronts_bp                     # noqa: E402
 from regions_bp import regions_bp                   # noqa: E402
+from ohc_bp import ohc_bp                           # noqa: E402
 init_auth(app)
 app.register_blueprint(fronts_bp)
 app.register_blueprint(regions_bp)
+app.register_blueprint(ohc_bp)
+
+_ERROR_TITLES = {401: "Sign-in required", 403: "Not allowed", 503: "Temporarily unavailable"}
+
+
+@app.errorhandler(401)
+@app.errorhandler(403)
+@app.errorhandler(503)
+def _styled_http_error(e):
+    code = getattr(e, "code", 500)
+    return render_template(
+        "error.html", code=code,
+        title=_ERROR_TITLES.get(code, "Error"),
+        message=getattr(e, "description", None) or e.name,
+    ), code
 
 # Optional local plots directory; set LOCAL_PLOTS_DIR env var to serve location
 # data from a local mirror. Omit (or leave empty) to always fetch from the remote server.
@@ -223,10 +279,70 @@ ARGO_REGION_EXTENTS = {
     "tropical_western_atlantic": [-70.25, -40.75,  0,    25   ],
     "west_florida_shelf":        [-87.5,  -80,    22.5,  30.5 ],
     "guam":                      [129.75, 160.25,  4.75, 25.25],
-    "south_pacific":             [140,    180,   -30.25, -4.75],
+    # This used to be keyed "south_pacific", which is not a real Argo folder
+    # on the server (confirmed 404) — the Fiji-area Argo pipeline actually
+    # publishes to "fiji" (FVON's Fiji folder really is "south_pacific", a
+    # different pipeline with its own naming — see FVON_REGIONS below;
+    # they're not the same folder). This is regions.py's real, antimeridian-
+    # crossing extent (lonmax > 180) — get_argo_floats_by_time() above
+    # splits it into a west/east ERDDAP query, same idea as
+    # load_cmems_subset()'s antimeridian handling.
+    "fiji":                      [139.75, 190.25, -30.25, -4.75],
+    "hawaii":                    [-167,   -138,   10,     27  ],
+    "mexico_pacific":            [-126,   -92,    10.1,   33  ],
 }
 
 FVON_FOLDER_MAP = {"fiji": "south_pacific"}
+
+# Display names for ARGO_REGION_EXTENTS's keys, for drawing labeled region
+# boxes on the Profiles map — hand-maintained like map_regions above, same
+# reason (regions.py's region_config()['name'] isn't keyed the same way for
+# every one of these, e.g. "south_atlantic_bight" -> "South Atlantic Bight").
+ARGO_REGION_LABELS = {
+    "mid_atlantic_bight":        "Mid Atlantic Bight",
+    "south_atlantic_bight":      "South Atlantic Bight",
+    "gulf_of_mexico":            "Gulf of Mexico",
+    "caribbean":                 "Caribbean",
+    "tropical_western_atlantic": "Tropical Western Atlantic",
+    "west_florida_shelf":        "West Florida Shelf",
+    "guam":                      "Guam",
+    "fiji":                      "Fiji",
+    "hawaii":                    "Hawaii",
+    "mexico_pacific":            "Eastern Pacific - Mexico",
+}
+
+# [lonmin, lonmax, latmin, latmax] per region the glider profile-plotting
+# scripts actually search. The Atlantic-side script (daily_glider_profiles_
+# comparisons_400m.py) now queries one combined box covering the Gulf,
+# Caribbean, US East Coast, and out into the Sargasso Sea (its own
+# search_extent) rather than querying each sub-region separately; the
+# Pacific scripts still query Guam/Hawaii/Eastern Pacific-Mexico as separate
+# regions each with their own extent (same region_config() extents Argo
+# uses — see ARGO_REGION_EXTENTS). Hand-maintained like ARGO_REGION_EXTENTS,
+# for the same reason: keep in sync by hand if those scripts' extents change.
+GLIDER_REGION_EXTENTS = {
+    "east_coast":     [-99,    -48,  5,    43  ],
+    "guam":           [129.75, 160.25, 4.75, 25.25],
+    "hawaii":         [-167,   -138,  10,   27  ],
+    "mexico_pacific": [-126,   -92,   10.1, 33  ],
+}
+
+GLIDER_REGION_LABELS = {
+    "east_coast":     "Gulf / Caribbean / US East Coast / Sargasso Sea",
+    "guam":           "Guam",
+    "hawaii":         "Hawaii",
+    "mexico_pacific": "Eastern Pacific - Mexico",
+}
+
+# The Argo/FVON profile-plotting pipelines only ever publish into these
+# folders — a handful of coarse regions, not every fine-grained subregion
+# regions.py defines (e.g. "Caribbean: Windward Islands" is a real region for
+# the Maps Archive but was never its own Argo folder; floats there land under
+# "caribbean" instead). Rather than make the user guess which of regions.py's
+# many display names actually has data, every Argo/FVON profile lookup below
+# queries all of these at once and merges the results.
+ARGO_REGIONS = list(ARGO_REGION_EXTENTS.keys())
+FVON_REGIONS = ["bahamas", "south_pacific"]
 
 # Backend position cache: (region_key, date_str) -> (timestamp, result_dict)
 _pos_cache = {}
@@ -235,6 +351,10 @@ _POS_CACHE_TTL = 3600  # seconds
 # Glider track cache: date_str -> (timestamp, tracks_dict)
 _tracks_cache = {}
 _TRACKS_CACHE_TTL = 3600  # seconds
+
+# Storm track cache: date_str -> (timestamp, storms_dict). (See storm_track.py.)
+_storm_cache = {}
+_STORM_CACHE_TTL = 3600  # seconds
 
 # ---------------------------------------------------------------------------
 # Region / variable metadata
@@ -250,6 +370,7 @@ _TRACKS_CACHE_TTL = 3600  # seconds
 # region_catalog.CACHE_TTL seconds, so an edit through /regions shows up here
 # without a code change or restart.
 from ioos_model_comparisons.region_catalog import get_region_info  # noqa: E402
+from ioos_model_comparisons import storm_track  # noqa: E402
 
 # map_regions is a deliberate curated subset of region_info's regions, not
 # derived: it's every region for which the offline RTOFS-vs-model comparison
@@ -341,7 +462,7 @@ ECCOFS_EXCLUDED_REGIONS = {
 
 
 def build_map_urls(region, variable_depth, date_obj, time_str):
-    """Return (img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs) URLs."""
+    """Return (img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs, img_nesdis) URLs."""
     variable_depth_mod = variable_depth.replace("_", "-")
     year = date_obj.year
     month = add_zeros(date_obj.month)
@@ -365,11 +486,14 @@ def build_map_urls(region, variable_depth, date_obj, time_str):
     img_goes16 = None
     img_goes19 = None
     img_eccofs = None
+    img_nesdis = None
     eccofs_ok = region not in ECCOFS_EXCLUDED_REGIONS
 
     if variable_depth == "ocean_heat_content":
         if region == 'Fiji':
             # Single combined three-model image: {RegionName}_{timestamp}_ohc_rtofs-espc-cmems.png
+            # (produced by ohc_three_model_panel_fiji.py, which doesn't include
+            # NESDIS — so img_nesdis stays None for Fiji.)
             file_name_ohc = f"{region}_{year}-{month}-{day}T{time_code}Z_ohc_rtofs-espc-cmems.png"
             img_copernicus = None
             img_espc       = None
@@ -384,6 +508,10 @@ def build_map_urls(region, variable_depth, date_obj, time_str):
             img_espc_cmems = f"{base_url}{file_name_ohc}_heat_content_espc-cmems.png"
             if eccofs_ok:
                 img_eccofs = f"{base_url}{file_name_ohc}_heat_content_rtofs-eccofs.png"
+            # NESDIS OHC comparison — wired in ahead of the generating pipeline
+            # (rtofs_binary_ohc_comparisons.py's --nesdis flag) actually running
+            # on the server, so this stays available:false until it does.
+            img_nesdis = f"{base_url}{file_name_ohc}_heat_content_rtofs-nesdis.png"
     else:
         file_name = (
             f"{region_file_slug}"
@@ -399,8 +527,10 @@ def build_map_urls(region, variable_depth, date_obj, time_str):
         if variable_depth == "temperature_0m":
             img_goes16 = f"{base_url}{file_name}_rtofs-vs-GOES16.png"
             img_goes19 = f"{base_url}{file_name}_rtofs-vs-GOES19.png"
+        # NESDIS is an ocean heat content product only — no temperature/
+        # salinity/currents equivalent.
 
-    return img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs
+    return img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs, img_nesdis
 def build_adaptive_sampling_url(region_key, display_name, variable_folder,
                                 panel_type, var_code, model_folder,
                                 date_obj, time_str):
@@ -692,11 +822,27 @@ def index():
     today = datetime.now().strftime("%Y-%m-%d")
     asg_latest = get_asg_latest_date()  # cached on first call; fast on server restart
     region_info = get_region_info()  # live regions.py + MongoDB, see region_catalog.py
+    # Drawn as boxes on the Profiles map so it's visible which regions the
+    # merged Argo search actually covers (see ARGO_REGIONS in api_argo_ids()).
+    argo_region_boxes = [
+        {"key": k, "label": ARGO_REGION_LABELS.get(k, k), "extent": v}
+        for k, v in ARGO_REGION_EXTENTS.items()
+    ]
+    # Same idea, for the regions the glider profile-plotting scripts search
+    # (see GLIDER_REGION_EXTENTS) — not something the webapp itself queries
+    # by region (gliders are fetched globally, see api_profile_positions()),
+    # but still useful to show which areas those offline scripts cover.
+    glider_region_boxes = [
+        {"key": k, "label": GLIDER_REGION_LABELS.get(k, k), "extent": v}
+        for k, v in GLIDER_REGION_EXTENTS.items()
+    ]
     return render_template(
         "index.html",
         region_info=region_info,
         argo_regions=sorted(region_info.keys()),
         map_regions=map_regions,
+        argo_region_boxes=argo_region_boxes,
+        glider_region_boxes=glider_region_boxes,
         adaptive_sampling_regions=adaptive_sampling_regions,
         adaptive_sampling_variables=adaptive_sampling_variables,
         adaptive_sampling_models=adaptive_sampling_models,
@@ -717,7 +863,7 @@ def api_maps():
     except ValueError:
         return jsonify({"error": "Invalid date format"}), 400
 
-    img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs = build_map_urls(region, variable_depth, date_obj, time_str)
+    img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs, img_nesdis = build_map_urls(region, variable_depth, date_obj, time_str)
 
     return jsonify({
         "copernicus": {
@@ -749,6 +895,11 @@ def api_maps():
             "url": img_eccofs,
             "available": check_image(img_eccofs) if img_eccofs else False,
             "label": "RTOFS vs. ECCOFS",
+        },
+        "nesdis": {
+            "url": img_nesdis,
+            "available": check_image(img_nesdis) if img_nesdis else False,
+            "label": "RTOFS vs. NESDIS OHC",
         },
     })
 
@@ -782,14 +933,20 @@ def api_glider_profile():
 
 @app.route("/api/argo-ids")
 def api_argo_ids():
-    region = request.args.get("region", "Mid Atlantic Bight")
     date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
     try:
         date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
         return jsonify({"error": "Invalid date"}), 400
 
-    ids = get_argo_ids(region, date_obj)
+    # Query every Argo region folder at once and merge — see ARGO_REGIONS.
+    with ThreadPoolExecutor(max_workers=len(ARGO_REGIONS)) as ex:
+        per_region = dict(zip(ARGO_REGIONS, ex.map(lambda r: get_argo_ids(r, date_obj), ARGO_REGIONS)))
+
+    ids = {}
+    for region_key, region_ids in per_region.items():
+        for wmo, filename in region_ids.items():
+            ids[wmo] = {"filename": filename, "region": region_key}
     return jsonify({"ids": ids})
 
 
@@ -811,8 +968,10 @@ def api_argo_profile():
 
 @app.route("/api/argo-latest-date")
 def api_argo_latest_date():
-    region = request.args.get("region", "Mid Atlantic Bight")
-    latest_date = get_latest_argo_date(region)
+    # Most recent date with data in ANY Argo region folder (see ARGO_REGIONS).
+    with ThreadPoolExecutor(max_workers=len(ARGO_REGIONS)) as ex:
+        dates = [d for d in ex.map(get_latest_argo_date, ARGO_REGIONS) if d]
+    latest_date = max(dates) if dates else None
     if latest_date:
         return jsonify({"date": latest_date})
     else:
@@ -830,21 +989,29 @@ def api_glider_latest_date():
 
 @app.route("/api/fvon-ids")
 def api_fvon_ids():
-    region = request.args.get("region", "Bahamas")
     date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
     try:
         date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
         return jsonify({"error": "Invalid date"}), 400
 
-    ids = get_fvon_ids(region, date_obj)
+    # Query every FVON region folder at once and merge — see FVON_REGIONS.
+    with ThreadPoolExecutor(max_workers=len(FVON_REGIONS)) as ex:
+        per_region = dict(zip(FVON_REGIONS, ex.map(lambda r: get_fvon_ids(r, date_obj), FVON_REGIONS)))
+
+    ids = {}
+    for region_key, region_ids in per_region.items():
+        for fvon_id, filename in region_ids.items():
+            ids[fvon_id] = {"filename": filename, "region": region_key}
     return jsonify({"ids": ids})
 
 
 @app.route("/api/fvon-latest-date")
 def api_fvon_latest_date():
-    region = request.args.get("region", "Bahamas")
-    latest_date = get_latest_fvon_date(region)
+    # Most recent date with data in ANY FVON region folder (see FVON_REGIONS).
+    with ThreadPoolExecutor(max_workers=len(FVON_REGIONS)) as ex:
+        dates = [d for d in ex.map(get_latest_fvon_date, FVON_REGIONS) if d]
+    latest_date = max(dates) if dates else None
     if latest_date:
         return jsonify({"date": latest_date})
     else:
@@ -919,7 +1086,7 @@ def api_overview_latest():
     except ValueError:
         return jsonify({"error": "Invalid date parsed", "available": False}), 500
 
-    img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs = build_map_urls(region, variable_depth, date_obj, time_str)
+    img_copernicus, img_espc, img_espc_cmems, img_goes16, img_goes19, img_eccofs, img_nesdis = build_map_urls(region, variable_depth, date_obj, time_str)
 
     # Each model comparison is generated by an independent pipeline, so the
     # newest run often has some models ready before others. Check each URL
@@ -958,6 +1125,11 @@ def api_overview_latest():
             "url": img_eccofs,
             "available": check_image(img_eccofs) if img_eccofs else False,
             "label": "RTOFS vs. ECCOFS",
+        },
+        "nesdis": {
+            "url": img_nesdis,
+            "available": check_image(img_nesdis) if img_nesdis else False,
+            "label": "RTOFS vs. NESDIS OHC",
         },
     })
 @app.route("/api/download")
@@ -1142,18 +1314,21 @@ def api_all_profile_locations():
 
 @app.route("/api/profile-positions")
 def api_profile_positions():
-    """Return platform positions for a specific date by querying ERDDAP (argo)
-    and dated locations.json files (gliders), with a last_14_days fallback for FVON."""
-    region   = request.args.get("region", "Mid Atlantic Bight")
+    """Return platform positions for a specific date, merging Argo and FVON
+    across every region their pipelines actually publish to (ARGO_REGIONS /
+    FVON_REGIONS) rather than one user-picked region — see the comment above
+    ARGO_REGIONS for why a region picker here just meant clicking a name with
+    no data under it while the parent region (which has it) sat unselected.
+    Positions come from ERDDAP (argo) and dated locations.json files
+    (gliders), with a last_14_days fallback for FVON."""
     date_str = request.args.get("date", datetime.now().strftime("%Y-%m-%d"))
-    region_key = region.lower().replace(" ", "_")
 
     try:
         date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
         date_obj = datetime.now().date()
 
-    cache_key = (region_key, date_str)
+    cache_key = date_str
     if cache_key in _pos_cache:
         ts, cached = _pos_cache[cache_key]
         if _time.time() - ts < _POS_CACHE_TTL:
@@ -1163,7 +1338,6 @@ def api_profile_positions():
     month    = add_zeros(date_obj.month)
     day      = add_zeros(date_obj.day)
     month_day = f"{month}-{day}"
-    fvon_key = FVON_FOLDER_MAP.get(region_key, region_key)
     base_local = os.path.join(_LOCAL_PLOTS_BASE, "profiles") if _LOCAL_PLOTS_BASE else ""
 
     def fetch_gliders():
@@ -1256,12 +1430,22 @@ def api_profile_positions():
             out[filename] = entry
         return out
 
-    def fetch_argo():
-        """ERDDAP for lat/lon; plot URL from directory listing when available.
-        Falls back to filtering last_14_days/locations.json if ERDDAP is unavailable."""
+    def fetch_argo_region(region_key):
+        """Positions for one Argo region folder. ERDDAP for lat/lon (bbox from
+        ARGO_REGION_EXTENTS), matched against that folder's own directory
+        listing for the plot URL. IFREMER's ArgoFloats ERDDAP has been
+        observed to intermittently omit a float from one query that an
+        identical retry moments later does return (confirmed by hand — not
+        a bbox/time-window bug on our side), so a float with a plot already
+        generated could silently vanish from the map despite still being
+        selectable in the dropdown (which doesn't depend on ERDDAP at all).
+        Gaps like that — not just a totally-empty ERDDAP response — are now
+        filled from this folder's last_14_days/locations.json."""
+        argo_files = get_argo_ids(region_key, date_obj)  # {wmo: filename} — may be empty
+        out = {}
+
         extent = ARGO_REGION_EXTENTS.get(region_key)
         if extent:
-            argo_files = get_argo_ids(region, date_obj)  # {wmo: filename} — may be empty
             try:
                 adf = get_argo_floats_by_time(
                     bbox=extent,
@@ -1270,7 +1454,6 @@ def api_profile_positions():
                 )
                 if not adf.empty:
                     adf_reset = adf.reset_index().drop_duplicates("argo")
-                    out = {}
                     for _, row in adf_reset.iterrows():
                         wmo = str(row["argo"])
                         filename = argo_files.get(wmo)
@@ -1281,17 +1464,59 @@ def api_profile_positions():
                             "lon":  float(row["lon"]),
                             "wmo":  wmo,
                             "time": date_str,
-                            "url":  get_argo_profile_url(region, filename, date_obj),
+                            "url":  get_argo_profile_url(region_key, filename, date_obj),
                             "type": "argo",
                         }
-                    if out:
-                        return out
             except Exception as e:
-                print(f"Argo ERDDAP error, falling back to locations.json: {e}")
+                print(f"Argo ERDDAP error for {region_key}, falling back to locations.json: {e}")
 
-        # Fallback: filter last_14_days/locations.json by date
-        local  = os.path.join(base_local, "argo", region_key, "last_14_days", "locations.json") if base_local else ""
-        remote = f"{BASE_REMOTE_PROFILES}/argo/{region_key}/last_14_days/locations.json"
+        # Fill in any plotted float ERDDAP didn't return a position for above
+        # (or all of them, if ERDDAP failed outright) from this region's
+        # last_14_days/locations.json.
+        missing = set(argo_files.values()) - set(out.keys())
+        if missing:
+            local  = os.path.join(base_local, "argo", region_key, "last_14_days", "locations.json") if base_local else ""
+            remote = f"{BASE_REMOTE_PROFILES}/argo/{region_key}/last_14_days/locations.json"
+            data = {}
+            if local and os.path.exists(local):
+                try:
+                    with open(local) as f:
+                        data = json.load(f)
+                except Exception:
+                    pass
+            if not data:
+                try:
+                    r = requests.get(remote, timeout=6)
+                    if r.status_code == 200:
+                        data = r.json()
+                except Exception:
+                    pass
+            for filename, entry in data.items():
+                if filename not in missing:
+                    continue
+                if entry.get("time", "")[:10] != date_str:
+                    continue
+                m = re.search(r"(\d{4})-(\d{2})-(\d{2})T", filename)
+                if m:
+                    y2, mo2, d2 = m.group(1), m.group(2), m.group(3)
+                    entry["url"] = f"{BASE_REMOTE_PROFILES}/argo/{region_key}/{y2}/{mo2}/{d2}/{filename}"
+                entry["type"] = "argo"
+                out[filename] = entry
+
+        return out
+
+    def fetch_argo():
+        merged = {}
+        with ThreadPoolExecutor(max_workers=len(ARGO_REGIONS)) as ex:
+            for region_out in ex.map(fetch_argo_region, ARGO_REGIONS):
+                merged.update(region_out)
+        return merged
+
+    def fetch_fvon_region(region_key):
+        """Positions for one FVON region folder — filters that folder's
+        last_14_days/locations.json by the selected date."""
+        local  = os.path.join(base_local, "fvon", region_key, "last_14_days", "locations.json") if base_local else ""
+        remote = f"{BASE_REMOTE_PROFILES}/fvon/{region_key}/last_14_days/locations.json"
         data = {}
         if local and os.path.exists(local):
             try:
@@ -1313,40 +1538,17 @@ def api_profile_positions():
             m = re.search(r"(\d{4})-(\d{2})-(\d{2})T", filename)
             if m:
                 y2, mo2, d2 = m.group(1), m.group(2), m.group(3)
-                entry["url"] = f"{BASE_REMOTE_PROFILES}/argo/{region_key}/{y2}/{mo2}/{d2}/{filename}"
-            entry["type"] = "argo"
+                entry["url"] = f"{BASE_REMOTE_PROFILES}/fvon/{region_key}/{y2}/{mo2}/{d2}/{filename}"
+            entry["type"] = "fvon"
             out[filename] = entry
         return out
 
     def fetch_fvon():
-        """Filter last_14_days/locations.json by the selected date."""
-        local  = os.path.join(base_local, "fvon", fvon_key, "last_14_days", "locations.json") if base_local else ""
-        remote = f"{BASE_REMOTE_PROFILES}/fvon/{fvon_key}/last_14_days/locations.json"
-        data = {}
-        if local and os.path.exists(local):
-            try:
-                with open(local) as f:
-                    data = json.load(f)
-            except Exception:
-                pass
-        if not data:
-            try:
-                r = requests.get(remote, timeout=6)
-                if r.status_code == 200:
-                    data = r.json()
-            except Exception:
-                pass
-        out = {}
-        for filename, entry in data.items():
-            if entry.get("time", "")[:10] != date_str:
-                continue
-            m = re.search(r"(\d{4})-(\d{2})-(\d{2})T", filename)
-            if m:
-                y2, mo2, d2 = m.group(1), m.group(2), m.group(3)
-                entry["url"] = f"{BASE_REMOTE_PROFILES}/fvon/{fvon_key}/{y2}/{mo2}/{d2}/{filename}"
-            entry["type"] = "fvon"
-            out[filename] = entry
-        return out
+        merged = {}
+        with ThreadPoolExecutor(max_workers=len(FVON_REGIONS)) as ex:
+            for region_out in ex.map(fetch_fvon_region, FVON_REGIONS):
+                merged.update(region_out)
+        return merged
 
     result = {"glider": {}, "argo": {}, "fvon": {}}
     with ThreadPoolExecutor(max_workers=3) as ex:
@@ -1360,6 +1562,30 @@ def api_profile_positions():
 
     _pos_cache[cache_key] = (_time.time(), result)
     return jsonify(result)
+
+
+@app.route("/api/profile-positions/clear-cache", methods=["POST"])
+def api_clear_profile_positions_cache():
+    """Drop cached /api/profile-positions results so the next request re-fetches
+    from ERDDAP/locations.json instead of serving up to an hour of a stale
+    snapshot (see _POS_CACHE_TTL). POST-only and editor-gated — an open,
+    unauthenticated version of this is a cache-busting amplification vector:
+    repeatedly clearing + requesting forces the full expensive ERDDAP/
+    remote-JSON fetch on every hit instead of ever getting a cache hit,
+    for both this server and the third-party services it calls. Reuses the
+    same `editor` role Fronts/Regions already gate writes behind, rather
+    than inventing a separate secret to manage.
+    Pass ?date=YYYY-MM-DD to clear just that date, otherwise every cached
+    date is dropped."""
+    if not (current_user.is_authenticated and current_user.has_role("editor")):
+        abort(403)
+    date_str = request.args.get("date")
+    if date_str:
+        removed = _pos_cache.pop(date_str, None) is not None
+        return jsonify({"cleared": [date_str] if removed else []})
+    cleared = list(_pos_cache.keys())
+    _pos_cache.clear()
+    return jsonify({"cleared": cleared})
 
 
 @app.route("/api/glider-positions-status")
@@ -1499,6 +1725,49 @@ def api_glider_tracks():
 
     _tracks_cache[date_str] = (_time.time(), tracks)
     return jsonify(tracks)
+
+
+@app.route("/api/storm-track")
+def api_storm_track():
+    """Storms active near a given date (Atlantic + East Pacific, v1 — see
+    storm_track.py), with track history trimmed through that date and, where
+    an NHC forecast advisory exists for it, a forecast-cone polygon."""
+    date_str = request.args.get("date")
+    if not date_str:
+        return jsonify({"error": "date is required"}), 400
+    try:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Invalid date"}), 400
+
+    if date_str in _storm_cache:
+        ts, cached = _storm_cache[date_str]
+        if _time.time() - ts < _STORM_CACHE_TTL:
+            return jsonify(cached)
+
+    try:
+        storms = storm_track.storms_for_date(date_obj)
+    except Exception as e:
+        print(f"storm_track error for {date_str}: {e}")
+        storms = {}
+
+    result = {"storms": storms}
+    _storm_cache[date_str] = (_time.time(), result)
+    return jsonify(result)
+
+
+@app.route("/api/storm-track/clear-cache", methods=["POST"])
+def api_clear_storm_track_cache():
+    """Same rationale and gating as /api/profile-positions/clear-cache."""
+    if not (current_user.is_authenticated and current_user.has_role("editor")):
+        abort(403)
+    date_str = request.args.get("date")
+    if date_str:
+        removed = _storm_cache.pop(date_str, None) is not None
+        return jsonify({"cleared": [date_str] if removed else []})
+    cleared = list(_storm_cache.keys())
+    _storm_cache.clear()
+    return jsonify({"cleared": cleared})
 
 
 if __name__ == "__main__":
