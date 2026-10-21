@@ -45,8 +45,9 @@ deliberately overridden. The editor shows which keys are overridden.
 `colorbar_tuner.py`'s "Save region YAML" writes limits straight into these
 files (`region_yaml.update_limits`), keeping their comments.
 
-One-time step after this change went in: older seeding copied every default
-into MongoDB, so stored keys may still hide YAML edits.
+Optional, and only needed if you plan to edit region YAML: older seeding
+copied every default into MongoDB, so those stored keys hide YAML edits. If
+you make all region changes in the `/regions` editor, skip this.
 `python scripts/tools/unseed_region_overrides.py` reports what it would remove.
 `--apply` backs up the collection, then removes those copies.
 
