@@ -32,9 +32,20 @@ streams:
 # beginning". Catalog entries are tagged from this, so the portal can label
 # figures by RTOFS version. Fill in real versions/dates — version: null tags
 # nothing.
+#
+# Dates are the first cycle with the new version, read from the files'
+# `experiment` attribute in the baffin archives (93.0 = v2.4, 93.1 = v2.5).
+# The 00Z field of that day still comes from the previous cycle's f024.
+# Before v2.4 (experiment 92.8 from 2020-12-10, 92.4 before that) the version
+# isn't recorded here, so those figures carry no tag.
 history:
-  - {stream: operational, version: null, from: null}   # TODO: current operational version
-  - {stream: parallel, version: v2.3, from: null}
+  - {stream: operational, version: null, from: null}
+  - {stream: operational, version: v2.4, from: 2024-09-14}   # NWS: effective 2024-09-13
+  - {stream: operational, version: v2.5, from: 2025-07-31}   # NWS SCN25-47: effective 2025-07-29
+  # The parallel stream (S3 prefix rtofs.parallel.v2.3, despite the name) ran
+  # v2.4 and then v2.5 ahead of each upgrade; no parallel data after 2025-07-31.
+  - {stream: parallel, version: v2.4, from: 2024-01-28}
+  - {stream: parallel, version: v2.5, from: 2024-11-14}
 
 # Files the harvester pulls per cycle date (rtofs.YYYYMMDD/<file>).
 files:

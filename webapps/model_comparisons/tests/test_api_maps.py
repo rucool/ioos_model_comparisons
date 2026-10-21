@@ -23,7 +23,7 @@ def test_catalog_backend(client, seed, monkeypatch):
     data = _maps(client).get_json()
     assert set(data) == KEYS
     assert data["espc"] == {"url": BASE + GOM + "rtofs-vs-espc.png", "available": True,
-                            "label": "RTOFS vs. ESPC", "rtofs": {"operational": None}}
+                            "label": "RTOFS vs. ESPC", "rtofs": {"operational": "v2.5"}}
     assert data["goes16"]["available"] and data["goes16"]["url"].endswith("rtofs-vs-GOES16.png")
     # Applicable but not (yet) published: predicted URL, unavailable.
     assert data["copernicus"]["available"] is False

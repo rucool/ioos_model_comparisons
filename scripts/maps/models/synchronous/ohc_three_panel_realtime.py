@@ -212,7 +212,7 @@ def worker_initializer(
         _rt = trealtime.Realtime()
         _keys = _rt.list_active_storms(basin='north_atlantic')
         _worker_storms = [_rt.get_storm(k) for k in _keys]
-        _worker_forecasts = [s.get_forecast_realtime(True) for s in _worker_storms]
+        _worker_forecasts = [s.get_forecast_realtime() for s in _worker_storms]
         print(f"Worker fetched {len(_worker_storms)} active storm(s)")
     except Exception as e:
         print(f"Warning: Could not fetch hurricane data: {e}")

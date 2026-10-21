@@ -374,7 +374,7 @@ def _realtime_storms():
         # other storms' tracks.
         if not getattr(storm, 'invest', False):
             try:
-                fct = storm.get_forecast_realtime(True)
+                fct = storm.get_forecast_realtime()
             except Exception as e:
                 print(f"Warning: no forecast for {key} ({e}); plotting track only")
         stms.append(storm)

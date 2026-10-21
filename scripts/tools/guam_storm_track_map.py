@@ -47,7 +47,7 @@ def main():
         fct = {}
         if not s.invest:
             try:
-                fct = s.get_forecast_realtime(True)
+                fct = s.get_forecast_realtime()
             except Exception as e:
                 print(f"  No forecast cone for {sid} ({s.name}): {e} -- track only")
         storms.append(s)
