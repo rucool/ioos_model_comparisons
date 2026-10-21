@@ -7,7 +7,7 @@ import responses
 
 from conftest import BASE
 
-KEYS = {"copernicus", "espc", "espc_cmems", "eccofs", "nesdis", "goes16", "goes19"}
+KEYS = {"copernicus", "espc", "three_model", "eccofs", "nesdis", "goes16", "goes19"}
 GOM = "maps/gulf_of_mexico/temperature_0m/2026/10/gulf-of-mexico_2026-10-12T060000Z_temperature-0m_"
 
 
@@ -29,7 +29,7 @@ def test_catalog_backend(client, seed, monkeypatch):
     assert data["copernicus"]["available"] is False
     assert data["copernicus"]["url"] == BASE + GOM + "rtofs-vs-cmems.png"
     # Not applicable to this region: no URL at all.
-    assert data["espc_cmems"] == {"url": None, "available": False, "label": "ESPC vs. CMEMS"}
+    assert data["three_model"] == {"url": None, "available": False, "label": "RTOFS vs. ESPC vs. CMEMS"}
 
 
 def test_legacy_backend_heads_only_applicable_panels(client, rsps):
@@ -59,7 +59,7 @@ def test_fiji_ohc_combined_image(client, seed, monkeypatch):
     rel = "maps/fiji/ocean_heat_content/2026/10/Fiji_2026-10-12T000000Z_ohc_rtofs-espc-cmems.png"
     seed(rel)
     data = _maps(client, region="Fiji", variable_depth="ocean_heat_content", time="00Z").get_json()
-    assert data["espc_cmems"]["available"] and data["espc_cmems"]["url"] == BASE + rel
+    assert data["three_model"]["available"] and data["three_model"]["url"] == BASE + rel
     assert data["espc"]["url"] is None
 
 

@@ -650,7 +650,7 @@ def api_maps():
         return jsonify({"error": "Invalid date format"}), 400
 
     # {panel key: {url, available, label}} for every panel in comparisons.yml
-    # (keys: copernicus, espc, espc_cmems, eccofs, nesdis, goes16, goes19, ...)
+    # (keys: copernicus, espc, three_model, eccofs, nesdis, goes16, goes19, ...)
     return jsonify(discovery.map_panels(region_folder(region), region, variable_depth,
                                         date_obj, time_str))
 

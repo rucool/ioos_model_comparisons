@@ -31,8 +31,9 @@ def test_map_panels_injected_per_region(app_module, client):
     import re
     html = client.get("/").get_data(as_text=True)
     panels = json.loads(re.search(r"const MAP_PANELS = (\{.*?\});\n", html).group(1))
-    assert panels["Fiji"]["ocean_heat_content"] == ["espc_cmems"]
-    assert panels["Guam"]["temperature_0m"] == ["copernicus", "espc", "espc_cmems", "goes16", "goes19"]
+    assert panels["Fiji"]["ocean_heat_content"] == ["three_model"]
+    assert panels["Guam"]["temperature_0m"] == ["copernicus", "espc", "goes16", "goes19"]
+    assert not any("espc_cmems" in keys for vds in panels.values() for keys in vds.values())
     assert "Caribbean: Windward Islands" in panels
 
 

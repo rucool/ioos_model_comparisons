@@ -7,18 +7,17 @@ import yaml
 from ioos_model_comparisons.registry import CONFIG_DIR, RegistryError, Registry, load_registry
 
 # Python port of the panel rules that were hardcoded in static/js/app.js
-# (updateMapModelsConfig) before they moved to comparisons.yml. The YAML must
-# reproduce them exactly.
+# (updateMapModelsConfig) before they moved to comparisons.yml, with the one
+# deliberate change since: ESPC-vs-CMEMS removed from Guam/Fiji (2026-10-21),
+# Fiji OHC keeping its combined three-model image as `three_model`.
 _LEGACY_ECCOFS_EXCLUDED = {"Tropical Western Atlantic", "Eastern Pacific - Mexico", "Hawaii",
                            "WMO V - South Pacific", "Philippines Sea", "Guam", "Fiji"}
 
 
 def legacy_panels(region_name, vd):
     if region_name == "Fiji" and vd == "ocean_heat_content":
-        return ["espc_cmems"]
+        return ["three_model"]
     out = ["copernicus", "espc"]
-    if region_name in ("Guam", "Fiji"):
-        out.append("espc_cmems")
     if region_name not in _LEGACY_ECCOFS_EXCLUDED:
         out.append("eccofs")
     if vd == "ocean_heat_content":
@@ -35,7 +34,7 @@ VAR_DEPTHS = ["temperature_0m", "temperature_150m", "salinity_0m", "salinity_200
 def test_shipped_config_loads():
     reg = load_registry()
     assert "gom" in reg.region_keys() and "sargasso" in reg.region_keys()
-    assert [p.key for p in reg.panels] == ["copernicus", "espc", "espc_cmems", "eccofs",
+    assert [p.key for p in reg.panels] == ["copernicus", "espc", "three_model", "eccofs",
                                           "nesdis", "goes16", "goes19"]
 
 

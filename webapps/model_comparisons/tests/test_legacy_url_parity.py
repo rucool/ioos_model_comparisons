@@ -73,4 +73,5 @@ def test_predicted_urls_match_old_builder(name, folder, vd):
     for panel in reg.map_panels(folder, vd):
         predicted = [reg.public_url(reg.predict_rel(c, folder, name, vd, when))
                      for c in panel.comparisons if reg.comparison_applies(c, folder, vd)]
-        assert old[panel.key] in predicted, (panel.key, old[panel.key], predicted)
+        old_key = {"three_model": "espc_cmems"}.get(panel.key, panel.key)  # renamed 2026-10-21
+        assert old[old_key] in predicted, (panel.key, old[old_key], predicted)

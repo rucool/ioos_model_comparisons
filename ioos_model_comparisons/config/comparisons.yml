@@ -55,13 +55,15 @@ map_panels:
     short: ESPC
     comparisons: [rtofs-vs-espc]
     exclude: [{region: fiji, var_depth: ocean_heat_content}]
-  - key: espc_cmems
-    label: ESPC vs. CMEMS
-    short: ESPC vs CMEMS
-    # Guam's and Fiji's RTOFS histories are short; the legacy ESPC-vs-CMEMS
-    # comparison keeps their full archive reachable.
-    comparisons: [espc-vs-cmems, rtofs-vs-espc-vs-cmems]
-    regions: {include: [guam, fiji]}
+  # ESPC-vs-CMEMS (no RTOFS) was removed from the portal on 2026-10-21. Fiji's
+  # Ocean Heat Content is only published as one combined three-model image,
+  # so that keeps its own panel.
+  - key: three_model
+    label: RTOFS vs. ESPC vs. CMEMS
+    short: RTOFS / ESPC / CMEMS
+    comparisons: [rtofs-vs-espc-vs-cmems]
+    regions: {include: [fiji]}
+    var_depths: {include: [ocean_heat_content]}
   - key: eccofs
     label: RTOFS vs. ECCOFS
     short: ECCOFS
@@ -81,4 +83,4 @@ map_panels:
     comparisons: [rtofs-vs-goes19]
 
 # Overview tab radio-button order (the first visible one is the default).
-overview_order: [espc, copernicus, espc_cmems, eccofs, nesdis, goes16, goes19]
+overview_order: [espc, copernicus, three_model, eccofs, nesdis, goes16, goes19]
