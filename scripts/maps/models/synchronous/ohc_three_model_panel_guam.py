@@ -15,6 +15,7 @@ import pickle
 import time
 import traceback
 from pathlib import Path
+import threading
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
 try:
@@ -65,14 +66,28 @@ _worker_cache_dir = None
 
 def _load_with_timeout(ds, timeout=120):
     """Load an xarray Dataset/DataArray, raising TimeoutError if it hangs."""
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(ds.load)
+    # A daemon thread, not `with ThreadPoolExecutor()`: leaving that block
+    # waits for the load to finish, so a server that stops answering mid-read
+    # hung the whole run forever and the timeout never took effect. A stuck
+    # daemon thread is simply abandoned (and dies with the process).
+    out = {}
+
+    def _run():
         try:
-            return future.result(timeout=timeout)
-        except FuturesTimeoutError:
-            raise TimeoutError(f"Data load timed out after {timeout}s — server may be unavailable")
-        except _HTTPX_ERRORS as e:
-            raise RuntimeError(f"HTTP error during data load (server may be unavailable): {e}") from e
+            out["value"] = ds.load()
+        except BaseException as e:
+            out["error"] = e
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        raise TimeoutError(f"Data load timed out after {timeout}s — server may be unavailable")
+    if "error" in out:
+        if isinstance(out["error"], _HTTPX_ERRORS):
+            raise RuntimeError(f"HTTP error during data load (server may be unavailable): {out['error']}") from out["error"]
+        raise out["error"]
+    return out["value"]
 
 
 def _ohc_cache_path(cache_dir, region, ctime, model_key):
