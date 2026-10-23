@@ -3,12 +3,18 @@
 usage: python step3_plot_hexbin.py <title> <model> <t0> <t1> <region folder>
    e.g. python step3_plot_hexbin.py "Caribbean" cmems 2026-06-01 2026-10-22 caribbean
 
+Each variable is plotted twice:
+- plots/: axes sized to that panel's data (99.9th percentile)
+- plots/fixed_axes/: the same axes for every region and model (FIXED_LIMITS), for flipping between plots.
+  Salinity max has no fixed range and is only in plots/.
+Stats always use every valid pair; points outside fixed axes are counted on the plot.
+
 - Fit line is an orthogonal (total least squares) fit: both axes carry error (a glider profile has
   eddies/internal waves/sampling noise a model can't reproduce), and ordinary least squares of model
   on glider is biased flat by that noise (slope -> r * sy/sx).
 - Colours are real profile counts per hexagon; the hexagon size is fixed per variable.
-- Axes are sized to the data (99.9th percentile); stats use every valid pair.
-- OHC pairs need qc == 1 on both sides (see ohc_with_qc in step2); MLD pairs need qcU == 1 on both.
+- OHC pairs need qc == 1 on both sides (see ohc_with_qc in step2), and pairs with OHC = 0 on both sides
+  are left out. MLD pairs need qcU == 1 on both.
 """
 import os
 import sys
@@ -25,28 +31,26 @@ from matplotlib.ticker import MaxNLocator
 
 from season_config import LABEL, PLATFORM, PLOTS, ROOT
 
-title_region, model, t0, t1, folder = sys.argv[1:6]
-base_dir = Path(ROOT) / folder
-save_dir = PLOTS
-MODEL_NAMES = {'rtofs': 'RTOFS', 'cmems': 'CMEMS', 'espc': 'ESPC', 'amseas': 'AMSEAS', 'parallel': 'RTOFS-P'}
-model_str = MODEL_NAMES.get(model, model)
-reg_name = title_region.replace(' ', '_').lower()
+MODEL_NAMES = {'rtofs': 'RTOFS', 'cmems': 'CMEMS', 'espc': 'ESPC', 'amseas': 'AMSEAS', 'parallel': 'RTOFS-P',
+               'nesdis': 'NESDIS'}
 MODELS = {'cmems', 'rtofs', 'espc', 'parallel'}
+FIXED_LIMITS = {'ohc': (0, 250), '26c': (0, 250), 'mld': (0, 150)}
+FIXED_DIR = os.path.join(PLOTS, 'fixed_axes')
 
 GLIDER_COLS = ['glider_ohc', 'glider_ohc_qc', 'glider_salinity_max', 'glider_mldU', 'glider_qcU', 'glider_iso26_depth']
 MODEL_COLS = ['model_ohc', 'model_ohc_qc', 'model_salinity_max', 'model_mldU', 'model_qcU', 'model_iso26_depth']
 
 
-def load_pairs():
+def load_pairs(base_dir, model):
     rows = []
-    for calc_dir in base_dir.glob('*/calculated'):
+    for calc_dir in Path(base_dir).glob('*/calculated'):
         for g in calc_dir.glob('*.csv'):
             if g.stem.rsplit('_', 1)[-1] in MODELS:
                 continue
             m = calc_dir / f'{g.stem}_{model}.csv'
             if not m.exists():
                 continue
-            gd = pd.read_csv(g, nrows=1)
+            gd = pd.read_csv(g, nrows=1, dtype={'glider': str})
             md = pd.read_csv(m, nrows=1)
             if not set(GLIDER_COLS) <= set(gd.columns) or not set(MODEL_COLS) <= set(md.columns):
                 continue
@@ -64,7 +68,9 @@ def stats(x, y):
                 slope=slope, intercept=y.mean() - slope * x.mean())
 
 
-def hexbin_plot(x, y, prefix, label, units, binw, lo=None):
+def hexbin_plot(x, y, prefix, label, units, binw, *, title_region, model_str, t0, t1, save_dir,
+                lo=None, lims=None):
+    """One hexbin figure. lims=(lo, hi) fixes the axes; otherwise they follow the data."""
     ok = np.isfinite(x) & np.isfinite(y)
     x, y = x[ok], y[ok]
     if len(x) < 10:
@@ -72,11 +78,14 @@ def hexbin_plot(x, y, prefix, label, units, binw, lo=None):
         return None
     s = stats(x, y)
 
-    both = np.concatenate([x, y])
-    if lo is None:
-        lo = np.floor(np.percentile(both, 0.1) / (5 * binw)) * 5 * binw
-    hi = np.ceil(np.percentile(both, 99.9) / (5 * binw)) * 5 * binw
-    lims = (lo, hi)
+    if lims is None:
+        both = np.concatenate([x, y])
+        if lo is None:
+            lo = np.floor(np.percentile(both, 0.1) / (5 * binw)) * 5 * binw
+        hi = np.ceil(np.percentile(both, 99.9) / (5 * binw)) * 5 * binw
+        lims = (lo, hi)
+    lo, hi = lims
+    outside = int(np.sum((x < lo) | (x > hi) | (y < lo) | (y > hi)))
 
     fig, ax = plt.subplots(figsize=(8, 6.5))
     cmap = cmo.tools.crop_by_percent(cmo.cm.algae, 15, which='min')
@@ -105,12 +114,14 @@ def hexbin_plot(x, y, prefix, label, units, binw, lo=None):
     ax.set_title(f'{title_region} {label} - {LABEL} vs {model_str}\n{t0} to {t1}', fontsize='large')
     ax.text(0.03, 0.97,
             f"n = {s['n']}\nbias = {s['bias']:.2f}\nRMSE = {s['rmse']:.2f}\nr = {s['r']:.2f}\n"
-            f"slope = {s['slope']:.2f}\nintercept = {s['intercept']:.2f}",
+            f"slope = {s['slope']:.2f}\nintercept = {s['intercept']:.2f}"
+            + (f'\n{outside} outside axes' if outside else ''),
             transform=ax.transAxes, va='top', fontsize='medium',
             bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5'))
     ax.legend(loc='lower right')
 
     os.makedirs(save_dir, exist_ok=True)
+    reg_name = title_region.replace(' ', '_').lower()
     fname = os.path.join(save_dir, f'{prefix}_{PLATFORM}_vs_{model_str}_hexbin_{t0}_{t1}_{reg_name}.png')
     fig.savefig(fname, dpi=300, bbox_inches='tight')
     plt.close(fig)
@@ -118,30 +129,50 @@ def hexbin_plot(x, y, prefix, label, units, binw, lo=None):
     return {'region': title_region, 'model': model_str, 'variable': label, 'units': units, **s}
 
 
-df = load_pairs()
-print(f'{len(df)} {PLATFORM}/{model_str} pairs in {base_dir}')
+def plot_both(x, y, prefix, label, units, binw, lo=None, **kw):
+    """Data-sized plot in plots/, plus a fixed-axes copy in plots/fixed_axes/ where a range is defined."""
+    res = hexbin_plot(x, y, prefix, label, units, binw, lo=lo, save_dir=PLOTS, **kw)
+    if prefix in FIXED_LIMITS:
+        hexbin_plot(x, y, prefix, label, units, binw, lims=FIXED_LIMITS[prefix], save_dir=FIXED_DIR, **kw)
+    return res
 
-ohc = df[(df.glider_ohc_qc == 1) & (df.model_ohc_qc == 1)]
-# Pairs where neither profile has water >= 26 C agree trivially; left in, they pile up at (0, 0),
-# pin the fit to the origin and inflate r. Keep pairs where at least one side has heat content.
-both_zero = (ohc.glider_ohc == 0) & (ohc.model_ohc == 0)
-print(f'OHC: {len(ohc)} of {len(df)} pairs pass qc '
-      f'(glider qc counts {df.glider_ohc_qc.value_counts().to_dict()}, model {df.model_ohc_qc.value_counts().to_dict()}); '
-      f'{both_zero.sum()} with OHC = 0 in both dropped')
-ohc = ohc[~both_zero]
-mld = df[(df.glider_qcU == 1) & (df.model_qcU == 1)]
 
-results = [
-    hexbin_plot(ohc.glider_ohc.values, ohc.model_ohc.values, 'ohc', 'OHC', 'kJ/cm²', binw=4, lo=0),
-    hexbin_plot(df.glider_iso26_depth.values, df.model_iso26_depth.values, '26c', '26°C Isotherm Depth', 'm', binw=4, lo=0),
-    hexbin_plot(mld.glider_mldU.values, mld.model_mldU.values, 'mld', 'Mixed Layer Depth', 'm', binw=2, lo=0),
-    hexbin_plot(df.glider_salinity_max.values, df.model_salinity_max.values, 'salmax', 'Salinity Max', 'PSU', binw=0.02),
-]
+def save_summary(results, title_region, model_str, t0, t1):
+    summary = os.path.join(PLOTS, 'summary.csv')
+    new = pd.DataFrame([r for r in results if r]).assign(t0=t0, t1=t1)
+    if os.path.exists(summary):
+        old = pd.read_csv(summary)
+        old = old[~((old.region == title_region) & (old.model == model_str))]
+        new = pd.concat([old, new], ignore_index=True)
+    new.round(3).to_csv(summary, index=False)
 
-summary = os.path.join(save_dir, 'summary.csv')
-new = pd.DataFrame([r for r in results if r]).assign(t0=t0, t1=t1)
-if os.path.exists(summary):
-    old = pd.read_csv(summary)
-    old = old[~((old.region == title_region) & (old.model == model_str))]
-    new = pd.concat([old, new], ignore_index=True)
-new.round(3).to_csv(summary, index=False)
+
+def main():
+    title_region, model, t0, t1, folder = sys.argv[1:6]
+    model_str = MODEL_NAMES.get(model, model)
+    kw = dict(title_region=title_region, model_str=model_str, t0=t0, t1=t1)
+
+    df = load_pairs(Path(ROOT) / folder, model)
+    print(f'{len(df)} {PLATFORM}/{model_str} pairs in {Path(ROOT) / folder}')
+
+    ohc = df[(df.glider_ohc_qc == 1) & (df.model_ohc_qc == 1)]
+    # Pairs where neither profile has water >= 26 C agree trivially; left in, they pile up at (0, 0),
+    # pin the fit to the origin and inflate r. Keep pairs where at least one side has heat content.
+    both_zero = (ohc.glider_ohc == 0) & (ohc.model_ohc == 0)
+    print(f'OHC: {len(ohc)} of {len(df)} pairs pass qc '
+          f'(glider qc counts {df.glider_ohc_qc.value_counts().to_dict()}, model {df.model_ohc_qc.value_counts().to_dict()}); '
+          f'{both_zero.sum()} with OHC = 0 in both dropped')
+    ohc = ohc[~both_zero]
+    mld = df[(df.glider_qcU == 1) & (df.model_qcU == 1)]
+
+    results = [
+        plot_both(ohc.glider_ohc.values, ohc.model_ohc.values, 'ohc', 'OHC', 'kJ/cm²', binw=4, lo=0, **kw),
+        plot_both(df.glider_iso26_depth.values, df.model_iso26_depth.values, '26c', '26°C Isotherm Depth', 'm', binw=4, lo=0, **kw),
+        plot_both(mld.glider_mldU.values, mld.model_mldU.values, 'mld', 'Mixed Layer Depth', 'm', binw=2, lo=0, **kw),
+        plot_both(df.glider_salinity_max.values, df.model_salinity_max.values, 'salmax', 'Salinity Max', 'PSU', binw=0.02, **kw),
+    ]
+    save_summary(results, title_region, model_str, t0, t1)
+
+
+if __name__ == '__main__':
+    main()
