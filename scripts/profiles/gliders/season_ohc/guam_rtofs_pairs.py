@@ -15,7 +15,7 @@ save_dir = f'{ROOT}/guam'
 tol = pd.Timedelta('3h')
 model = 'rtofs'
 
-gliders = pd.read_csv(glider_csv('guam'), parse_dates=['time'])
+gliders = pd.read_csv(glider_csv('guam'), parse_dates=['time'], dtype={'glider': str})
 existing = set(glob.glob(f'{save_dir}/*/*_{model}.csv'))
 
 pairs = []

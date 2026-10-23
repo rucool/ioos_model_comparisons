@@ -20,7 +20,7 @@ warnings.filterwarnings('ignore')
 from ioos_model_comparisons.platforms import get_active_gliders
 from ioos_model_comparisons.regions import region_config
 
-from season_config import ROOT, T0, glider_csv
+from season_config import ROOT, T0, glider_csv, mexico_pacific_mask
 
 region = sys.argv[1]
 t1 = pd.Timestamp(sys.argv[2]) if len(sys.argv) > 2 else pd.Timestamp.now().floor('D')
@@ -37,7 +37,7 @@ print(f'{region}: downloaded {len(df)} rows from {df.glider.nunique() if len(df)
 if len(df):
     df = df[df.lon.between(extent[0], extent[1]) & df.lat.between(extent[2], extent[3])]
     if region == 'mexico_pacific':
-        df = df[~((df.lat > 18) & (df.lon > -100)) & (df.lat < 32.5)]
+        df = df[mexico_pacific_mask(df)]
 
     span = df.groupby('glider').time.agg(['min', 'max'])
     span['platform'] = span.index.str.split('-').str[0].str.lower()

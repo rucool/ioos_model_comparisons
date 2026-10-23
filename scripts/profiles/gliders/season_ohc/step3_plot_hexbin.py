@@ -1,4 +1,4 @@
-"""Step 3: glider vs model hexbin plots (OHC, salinity max, mixed layer depth, 26 C isotherm depth).
+"""Step 3: glider (or Argo) vs model hexbin plots (OHC, salinity max, mixed layer depth, 26 C isotherm depth).
 
 usage: python step3_plot_hexbin.py <title> <model> <t0> <t1> <region folder>
    e.g. python step3_plot_hexbin.py "Caribbean" cmems 2026-06-01 2026-10-22 caribbean
@@ -23,7 +23,7 @@ import pandas as pd
 from matplotlib.colors import BoundaryNorm
 from matplotlib.ticker import MaxNLocator
 
-from season_config import PLOTS, ROOT
+from season_config import LABEL, PLATFORM, PLOTS, ROOT
 
 title_region, model, t0, t1, folder = sys.argv[1:6]
 base_dir = Path(ROOT) / folder
@@ -100,9 +100,9 @@ def hexbin_plot(x, y, prefix, label, units, binw, lo=None):
     ax.set_ylim(lims)
     ax.set_aspect('equal', adjustable='box')
     ax.grid(True, alpha=0.4)
-    ax.set_xlabel(f'Glider {label} ({units})', fontsize='x-large')
+    ax.set_xlabel(f'{LABEL} {label} ({units})', fontsize='x-large')
     ax.set_ylabel(f'{model_str} {label} ({units})', fontsize='x-large')
-    ax.set_title(f'{title_region} {label} - Glider vs {model_str}\n{t0} to {t1}', fontsize='large')
+    ax.set_title(f'{title_region} {label} - {LABEL} vs {model_str}\n{t0} to {t1}', fontsize='large')
     ax.text(0.03, 0.97,
             f"n = {s['n']}\nbias = {s['bias']:.2f}\nRMSE = {s['rmse']:.2f}\nr = {s['r']:.2f}\n"
             f"slope = {s['slope']:.2f}\nintercept = {s['intercept']:.2f}",
@@ -111,7 +111,7 @@ def hexbin_plot(x, y, prefix, label, units, binw, lo=None):
     ax.legend(loc='lower right')
 
     os.makedirs(save_dir, exist_ok=True)
-    fname = os.path.join(save_dir, f'{prefix}_glider_vs_{model_str}_hexbin_{t0}_{t1}_{reg_name}.png')
+    fname = os.path.join(save_dir, f'{prefix}_{PLATFORM}_vs_{model_str}_hexbin_{t0}_{t1}_{reg_name}.png')
     fig.savefig(fname, dpi=300, bbox_inches='tight')
     plt.close(fig)
     print(f'Saved plot to {fname}  (max {int(counts.max())} per hexagon)')
@@ -119,7 +119,7 @@ def hexbin_plot(x, y, prefix, label, units, binw, lo=None):
 
 
 df = load_pairs()
-print(f'{len(df)} glider/{model_str} pairs in {base_dir}')
+print(f'{len(df)} {PLATFORM}/{model_str} pairs in {base_dir}')
 
 ohc = df[(df.glider_ohc_qc == 1) & (df.model_ohc_qc == 1)]
 # Pairs where neither profile has water >= 26 C agree trivially; left in, they pile up at (0, 0),

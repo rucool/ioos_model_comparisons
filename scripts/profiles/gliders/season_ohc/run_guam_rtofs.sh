@@ -11,14 +11,17 @@ T0=$($PY -c 'from season_config import T0; print(T0.date())')
 T1=${1:-$(date +%Y-%m-%d)}
 REMOTE=${GUAM_REMOTE:-michaesm@baffin.marine.rutgers.edu}
 SSH="ssh -o BatchMode=yes -J ${GUAM_JUMP:-boardwalk}"
-RDIR=guam_rtofs_extract                                   # under the remote user's home
+PLATFORM=$($PY -c 'from season_config import PLATFORM; print(PLATFORM)')
+RDIR=guam_rtofs_extract; [ "$PLATFORM" = glider ] || RDIR=guam_rtofs_extract_$PLATFORM   # under the remote user's home
+# production archive first, then a backfill of missing days (grab_rtofs_archv_aws.py --date D --output-dir ...)
+ARCHIVES=${GUAM_ARCHIVES:-/home/hurricaneadm/data/rtofs_archv:\$HOME/rtofs_archv_backfill}
 RPY=/home/hurricaneadm/miniconda3/envs/model_comps/bin/python
 LOGS=$ROOT/logs; mkdir -p "$LOGS"
 
 $PY guam_rtofs_pairs.py
 $SSH "$REMOTE" "mkdir -p $RDIR/out"
 rsync -az -e "$SSH" extract_guam_rtofs.py "$ROOT/guam_rtofs_pairs.csv" "$REMOTE:$RDIR/"
-$SSH "$REMOTE" "cd $RDIR && nice -n 19 $RPY extract_guam_rtofs.py guam_rtofs_pairs.csv out"
+$SSH "$REMOTE" "cd $RDIR && nice -n 19 $RPY extract_guam_rtofs.py guam_rtofs_pairs.csv out $ARCHIVES"
 rsync -az -e "$SSH" "$REMOTE:$RDIR/out/" "$ROOT/guam/"
 $PY step2_calculate_metrics.py guam rtofs > "$LOGS/p2_guam_rtofs.log" 2>&1
 $PY step3_plot_hexbin.py Guam rtofs "$T0" "$T1" guam > "$LOGS/p3_guam_rtofs.log" 2>&1

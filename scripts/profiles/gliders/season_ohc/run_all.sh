@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hurricane-season glider vs model comparison, unattended: download -> pair -> metrics -> plots.
+# Hurricane-season glider (or Argo: SEASON_PLATFORM=argo) vs model comparison, unattended: download -> pair -> metrics -> plots.
 # Caribbean, Hawaii, Mexico Pacific with CMEMS and RTOFS; Guam CMEMS here, Guam RTOFS via run_guam_rtofs.sh.
 # Step 1 is re-run up to 5 passes per job (each pass resumes), so network blips only cost a retry.
 # Run under caffeinate so the Mac does not sleep:  caffeinate -i ./run_all.sh [end date]
@@ -7,6 +7,7 @@ cd "$(dirname "$0")"
 PY="conda run --no-capture-output -n model_comps python"
 ROOT=$($PY -c 'from season_config import ROOT; print(ROOT)')
 T0=$($PY -c 'from season_config import T0; print(T0.date())')
+PLATFORM=$($PY -c 'from season_config import PLATFORM; print(PLATFORM)')
 T1=${1:-$(date +%Y-%m-%d)}
 LOGS=$ROOT/logs; mkdir -p "$LOGS"
 log() { echo "$(date '+%F %T') $*" | tee -a "$LOGS/run_all.log"; }
@@ -26,8 +27,8 @@ pair() {  # region model workers
 
 log "start ($T0 to $T1, root $ROOT)"
 for region in caribbean hawaii guam mexico_pacific; do
-    $PY step0_download_gliders.py "$region" "$T1" > "$LOGS/p0_$region.log" 2>&1
-    log "step0 $region: $(grep -a 'profiles kept' "$LOGS/p0_$region.log")"
+    $PY step0_download_${PLATFORM}s.py "$region" "$T1" > "$LOGS/p0_$region.log" 2>&1
+    log "step0 $region: $(grep -a -e 'profiles kept' -e ' profiles$' "$LOGS/p0_$region.log" | tail -1)"
 done
 
 pair caribbean cmems 6 &

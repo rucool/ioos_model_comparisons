@@ -1,7 +1,10 @@
 """Guam RTOFS, runs on baffin: nearest RTOFS column for each glider/model-time pair in pairs.csv.
 
 usage (baffin, model_comps env):
-    python extract_guam_rtofs.py pairs.csv out_dir [archive_dir]
+    python extract_guam_rtofs.py pairs.csv out_dir [archive_dir[:archive_dir...]]
+
+Archive dirs are searched in order (e.g. the production archive, then a backfill made with
+grab_rtofs_archv_aws.py --output-dir).
 
 Writes out_dir/<glider>/<stem>_rtofs.csv with the same columns as the other regions
 (depth, lat, lon, time, temperature, salinity). Pairs whose model time has no file are skipped,
@@ -15,14 +18,15 @@ import pandas as pd
 import xarray as xr
 
 pairs_csv, out_dir = sys.argv[1], sys.argv[2]
-archive = sys.argv[3] if len(sys.argv) > 3 else '/home/hurricaneadm/data/rtofs_archv'
+archives = (sys.argv[3] if len(sys.argv) > 3 else '/home/hurricaneadm/data/rtofs_archv').split(':')
 max_depth = 1100   # gliders stop at <= 1000 m
 
 pairs = pd.read_csv(pairs_csv, parse_dates=['date'])
 written = missing = 0
 for date, group in pairs.groupby('date'):
-    f = f"{archive}/{date:%Y/%m/%Y%m%d}/rtofs_glo_{date:%Y%m%dT%H}_guam.nc"
-    if not os.path.exists(f):
+    cands = [f"{a}/{date:%Y/%m/%Y%m%d}/rtofs_glo_{date:%Y%m%dT%H}_guam.nc" for a in archives]
+    f = next((c for c in cands if os.path.exists(c)), None)
+    if f is None:
         missing += len(group)
         continue
     with xr.open_dataset(f) as ds:

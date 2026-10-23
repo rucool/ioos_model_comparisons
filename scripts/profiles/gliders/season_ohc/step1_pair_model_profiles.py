@@ -37,7 +37,7 @@ max_depth = 1100     # gliders stop at <= 1000 m
 save_dir = f'{ROOT}/{region_str}'
 existing_files = set(glob.glob(f'{save_dir}/*/*_{model}.csv'))
 
-gliders = pd.read_csv(glider_csv, parse_dates=['time'])
+gliders = pd.read_csv(glider_csv, parse_dates=['time'], dtype={'glider': str})   # Argo WMO ids are numeric
 
 # ---- model handles ---------------------------------------------------------------------------
 if model == 'rtofs':
@@ -142,8 +142,23 @@ def do_box(group):
     return n
 
 
-pairs['win'] = pairs.date.dt.floor(window)
-jobs = [g for _, g in pairs.groupby(['glider', 'win'])]
+if model == 'cmems':
+    # Group by the store's own chunks (32 x 32 cells x 526 six-hourly steps, one depth level each):
+    # one read fetches every chunk a group needs, however many profiles fall in it. Grouping per
+    # glider-week re-read the same chunks ~18 times per glider, and for Argo (one profile per float
+    # every ~10 days) it meant ~150 MB per profile.
+    enc = temp_da.encoding.get('preferred_chunks') or temp_da.encoding.get('chunks') or {}
+    cx, cy, ct = enc.get('longitude', 32), enc.get('latitude', 32), enc.get('time', 526)
+    lonv, latv = temp_da[LON].values, temp_da[LAT].values
+    tv = pd.DatetimeIndex(temp_da['time'].values)
+    ix = np.abs(lonv[None, :] - pairs.lon.values[:, None]).argmin(1) // cx
+    iy = np.abs(latv[None, :] - pairs.lat.values[:, None]).argmin(1) // cy
+    it = tv.get_indexer(pd.DatetimeIndex(pairs.date), method='nearest') // ct
+    pairs['win'] = list(zip(ix, iy, it))
+    jobs = [g for _, g in pairs.groupby('win')]
+else:
+    pairs['win'] = pairs.date.dt.floor(window)
+    jobs = [g for _, g in pairs.groupby(['glider', 'win'])]
 fn = do_rtofs if model == 'rtofs' else do_box
 
 total = 0
