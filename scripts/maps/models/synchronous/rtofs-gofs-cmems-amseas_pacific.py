@@ -457,7 +457,7 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs AMSEAS at {ctime} for region {region['name']}: {e}")
 
-        if sst is not None:
+        if rdt_flag and sst is not None:
             plot_sst(rds_sub, sst, region, **remove_kwargs(['eez', 'currents', 'legend']))
             pending_logs.append(_sst_record(region, ts_dt, 'GOES16'))
             logger.info(f"Successfully plotted SST for region {region['name']} at time {ctime}")

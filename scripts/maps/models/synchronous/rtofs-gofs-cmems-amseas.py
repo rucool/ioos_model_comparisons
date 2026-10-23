@@ -792,13 +792,13 @@ def process_region(ctime, rdt_flag, rdt, rdtp_flag, rdtp, gdt_flag, gdt_ts, gdt_
         except Exception as e:
             logger.error(f"Failed to process RTOFS vs ECCOFS currents at {ctime} for region {region['name']}: {e}", exc_info=True)
 
-        if sst16 is not None:
+        if rdt_flag and sst16 is not None:
             plot_sst(rds_sub, sst16, region, satellite='GOES-16', **remove_kwargs(['eez', 'currents', 'legend']))
             plots.append(f"{region['name']} | SST GOES-16")
             pending_logs.append(_sst_record(region, ts_dt, 'GOES16'))
             logger.info(f"Successfully plotted GOES-16 SST for region {region['name']} at time {ctime}")
 
-        if sst19 is not None:
+        if rdt_flag and sst19 is not None:
             plot_sst(rds_sub, sst19, region, satellite='GOES-19', **remove_kwargs(['eez', 'currents', 'legend']))
             plots.append(f"{region['name']} | SST GOES-19")
             pending_logs.append(_sst_record(region, ts_dt, 'GOES19'))
