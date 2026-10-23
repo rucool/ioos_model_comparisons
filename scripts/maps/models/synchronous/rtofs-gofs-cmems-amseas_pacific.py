@@ -65,7 +65,10 @@ kwargs = {
 
 # Configuration for regions and days to process
 conf.days = 2
-conf.regions = ['hawaii', 'mexico_pacific']
+# Hawaii's RTOFS maps come from the RTOFS binary cron
+# (model_compare_rtofs_binary.sh), which writes the same filenames; running
+# Hawaii here too would overwrite them with the THREDDS version.
+conf.regions = ['mexico_pacific']
 
 # Date range for processing
 today = dt.date.today()

@@ -9,10 +9,10 @@ echo ---------------- Start ---------------------- >> $logfile
 date >> $logfile
 
 source ~/miniconda3/etc/profile.d/conda.sh
-conda activate hurricanes
-# export PYPROJ_GLOBAL_CONTEXT=ON
-# export MPLBACKEND=agg
-python /home/hurricaneadm/scripts/ioos_model_comparisons/scripts/maps/models/synchronous/surface_current_contour_gom.py >> $logfile
+conda activate model_comps
+export PYPROJ_GLOBAL_CONTEXT=ON
+export MPLBACKEND=agg
+python /home/hurricaneadm/scripts/temp/ioos_model_comparisons/scripts/maps/models/synchronous/surface_current_contour_gom.py >> $logfile
 conda deactivate
 
 echo ---------------- End ------------------------ >> $logfile

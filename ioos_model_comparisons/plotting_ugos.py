@@ -15,7 +15,6 @@ import pandas as pd
 from cartopy.io.shapereader import Reader
 from cartopy.mpl.geoaxes import GeoAxesSubplot
 from matplotlib.colors import TwoSlopeNorm
-from mpl_toolkits.axes_grid1.inset_locator import InsetPosition, inset_axes
 from oceans.ocfis import spdir2uv, uv2spdir
 from shapely.geometry.polygon import LinearRing
 from ioos_model_comparisons.calc import dd2dms
