@@ -56,7 +56,7 @@ def nesdis_box():
 
 
 prof = profiles()
-prof['time'] = pd.to_datetime(prof.time)
+prof['time'] = pd.to_datetime(prof.time, format='mixed')   # midnight stamps can be bare dates
 prof = prof[prof.glider_ohc_qc == 1]
 ds = nesdis_box()
 units = ds.ohc.attrs.get('units', '?')

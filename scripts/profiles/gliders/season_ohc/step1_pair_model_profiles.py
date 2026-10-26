@@ -40,13 +40,38 @@ existing_files = set(glob.glob(f'{save_dir}/*/*_{model}.csv'))
 gliders = pd.read_csv(glider_csv, parse_dates=['time'], dtype={'glider': str})   # Argo WMO ids are numeric
 
 # ---- model handles ---------------------------------------------------------------------------
+LOCAL = False
 if model == 'rtofs':
-    from ioos_model_comparisons.models import rtofs
     if region_str not in RTOFS_SOURCE:
-        sys.exit(f'No RTOFS THREDDS grid covers {region_str}')
-    ds = rtofs(rename=True, chunks={'time': 1}, source=RTOFS_SOURCE[region_str])
-    rlon = ds.lon.values[0, :]
-    rlat = ds.lat.values[:, 0]
+        sys.exit(f'No RTOFS grid covers {region_str}')
+    src = RTOFS_SOURCE[region_str]
+    # Local archive on the fileserver (mount /Volumes/hurricaneadm): ~100x faster than THREDDS, same files.
+    # Set RTOFS_ARCHIVE=none to force THREDDS.
+    local_dir = os.path.join(os.environ.get('RTOFS_ARCHIVE', '/Volumes/hurricaneadm/data'),
+                             'rtofs' if src == 'east' else 'rtofs_west')
+    LOCAL = os.path.isdir(local_dir)
+    os.environ.setdefault('HDF5_USE_FILE_LOCKING', 'FALSE')   # file locking fails on the share
+    if LOCAL:
+        import xarray as xr
+
+        def rtofs_file(date):
+            # 00Z field of day D is f024 of the cycle on D-1; 06/12/18Z are f006/f012/f018 of day D
+            if date.hour == 0:
+                day, fh = date - pd.Timedelta('1D'), 'f024'
+            else:
+                day, fh = date, {6: 'f006', 12: 'f012', 18: 'f018'}[date.hour]
+            return f'{local_dir}/rtofs.{day:%Y%m%d}/rtofs_glo_3dz_{fh}_6hrly_hvr_US_{src}.nc'
+
+        ref = next(f for f in (rtofs_file(d) for d in pd.date_range(gliders.time.min().floor('D') + pd.Timedelta('6h'), periods=40, freq='6h'))
+                   if os.path.exists(f))
+        with xr.open_dataset(ref) as d0:
+            rlon, rlat = d0.Longitude.values[0, :], d0.Latitude.values[:, 0]
+        print(f'RTOFS {src}: reading the local archive {local_dir}', flush=True)
+    else:
+        from ioos_model_comparisons.models import rtofs
+        ds = rtofs(rename=True, chunks={'time': 1}, source=src)
+        rlon = ds.lon.values[0, :]
+        rlat = ds.lat.values[:, 0]
     # Profiles outside the regional grid would snap to its edge; drop them.
     gliders = gliders[gliders.lon.between(rlon.min(), rlon.max()) & gliders.lat.between(rlat.min(), rlat.max())]
 elif model == 'cmems':
@@ -60,6 +85,7 @@ elif model == 'cmems':
                               service='arco-time-series', chunk_size_limit=0)['so']
     LON, LAT, to_lon = 'longitude', 'latitude', (lambda x: x)
 elif model == 'espc':
+    sys.exit('ESPC pairs gliders and Argo together: use step1_espc_pairs.py')
     from ioos_model_comparisons.models import _open_cf_dataset_sanitize_time
     from ioos_model_comparisons.calc import lon180to360
     year = gliders.time.min().year
@@ -117,6 +143,29 @@ def do_rtofs(group):
     return n
 
 
+def do_rtofs_local(group):
+    """RTOFS from the local archive: one file per model time, one box read for all its profiles."""
+    date = group.date.iloc[0]
+    f = rtofs_file(date)
+    if not os.path.exists(f):
+        return 0                       # same as the THREDDS KeyError skip
+    ix = np.array([np.abs(rlon - lon).argmin() for lon in group.lon])
+    iy = np.array([np.abs(rlat - lat).argmin() for lat in group.lat])
+    x0, y0 = ix.min(), iy.min()
+    with xr.open_dataset(f) as d:
+        sub = d[['temperature', 'salinity']].isel(X=slice(x0, ix.max() + 1), Y=slice(y0, iy.max() + 1)).load()
+    n = 0
+    for p, i, j in zip(group.itertuples(), ix, iy):
+        col = sub.isel(MT=0, X=i - x0, Y=j - y0)
+        mdf = pd.DataFrame({'depth': col.Depth.values, 'temperature': col.temperature.values,
+                            'salinity': col.salinity.values, 'y': int(col.Y), 'x': int(col.X), 'time': date,
+                            'Date': float(f'{date:%Y%m%d}') + date.hour / 24,
+                            'lat': float(col.Latitude), 'lon': float(col.Longitude)})
+        save(p, mdf)
+        n += 1
+    return n
+
+
 def do_box(group):
     """CMEMS/ESPC: load one small box for this glider-week, then take the nearest column per pair."""
     lons = to_lon(group.lon.values)
@@ -156,11 +205,15 @@ if model == 'cmems':
     it = tv.get_indexer(pd.DatetimeIndex(pairs.date), method='nearest') // ct
     pairs['win'] = list(zip(ix, iy, it))
     jobs = [g for _, g in pairs.groupby('win')]
+elif LOCAL:
+    jobs = [g for _, g in pairs.groupby('date')]
 else:
     pairs['win'] = pairs.date.dt.floor(window)
     jobs = [g for _, g in pairs.groupby(['glider', 'win'])]
-fn = do_rtofs if model == 'rtofs' else do_box
+fn = (do_rtofs_local if LOCAL else do_rtofs) if model == 'rtofs' else do_box
 
+if LOCAL:
+    max_workers = 1       # the netCDF library is not thread-safe; local reads are fast anyway
 total = 0
 with ThreadPoolExecutor(max_workers=max_workers) as executor:
     futures = {executor.submit(fn, j): j for j in jobs}

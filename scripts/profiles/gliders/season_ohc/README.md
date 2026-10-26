@@ -21,6 +21,7 @@ SEASON_PLATFORM=argo caffeinate -i ./run_all.sh   # the same for Argo (then SEAS
 | 0 | `step0_download_gliders.py <region>` | `<year>_<region>_gliders.csv`: DAC profiles, clipped to the region and cleaned (Mexico Pacific is Pacific only, south of 32.5N; duplicate datasets dropped) |
 | 0 | `step0_download_argos.py <region>` | `<year>_<region>_argos.csv`: IFREMER ArgoFloats. Whole profiles dropped unless pres/temp/psal profile grades are A or B and position/time flags are good (listed in `<region>_argo_qc_excluded.csv`, counted in `argo_qc_summary.csv`); then bad levels dropped. Depth from pressure; float id goes in the `glider` column |
 | 1 | `step1_pair_model_profiles.py <region> <model>` | `<region>/<glider>/<glider>_<time>[_<model>].csv`: at each 6-hourly model time, the closest glider profile within ±3 h and the nearest model column. Resumable. |
+| 1 | `step1_espc_pairs.py [region ...] [--workers N]` | The same pairs for ESPC (HYCOM `ESPC-D-V02/{t3z,s3z}/<year>` archive), for gliders and Argo together: that archive costs ~20 s per model time however small the box, so each (region, time) is read once for every profile on it |
 | 2 | `step2_calculate_metrics.py <region> <model>` | `<region>/<glider>/calculated/`: per-profile metrics |
 | 3 | `step3_plot_hexbin.py <title> <model> <t0> <t1> <region>` | `plots/*.png`, `plots/summary.csv` |
 | 4 | `step4_nesdis_ohc.py <title> <t0> <t1> <region>` | the same OHC plots against NESDIS satellite OHC; `<region>_nesdis_ohc_pairs.csv` |

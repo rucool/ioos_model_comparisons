@@ -26,16 +26,18 @@ pair() {  # region model workers
 }
 
 log "start ($T0 to $T1, root $ROOT)"
-for region in caribbean hawaii guam mexico_pacific; do
+for region in caribbean gom hawaii guam mexico_pacific; do
     $PY step0_download_${PLATFORM}s.py "$region" "$T1" > "$LOGS/p0_$region.log" 2>&1
     log "step0 $region: $(grep -a -e 'profiles kept' -e ' profiles$' "$LOGS/p0_$region.log" | tail -1)"
 done
 
 pair caribbean cmems 6 &
+pair gom cmems 6 &
 pair hawaii cmems 6 &
 pair guam cmems 6 &
 pair mexico_pacific cmems 6 &
 pair caribbean rtofs 2 &       # RTOFS: production Rutgers THREDDS, keep it gentle
+pair gom rtofs 2 &
 pair hawaii rtofs 2 &
 pair mexico_pacific rtofs 2 &
 wait

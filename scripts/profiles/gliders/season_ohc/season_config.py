@@ -26,11 +26,12 @@ ROOT = BASE if PLATFORM == 'glider' else os.path.join(BASE, PLATFORM)
 PLOTS = os.path.join(ROOT, 'plots')
 
 # region key (config/regions/<key>.yml) -> plot title
-REGIONS = {'caribbean': 'Caribbean', 'hawaii': 'Hawaii', 'guam': 'Guam', 'mexico_pacific': 'Mexico Pacific'}
+REGIONS = {'caribbean': 'Caribbean', 'gom': 'Gulf of Mexico', 'hawaii': 'Hawaii', 'guam': 'Guam',
+           'mexico_pacific': 'Mexico Pacific'}
 
 # RTOFS on the Rutgers THREDDS is two regional grids. Guam is on neither: its RTOFS comes from the
 # binary-converted files on baffin (run_guam_rtofs.sh). Hawaii's west edge is 157.9W.
-RTOFS_SOURCE = {'caribbean': 'east', 'hawaii': 'west', 'mexico_pacific': 'west'}
+RTOFS_SOURCE = {'caribbean': 'east', 'gom': 'east', 'hawaii': 'west', 'mexico_pacific': 'west'}
 
 
 def mexico_pacific_mask(df):
